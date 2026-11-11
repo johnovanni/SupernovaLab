@@ -45,7 +45,16 @@ Each task names the sections it implements. Read those sections in full before c
   computed by hand in the test's comment. They never recompute the expected value with the code under test.
 - **Code copied from Universe3D** (`C:\repos\Universe3D`) is copied with its namespace changed, not referenced:
   `Cosmology`, `OrbitCamera`, `GlHost`, `ShaderProgram`, `Directory.Build.props` (build folder renamed
-  `SupernovaLab.build`), and the screenshot helper scripts.
+  `SupernovaLab.build`). **Not** the screenshot helper scripts (see the next item).
+- **No screen-capture scripts** (owner constraint, antivirus). Never use PowerShell, or any script, that compiles
+  code at run time (`Add-Type`, P/Invoke such as `GetWindowRect`/`PrintWindow`) or copies the screen
+  (`CopyFromScreen`).
+  - Visual checks use the app's own diagnostic option:
+    `SupernovaLab.App --snapshot <out-dir> [--preset <id>] [--time <s>] [--size <WxH>] [--window main|instruments|details]`.
+    It renders the window(s) to PNG with `RenderTargetBitmap` (plus `GL.ReadPixels` for the 3D view) and exits.
+    Task 14 builds it.
+  - Batch captures into few launches.
+  - If something can't be checked this way, report it instead of capturing the screen.
 - **Every `ISignalModel`** is a public sealed class with a public parameterless constructor, so the contract and
   sweep tests can find and construct all of them by reflection.
 - **Data files** are embedded resources under `src/SupernovaLab.Core/Data/Embedded/`. No network at run time.
@@ -737,10 +746,12 @@ public interface IWindowService {
     outcome) and changes when the outcome changes;
   - Glossary completeness.
 - [ ] **Step 2:** Run. FAIL. **Step 3:** Implement. **Step 4:** Run. PASS.
-- [ ] **Step 5:** Run the app (`dotnet run --project src/SupernovaLab.App`) and take screenshots with the copied
-  helper, `tools/shot.ps1 -ProcessName SupernovaLab.App`:
-  - the main window at 1366×768 and 1920×1080, checking that nothing is clipped or cramped;
-  - the Outcome details and Preset info windows open beside it.
+- [ ] **Step 5:** Implement the `--snapshot` diagnostic option (Global Constraints) in `App.xaml.cs` and
+  `Services/SnapshotRenderer.cs`, with a unit test of its argument parsing. Then capture, in one or two launches:
+  - the main window at 1366×768 and 1920×1080 (check that nothing is clipped or cramped);
+  - the Outcome details window;
+  - the Preset info window for `sn1987a`.
+  Look at the PNGs.
 - [ ] **Step 6:** Commit: `feat(app): lab panel, outcome summary and details, outcome map, timeline, windows`.
 
 ### Task 15: The six instrument panels and the instrument strip
@@ -811,8 +822,9 @@ public sealed record PlotSeries(string Label, double[] ObserverTimesS, double[] 
   - `MainViewModel.Panels` is the same instance list before and after `ShowInstruments` is called twice on the
     fake window service.
 - [ ] **Step 2:** Run. FAIL. **Step 3:** Implement. **Step 4:** Run. PASS.
-- [ ] **Step 5:** Take screenshots of the Instruments window (the grid, and one maximized panel) and of the main
-  window's strip, for sn1987a, sn1998bw and betelgeuse; check they read clearly. Measure the redraw rate while
+- [ ] **Step 5:** Using `--snapshot` (with `--window instruments` and `--window main`), capture the Instruments
+  window grid and the main window's strip for sn1987a, sn1998bw and betelgeuse, at a time after the peak. Check
+  they read clearly. Measure the redraw rate while
   playing, with the Instruments window open (≥ 30 fps on this machine).
 - [ ] **Step 6:** Commit: `feat(app): instrument panels, Instruments window and instrument strip`.
 
@@ -860,8 +872,8 @@ public static class BlackbodyColor { public static (float R, float G, float B) F
   - BlackbodyColor at 5,800 K is near white (each channel > 0.85), at 3,000 K is red-dominant, and at 30,000 K is
     blue-dominant.
 - [ ] **Step 2:** Run. FAIL. **Step 3:** Implement. **Step 4:** Run. PASS.
-- [ ] **Step 5:** Screenshots of the star before the explosion, at 1 day and at 100 yr for sn1987a, and the jets for
-  sn1998bw. Check ≥ 50 fps with all panels visible.
+- [ ] **Step 5:** Using `--snapshot`, capture the star before the explosion, at 1 day and at 100 yr for sn1987a, and
+  the jets for sn1998bw. The 3D view is captured with `GL.ReadPixels`. Check ≥ 50 fps with all panels visible.
 - [ ] **Step 6:** Commit: `feat(rendering): simple 3D explosion view`.
 
 ### Task 17: Polish, README and final checks
@@ -874,7 +886,7 @@ public static class BlackbodyColor { public static (float R, float G, float B) F
 - Modify: any glossary gaps found.
 
 - [ ] **Step 1:** Run the full suite: `dotnet test` passes, 0 warnings.
-- [ ] **Step 2:** Manual run-through with screenshots:
+- [ ] **Step 2:** Run-through with `--snapshot` captures, batched (no screen-capture scripts):
   - each preset loads and plays to 1,000 yr without errors;
   - the outcome map visibly shows the islands;
   - the tooltips appear.
