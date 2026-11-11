@@ -147,10 +147,13 @@ converts it to an embedded CSV.
   records which was used, and the outcome card's citation says so.
 - Either way, `OutcomeEngine` reads only the CSV.
 
-**The outcome card** (top of the right panel) shows:
+**The outcome summary** (top of the main window's right column) shows:
 - the type, fate and remnant in large text, with a one-sentence plain-language summary;
-- the quantities, each with its confidence badge and range;
-- the notes.
+- three or four key numbers with confidence badges;
+- a **Details…** button, which opens the Outcome details window (§5.0).
+
+**The Outcome details window** shows every quantity, each with its confidence badge, range and full citation,
+plus all the notes.
 
 **The outcome map** (beneath the card) is a strip chart of fate against initial mass (0.8–300 M☉, log scale)
 for the current metal content and stripping, colored by fate. A marker shows the current mass, so the islands
@@ -173,10 +176,32 @@ are visible at a glance. Clicking the strip sets the mass.
 - All signals travel at the speed of light. The neutrino delay from neutrino mass is under a second at 10 kpc,
   and is ignored and stated in the glossary.
 
-## 5. Instrument views
+## 5. Windows and instrument views
 
-Six panels, one per messenger or band, in a 3×2 grid. Double-clicking a panel maximizes it; Esc restores the grid.
-Each panel has:
+### 5.0 Window layout (decided with the owner, 2026-11-11)
+
+The main window would be overcrowded with everything in it: at 1366×768, six graphs would get about 245×180 px
+each. So the details live in their own **non-modal** windows. They stay open while the timeline plays, can move
+to a second monitor, and bind to the same view-model instances as the main window, so everything stays in sync.
+
+- **Main window (the lab):**
+  - Left column: presets with an ⓘ button, Star and Observer inputs, the Advanced expander, and Explode / Re-roll.
+  - Center: the 3D view.
+  - Right column: the outcome summary (§3) and the outcome map.
+  - Above the timeline: the **instrument strip**. Six small tiles, one per messenger, each with a sparkline of its
+    main signal, a moving time cursor and the detection badge. Clicking a tile opens the Instruments window on
+    that panel.
+  - Bottom: the timeline.
+- **Instruments window:** the six full panels described below, in a 3×2 grid. Double-clicking a panel maximizes it
+  within the window; Esc restores the grid. Opened from the strip or the View menu. Its size and position are
+  remembered for the session.
+- **Outcome details window** (§3). Opened from the summary's Details… button.
+- **Preset info window:** the preset's "What was actually seen" story, with citations. Opened from the ⓘ button.
+- Each window opens at most once; asking again brings it to the front. Closing the main window closes the others.
+
+### 5.1 Instrument panels
+
+Six panels, one per messenger or band. Each panel has:
 - a **plot against log time**, with the shared "now" cursor;
 - **sub-tabs** where a band has several signals;
 - an **instrument picker** (real instruments, with their published sensitivities);
@@ -241,7 +266,9 @@ C:\repos\SupernovaLab
     RemnantRenderer, ScaleBar, Shaders/*
   src/SupernovaLab.App         (net8.0-windows; WPF, CommunityToolkit.Mvvm 8.3.2, ScottPlot.WPF 5.1)
     ViewModels/ (MainViewModel, LabViewModel, OutcomeViewModel, TimelineViewModel, one per instrument panel),
-    Views/ (panels, outcome card, outcome map), Controllers/SceneController, MainWindow.xaml
+    Views/ (panels, instrument strip, outcome summary, outcome map), Windows/ (InstrumentsWindow,
+    OutcomeDetailsWindow, PresetInfoWindow), Services/IWindowService + WindowService,
+    Controllers/SceneController, MainWindow.xaml
   tests/SupernovaLab.Tests     (xUnit)
 ```
 
@@ -254,6 +281,12 @@ C:\repos\SupernovaLab
   Models are pure functions of their inputs, with no UI and no state, so they are directly unit-testable.
 - **Panels sample their models** on a fixed log-time grid (400 points per curve) when the outcome or observer
   changes, and only move the cursor while playing.
+- **MVVM:**
+  - Models are the Core types.
+  - View models live in the App and are unit-tested.
+  - Views are XAML with minimal code-behind.
+  - View models never create windows. They call `IWindowService` (`ShowInstruments(Messenger?)`,
+    `ShowOutcomeDetails()`, `ShowPresetInfo()`), and tests substitute a fake that records the calls.
 - `OutcomeEngine` and the signal models depend only on Core types. The App depends on Core and Rendering.
 - Code reused from Universe3D (`Cosmology`, `OrbitCamera`, `GlHost`, `ShaderProgram`, the short-path build rule)
   is **copied**, not referenced. Each repo stands alone.
@@ -315,8 +348,9 @@ xUnit tests in `SupernovaLab.Tests`.
 4. The signal models, one group at a time (neutrinos and gravitational waves; breakout and light curves; gamma
    lines; circumstellar interaction, remnant and pulsar; GRB; spectrum), with formula tests.
 5. Presets and validation tests.
-6. The app shell: lab panel, outcome card, outcome map, timeline.
-7. The six instrument panels.
+6. The app shell: lab panel, outcome summary and Outcome details window, outcome map, timeline, preset info
+   window, window service.
+7. The six instrument panels in the Instruments window, and the instrument strip.
 8. The simple 3D view.
 9. Glossary, polish, README, screenshots and performance checks.
 

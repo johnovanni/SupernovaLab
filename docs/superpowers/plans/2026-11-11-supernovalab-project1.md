@@ -652,29 +652,46 @@ public static class PresetCatalog { public static IReadOnlyList<Preset> LoadEmbe
 - [ ] **Step 3:** Run. FAIL. **Step 4:** Implement `presets.json` and `PresetCatalog`. **Step 5:** Run. PASS.
 - [ ] **Step 6:** Commit: `feat(core): real-supernova presets and validation`.
 
-### Task 14: App shell: lab panel, outcome card, outcome map, timeline
+### Task 14: App shell: lab panel, outcome summary and details, outcome map, timeline, windows
 
-Implements spec §2 (all inputs), §3 (card and map), §4 (time) and §9 (input errors). Review Focus 4.
+Implements spec §2 (all inputs), §3 (summary, details window and map), §4 (time), §5.0 (window layout, except the
+Instruments window's contents and the strip, which are Task 15) and §9 (input errors). Review Focus 4.
 
 **Files:**
 - Create in `src/SupernovaLab.App/`:
   - `ViewModels/MainViewModel.cs`, `LabViewModel.cs`, `OutcomeViewModel.cs`, `TimelineViewModel.cs`
-  - `Views/LabPanel.xaml`, `Views/OutcomeCard.xaml`, `Views/OutcomeMapStrip.xaml`, `Views/TimelineBar.xaml`
+  - `Views/LabPanel.xaml`, `Views/OutcomeSummary.xaml`, `Views/OutcomeMapStrip.xaml`, `Views/TimelineBar.xaml`
+  - `Windows/OutcomeDetailsWindow.xaml`, `Windows/PresetInfoWindow.xaml`, `Windows/InstrumentsWindow.xaml` (an
+    empty shell; Task 15 fills it)
+  - `Services/IWindowService.cs`, `Services/WindowService.cs`
   - `Resources/Theme.xaml` (dark, copied from Universe3D's palette)
 - Create `src/SupernovaLab.Core/Text/Glossary.cs` and `Text/OutcomeTexts.cs`
-- Modify `MainWindow.xaml`
-- Test: `tests/SupernovaLab.Tests/MainViewModelTests.cs`, `GlossaryTests.cs`
+- Modify `MainWindow.xaml`, `App.xaml.cs` (composition: construct the view models and `WindowService`, show
+  MainWindow)
+- Test: `tests/SupernovaLab.Tests/MainViewModelTests.cs`, `GlossaryTests.cs`, `FakeWindowService.cs`. The test
+  project references the App project.
 
-**Layout** (MainWindow, minimum 1366×768):
-- **Left column (300 px):** the lab panel, with the preset dropdown at the top, then Star, Observer and the
-  Advanced expander (spec §2), and the Explode and Re-roll buttons. The run number is shown as "Run #n".
-- **Right column (330 px):** the outcome card (spec §3), with confidence badges colored Established green,
-  Model-dependent amber, Speculative red, and the source as a tooltip on each badge. The outcome map strip sits
-  beneath it.
-- **Center:** a top row for the 3D view (placeholder in this task), a GridSplitter, then the 3×2 instrument grid
-  (placeholders in this task).
+**Main window layout** (minimum 1366×768):
+- **Left column (300 px):** the lab panel. The preset dropdown sits at the top with an ⓘ button
+  (`ShowPresetInfo`), then Star, Observer and the Advanced expander (spec §2), then the Explode and Re-roll buttons.
+  The run number is shown as "Run #n".
+- **Right column (300 px):** the outcome summary (spec §3): type, fate and remnant in large text, a one-sentence
+  summary, and 3–4 key numbers with confidence badges colored Established green, Model-dependent amber,
+  Speculative red, with the source as a tooltip. A **Details…** button calls `ShowOutcomeDetails`. The outcome map
+  strip sits beneath it.
+- **Center:** the 3D view (a placeholder in this task).
+- **Above the timeline:** a 64 px row reserved for the instrument strip (a placeholder in this task; Task 15).
 - **Bottom:** the timeline bar: Play/Pause, a log scrubber with event markers, a speed slider (decades per second,
   0.1–3, default 1/3), the observer-time readout via `UnitFormat.Time`, and the "light left … ago" line.
+- **A View menu** with Instruments, Outcome details and Preset info.
+
+**Other windows** (spec §5.0): non-modal, owned by MainWindow, at most one instance each. Asking again activates
+the existing one. They bind to the same view-model instances as MainWindow (`DataContext` = the shared
+`MainViewModel`, or a child of it).
+- `OutcomeDetailsWindow`: every non-null Quantity of the current outcome, with its value (UnitFormat), range,
+  confidence badge and full citation plus ResearchRef, and all the Notes. It updates live when the outcome changes.
+- `PresetInfoWindow`: the selected preset's Name, Summary and WhatWasSeen, and its Facts with citations. It shows
+  "No preset selected" otherwise.
 
 **Interfaces (Produces):**
 ```csharp
@@ -691,6 +708,13 @@ public partial class TimelineViewModel : ObservableObject {
   public void Tick(TimeSpan elapsed);              // advances on the log axis; stops at MaxS
 }
 public sealed record EventMarker(string Label, double ObserverTimeS, string GlossaryKey);
+public interface IWindowService {
+  void ShowInstruments(Messenger? focus = null);   // focus: maximize that panel (Task 15 handles focus)
+  void ShowOutcomeDetails();
+  void ShowPresetInfo();
+}
+// MainViewModel exposes ShowInstrumentsCommand (parameter Messenger?), ShowOutcomeDetailsCommand and
+// ShowPresetInfoCommand, which call the injected IWindowService. View models never construct windows.
 ```
 - Markers come from the models' marker methods: `BreakoutTimeS`, `PeakTimeS`, `PlateauEndS`, `T90S`,
   `EmergenceTimeS`, `ResolvableTimeS`, `Remnant.FormationTimeS`, plus fixed neutrino and GW markers at 0.01 s.
@@ -707,17 +731,29 @@ public sealed record EventMarker(string Label, double ObserverTimeS, string Glos
   - selecting the preset `sn1987a` sets the inputs, and `CurrentOutcome.UsesPublishedValues` is true; changing
     metallicity then makes it false and sets a status message;
   - `Tick(1 s)` at 1/3 decade per second multiplies the time by 10^(1/3);
+  - `ShowOutcomeDetailsCommand`, `ShowPresetInfoCommand` and `ShowInstrumentsCommand(Messenger.Neutrinos)` each
+    call the matching `FakeWindowService` method once, with the right argument;
+  - `OutcomeViewModel.DetailRows` lists every non-null Quantity of the current outcome (count it for the default
+    outcome) and changes when the outcome changes;
   - Glossary completeness.
 - [ ] **Step 2:** Run. FAIL. **Step 3:** Implement. **Step 4:** Run. PASS.
-- [ ] **Step 5:** Run the app (`dotnet run --project src/SupernovaLab.App`) and take a screenshot with the copied
-  helper, `tools/shot.ps1 -ProcessName SupernovaLab.App`. Check the layout at 1366×768 and 1920×1080.
-- [ ] **Step 6:** Commit: `feat(app): lab panel, outcome card, outcome map and timeline`.
+- [ ] **Step 5:** Run the app (`dotnet run --project src/SupernovaLab.App`) and take screenshots with the copied
+  helper, `tools/shot.ps1 -ProcessName SupernovaLab.App`:
+  - the main window at 1366×768 and 1920×1080, checking that nothing is clipped or cramped;
+  - the Outcome details and Preset info windows open beside it.
+- [ ] **Step 6:** Commit: `feat(app): lab panel, outcome summary and details, outcome map, timeline, windows`.
 
-### Task 15: The six instrument panels
+### Task 15: The six instrument panels and the instrument strip
 
-Implements spec §5 in full.
+Implements spec §5.1 in full, and the instrument strip and Instruments window of §5.0.
 
 **Files:**
+- Modify: `Windows/InstrumentsWindow.xaml` (the 3×2 grid of panels; maximize-on-double-click within the window;
+  Esc restores; the `focus` argument maximizes that panel) and `MainWindow.xaml` (the strip replaces its
+  placeholder)
+- Create `Views/InstrumentStrip.xaml` and `ViewModels/InstrumentTileViewModel.cs`. There are six tiles; each shows
+  the panel's title, a sparkline of its main series, the time cursor and `CurrentDetection` as a badge. Clicking a
+  tile runs `ShowInstrumentsCommand` with its Messenger.
 - Create in `src/SupernovaLab.App/`:
   - `ViewModels/InstrumentPanelViewModel.cs` (base class), plus one subclass per panel:
     `GravitationalWavePanelViewModel`, `NeutrinoPanelViewModel`, `GammaPanelViewModel`, `XrayUvPanelViewModel`,
@@ -747,7 +783,16 @@ public sealed record PlotSeries(string Label, double[] ObserverTimesS, double[] 
   - The spectrum sub-tab plots `SpectrumModel.At(...)` against wavelength (not time), and labels its lines. The
     title says "Schematic spectrum".
   - The pulsar sub-tab shows 1 s of pulses from `PulseTimes` at the current time.
-- **Interaction:** double-clicking a panel maximizes it; Esc restores the grid.
+- **Interaction:** in the Instruments window, double-clicking a panel maximizes it; Esc restores the grid. The
+  panel view models are created once by MainViewModel (`IReadOnlyList<InstrumentPanelViewModel> Panels`) and shared
+  by the strip tiles and the Instruments window, so closing and reopening the window loses nothing.
+- **Main series per tile** (its sparkline):
+  - Gravitational waves: strain;
+  - Neutrinos: `rate@superk`;
+  - Gamma rays: `line847`, or the GRB prompt flux when HasGrb;
+  - X-rays & UV: breakout `lum`;
+  - Visible light: `appV`, inverted axis;
+  - Radio: `radio5`.
 - **Values** outside a model's valid range are not plotted. The panel shows the "not modeled here" reason.
 - **Performance:** sampling happens only on changes. The cursor moves at playback rate without resampling.
 - **Model failure:** an exception or non-finite value from a model during sampling is caught in the base class,
@@ -760,11 +805,16 @@ public sealed record PlotSeries(string Label, double[] ObserverTimesS, double[] 
     splitting into segments);
   - with preset `sn1987a`, the neutrino panel's Facts include the Kamiokande-II event count;
   - moving time does not change `Series` (reference equality);
-  - changing distance does.
+  - changing distance does;
+  - each `InstrumentTileViewModel` exposes the main series named above, and its badge equals its panel's
+    `CurrentDetection`;
+  - `MainViewModel.Panels` is the same instance list before and after `ShowInstruments` is called twice on the
+    fake window service.
 - [ ] **Step 2:** Run. FAIL. **Step 3:** Implement. **Step 4:** Run. PASS.
-- [ ] **Step 5:** Screenshots of each panel for sn1987a, sn1998bw and betelgeuse; check they read clearly. Measure the
-  redraw rate while playing (≥ 30 fps on this machine).
-- [ ] **Step 6:** Commit: `feat(app): six instrument panels`.
+- [ ] **Step 5:** Take screenshots of the Instruments window (the grid, and one maximized panel) and of the main
+  window's strip, for sn1987a, sn1998bw and betelgeuse; check they read clearly. Measure the redraw rate while
+  playing, with the Instruments window open (≥ 30 fps on this machine).
+- [ ] **Step 6:** Commit: `feat(app): instrument panels, Instruments window and instrument strip`.
 
 ### Task 16: Simple 3D explosion view
 
