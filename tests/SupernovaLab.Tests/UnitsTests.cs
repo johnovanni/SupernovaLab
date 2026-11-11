@@ -23,6 +23,23 @@ public class UnitsTests
     public void Distance_KpcWithLightYears() => Assert.Equal("51 kpc (166,000 light-years)", UnitFormat.Distance(51 * 3.0857e21));
 
     [Fact]
+    public void Time_TopOfTimeline_NoScientificNotation() => Assert.Equal("1,000 years", UnitFormat.Time(3.156e10));
+
+    [Fact]
+    public void Time_RoundsUpToNextUnit() => Assert.Equal("1 min", UnitFormat.Time(59.96));
+
+    [Fact]
+    public void Time_MicrosecondsRoundUpToMs() => Assert.Equal("1 ms", UnitFormat.Time(999.9e-6));
+
+    [Fact]
+    public void Distance_OneGpc()
+        // 1e9 pc = 1,000 Mpc; 1e9 x 3.0857e18 / (2.99792458e10 x 3.156e7) = 3.2614e9 ly -> 3.26e9 (by hand).
+        => Assert.Equal("1,000 Mpc (3,260,000,000 light-years)", UnitFormat.Distance(1e9 * 3.0857e18));
+
+    [Fact]
+    public void Mass_Thousand() => Assert.Equal("1,000 M☉", UnitFormat.Mass(1000));
+
+    [Fact]
     public void MSun_IsSignalsValue() => Assert.Equal(1.989e33, PhysicalConstants.MSun);
 
     [Fact]

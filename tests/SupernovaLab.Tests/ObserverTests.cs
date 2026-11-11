@@ -21,10 +21,30 @@ public class ObserverTests
     public void At1Gpc_RedshiftIsAbout0p25()
     {
         var o = new ObserverSetup(1e9, 0, true);
-        Assert.InRange(o.Redshift, 0.2, 0.3);
+        // 0.248: independent Python integration of dD/dz = (c/H0)/sqrt(0.3(1+z)^3 + 0.7), H0 = 70, bisected for D = 1000 Mpc.
+        Assert.InRange(o.Redshift, 0.238, 0.258);
         Assert.Equal(1 + o.Redshift, o.TimeDilation, 12);
         // Luminosity distance = D (1+z), so it exceeds D.
         Assert.True(o.LuminosityDistanceCm > 1e9 * 3.0857e18);
+    }
+
+    [Theory]
+    [InlineData(0.5)]
+    [InlineData(3.0)]
+    [InlineData(10.0)]
+    public void Redshift_RoundTripsComovingDistance(double z)
+    {
+        var c = CosmologyModel.Default;
+        Assert.Equal(z, c.RedshiftAtComovingDistance(c.ComovingDistanceMpc(z)), 6);
+    }
+
+    [Fact]
+    public void ComovingDistance_BeyondTable_MatchesIndependentIntegral()
+    {
+        // z = 10: 9440.25 Mpc, from an independent Python Simpson integration (H0 = 70, Om = 0.3).
+        double d = CosmologyModel.Default.ComovingDistanceMpc(10);
+        Assert.InRange(d, 9440.25 * 0.999, 9440.25 * 1.001);
+        Assert.InRange(CosmologyModel.Default.RedshiftAtComovingDistance(9440.25), 9.99, 10.01);
     }
 
     [Fact]
