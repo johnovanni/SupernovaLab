@@ -1,0 +1,487 @@
+using SupernovaLab.Core.Progenitors;
+using SupernovaLab.Core.Units;
+
+namespace SupernovaLab.Core.Outcomes;
+
+/// <summary>
+/// Outcomes §8.2: turns the lab inputs into an <see cref="Outcome"/>. <see cref="ProgenitorModel"/> does steps 0–3; this
+/// class adds the step 3 outcomes, step 4 (does the core explode?), step 5 (explosion properties), step 6 (spectral type
+/// and peak luminosity) and step 8 (remnant). Rotation and the core field (step 7) and the Type Ia path (step 9) are
+/// not modeled yet. Pure and deterministic.
+/// </summary>
+public sealed class OutcomeEngine
+{
+    private const string MSun = "M☉";
+
+    // Step 3 (outcomes §2.3): the He-core mass at which pair instability disrupts the star, as in ProgenitorModel.
+    private const double PisnHeCore = 64;
+    // Step 3: M_BH ≈ min(M_He,final, ~45) after pulsational pair instability (F19; APPROXIMATION for the shape).
+    private const double PpisnMaxBlackHole = 45;
+    // Step 4: the S16 lookup stands in for core structure for H-rich single stars of M ≤ 30.
+    private const double SingleStarLookupTop = 30;
+    // Step 4, H-rich stars with M > 30: a final He core of ≳ 7.5 M☉ collapses directly to a black hole.
+    private const double HeavyStarDirectCollapseHeCore = 7.5;
+    // Step 4, stripped stars (Sch21 Case A/B): black holes for 31.5–34 M☉ and ≳ 70 M☉, neutron stars otherwise.
+    private const double StrippedBlackHoleLow = 31.5, StrippedBlackHoleHigh = 34, StrippedBlackHoleAbove = 70;
+    // S16 §4.1: between 15 and 22 M☉ the outcome is "highly variable for even small changes in the initial mass".
+    private const double VariableBandLow = 15, VariableBandHigh = 22;
+    // Step 5: the calibrated ⁵⁶Ni default halves the S16 yields of stars above 12 M☉ (the Z9.6-engine yields below
+    // 12 M☉ already match the observed median).
+    private const double NickelCalibrationAbove = 12;
+    // Step 5, failed SN: neutrino losses before the horizon forms are unlikely to exceed ~0.3 M☉ (S16 §5.2).
+    private const double NeutrinoMassLossMax = 0.3;
+    // Ruling R9 [APPROX]: an ultra-stripped star ejects at least 0.1 M☉ (ultra-stripped supernovae eject ~0.05–0.2 M☉).
+    private const double MinEjecta = 0.1;
+
+    private static readonly Source S16Explosions =
+        new("Sukhbold et al. 2016, ApJ 821, 38 (per-model Z9.6 / N20 results, doi:10.17617/1.b)", "outcomes §1.2, §1.4, §8.2 steps 4–5");
+    private static readonly Source Sch21 =
+        new("Schneider, Podsiadlowski & Müller 2021, A&A 645, A5 (stripped Case A/B stars)", "outcomes §3.3, §8.2 steps 4–5");
+
+    private readonly ExplodabilityTable _table;
+
+    public OutcomeEngine(ExplodabilityTable table) => _table = table ?? throw new ArgumentNullException(nameof(table));
+
+    public Outcome Compute(LabInputs inputs, PresetPins? pins = null)
+    {
+        var x = inputs.Clamped();
+        // Step 7 (rotation, core field) is not modeled yet: the star evolves as a slow rotator with a normal field. The
+        // unclamped inputs go in so that ProgenitorModel notes any clamping.
+        var (early, star, evolveNotes) =
+            ProgenitorModel.Evolve(inputs with { Rotation = Rotation.Slow, Field = CoreField.Normal }, _table);
+        var notes = new List<string>(evolveNotes);
+        if (x.Kind == StarKind.MassiveStar && (x.Rotation != Rotation.Slow || x.Field != CoreField.Normal))
+            notes.Add("The effects of fast rotation and strong magnetic fields are not modeled yet, so the star is " +
+                      "treated as a slow rotator with a normal field.");
+
+        Draft d = x.Kind == StarKind.WhiteDwarf
+            ? TypeIaNotModeled(star, notes)
+            : early switch
+            {
+                EarlyFate.NotDeadYet => new Draft(Fate.NotDeadYet, SupernovaType.None, Remnant.None),
+                EarlyFate.WhiteDwarf => new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(star)),
+                EarlyFate.PairInstability => PairInstability(star, notes),
+                EarlyFate.PulsationalPairInstability => PulsationalPairInstability(x, star, notes),
+                EarlyFate.DirectCollapseAbovePisn => AbovePairInstability(star),
+                EarlyFate.ElectronCapture => Exploded(x, star, ElectronCapture(notes), notes),
+                _ => CoreCollapse(x, star, notes),
+            };
+        return Finish(x, d, star, notes, pins);
+    }
+
+    // ---------------------------------------------------------------- assembling the outcome
+
+    private enum PeakRule { None, Plateau, Arnett }
+
+    /// <summary>The outcome before preset pins and the peak luminosity, which depends on the pinned values.</summary>
+    private sealed record Draft(Fate Fate, SupernovaType Type, Remnant Remnant, Quantity? Energy = null,
+        Quantity? Ejecta = null, Quantity? Nickel = null, PeakRule Peak = PeakRule.None, bool PeakSpeculative = false);
+
+    private static Outcome Finish(LabInputs x, Draft d, PresupernovaStar star, List<string> notes, PresetPins? pins)
+    {
+        var (energy, ejecta, nickel) = (d.Energy, d.Ejecta, d.Nickel);
+        bool published = false;
+        if (pins is not null)
+        {
+            // A preset's values are one author's published fit to the real event (presets.md), so ModelDependent.
+            Quantity Pin(double v, string unit)
+            {
+                published = true;
+                return new Quantity(v, unit, Confidence.ModelDependent, pins.Source, Published: true);
+            }
+            if (pins.ExplosionEnergyErg is double e) energy = Pin(e, "erg");
+            if (pins.EjectaMass is double ej) ejecta = Pin(ej, MSun);
+            if (pins.NickelMass is double ni) nickel = Pin(ni, MSun);
+            if (pins.RadiusCm is double r) star = star with { RadiusCm = Pin(r, "cm") };
+        }
+
+        return new Outcome(x, d.Fate, d.Type, HasGrb: false, d.Remnant, star, energy, ejecta, nickel,
+            PeakLuminosity(d, star, energy, nickel), MagnetarEnergyErg: null, MagnetarTimescaleS: null, notes, published);
+    }
+
+    /// <summary>
+    /// Step 6 light-curve output. II-P / II-L: the day-50 plateau luminosity of S16 eq. 15 with M10 = M_H,env / 10.
+    /// Stripped supernovae: Arnett's rule, L_peak = 2.0×10⁴³ (M_Ni / M☉) erg/s (§7.2).
+    /// </summary>
+    private static Quantity? PeakLuminosity(Draft d, PresupernovaStar star, Quantity? energy, Quantity? nickel)
+    {
+        var env = star.HydrogenEnvelopeMass;
+        if (d.Peak == PeakRule.Plateau && energy is { Value: > 0 } && env.Value > 0)
+        {
+            double e51 = energy.Value / 1e51, m10 = env.Value / 10, r500 = star.RadiusCm.Value / (500 * PhysicalConstants.RSun);
+            double l = 1.85e42 * Math.Pow(e51, 5.0 / 6) * Math.Pow(m10, -0.5) * Math.Pow(r500, 2.0 / 3);
+            // The refit is to II-P models; for II-L and interacting supernovae it is only a guide.
+            var conf = RemnantModel.Weakest(energy.Confidence, env.Confidence, star.RadiusCm.Confidence,
+                d.PeakSpeculative ? Confidence.Speculative : Confidence.ModelDependent);
+            return new Quantity(l, "erg/s", conf,
+                new Source("Sukhbold et al. 2016, ApJ 821, 38, eq. 15 (Popov 1993 refit; plateau luminosity at day 50)",
+                    "outcomes §4.2, §8.2 step 6"));
+        }
+        if (d.Peak == PeakRule.Arnett && nickel is { Value: > 0 })
+            return new Quantity(2.0e43 * nickel.Value, "erg/s",
+                RemnantModel.Weakest(nickel.Confidence, d.PeakSpeculative ? Confidence.Speculative : Confidence.ModelDependent),
+                new Source("Arnett 1982, ApJ 253, 785 (Arnett's rule, as used by Stritzinger et al. 2006, A&A 460, 793)",
+                    "outcomes §7.2, §8.2 step 6"));
+        return null;
+    }
+
+    // ---------------------------------------------------------------- step 3 outcomes
+
+    private static readonly double[] Hw02HeCore = { 70, 80, 90, 100, 110, 120, 130, 133.3 };
+    private static readonly double[] Hw02Nickel = { 0.0117, 0.129, 1.31, 5.82, 14.2, 24.6, 39.6, 57.0 };
+
+    private static Draft PairInstability(PresupernovaStar star, List<string> notes)
+    {
+        double he = star.HeCoreMass.Value, mf = star.FinalMass.Value;
+        notes.Add(star.HydrogenEnvelopeMass.Value > 0
+            ? "It still has its hydrogen, so the spectrum shows hydrogen lines (a Type II pair-instability supernova)."
+            : "It has lost its hydrogen, so the spectrum shows none (a Type I pair-instability supernova).");
+
+        // HW02 Table 3 ⁵⁶Ni, interpolated linearly in log M_Ni (it spans four decades). [APPROX] Below 70 M☉ of He the
+        // 70–80 segment is extended.
+        bool extrapolated = he < Hw02HeCore[0];
+        int i = 1;
+        while (i < Hw02HeCore.Length - 1 && Hw02HeCore[i] < he) i++;
+        double f = (he - Hw02HeCore[i - 1]) / (Hw02HeCore[i] - Hw02HeCore[i - 1]);
+        double logNi = Lerp(Math.Log10(Hw02Nickel[i - 1]), Math.Log10(Hw02Nickel[i]), f);
+        var nickel = new Quantity(Math.Pow(10, logNi), MSun,
+            RemnantModel.Weakest(star.HeCoreMass.Confidence, extrapolated ? Confidence.Speculative : Confidence.ModelDependent),
+            new Source("Heger & Woosley 2002, ApJ 567, 532, Table 3 (log-interpolated in M_He)" +
+                       (extrapolated ? ", extended below 70 M☉ [APPROX]" : ""), "outcomes §2.3, §8.2 step 3"));
+
+        // [APPROX] outcomes §2.3: log E linear from ~4 B at M_He = 65 to 93.5 B (HW02) at 133.
+        double logE = Lerp(Math.Log10(4e51), Math.Log10(9.35e52), (he - 65) / (133 - 65));
+        var energy = new Quantity(Math.Pow(10, logE), "erg", Confidence.Speculative,
+            new Source("Heger & Woosley 2002, ApJ 567, 532 (93.5 B at M_He = 133.3); log-linear from ~4 B at 65 M☉ [APPROX]",
+                "outcomes §2.3, §8.2 step 3"));
+
+        var ejecta = new Quantity(mf, MSun, star.FinalMass.Confidence,
+            new Source("Heger & Woosley 2002, ApJ 567, 532 (complete disruption, M_ej = M_f)", "outcomes §2.3, §8.2 step 3"));
+        return new Draft(Fate.PairInstabilitySupernova, SupernovaType.Pisn, Remnant.None, energy, ejecta, nickel);
+    }
+
+    private static Draft PulsationalPairInstability(LabInputs x, PresupernovaStar star, List<string> notes)
+    {
+        double he = star.HeCoreMass.Value, mf = star.FinalMass.Value, mbh = Math.Min(he, PpisnMaxBlackHole);
+        var src = new Source("Farmer et al. 2019, ApJ 887, 53; Woosley 2017, ApJ 836, 244 (M_BH ≈ min(M_He, 45 M☉)) [APPROX]",
+            "outcomes §2.3, §8.2 step 3");
+        var mass = new Quantity(mbh, MSun, Confidence.Speculative, src);
+        var ejecta = new Quantity(mf - mbh, MSun, Confidence.Speculative, src);
+
+        // Step 3: an optional interacting transient, IIn-like with hydrogen, Ibn / Icn-like without [MODEL-DEPENDENT].
+        var type = SpectralTyper.WithDenseCsm(SpectralTyper.Classify(star, x.InitialMass, x.Stripping, x.Mixing).Type);
+        notes.Add($"The pulses throw off {UnitFormat.Mass(mf - mbh)} and leave a black hole of {UnitFormat.Mass(mbh)}. " +
+                  $"Colliding shells can shine as an interacting transient like a Type {type} supernova (model-dependent).");
+        var remnant = RemnantModel.BlackHole(mass, RemnantModel.DirectCollapseTime(null),
+            RemnantModel.BlackHoleKick(mbh, directCollapse: true));
+        return new Draft(Fate.PulsationalPairInstability, type, remnant, Ejecta: ejecta);
+    }
+
+    private static Draft AbovePairInstability(PresupernovaStar star)
+    {
+        var mass = new Quantity(star.FinalMass.Value, MSun,
+            RemnantModel.Weakest(star.FinalMass.Confidence, Confidence.ModelDependent),
+            new Source("Heger & Woosley 2002, ApJ 567, 532 (direct collapse above the PISN range, M_BH = M_f)",
+                "outcomes §2.3, §8.2 step 3"));
+        return new Draft(Fate.FailedSupernova, SupernovaType.None, RemnantModel.BlackHole(mass,
+            RemnantModel.DirectCollapseTime(null), RemnantModel.BlackHoleKick(mass.Value, directCollapse: true)));
+    }
+
+    /// <summary>Placeholder for the Type Ia path (§8.2 step 9), which Task 5 replaces.</summary>
+    private static Draft TypeIaNotModeled(PresupernovaStar star, List<string> notes)
+    {
+        notes.Add("The Type Ia explosion of a white dwarf is not modeled yet in this version of the lab, so the white " +
+                  "dwarf is shown as it is.");
+        return new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(star));
+    }
+
+    // ---------------------------------------------------------------- step 4: does the core explode?
+
+    /// <summary>
+    /// Step 4's verdict. An explosion carries step 5's inputs: energy, theory ⁵⁶Ni, and the remnant's baryonic mass (the
+    /// neutron star, or the fallback black hole), plus the neutron star's gravitational mass when the source gives it.
+    /// </summary>
+    private sealed record Collapse(Confidence Confidence)
+    {
+        public Quantity? Energy { get; init; }
+        public Quantity? Nickel { get; init; }
+        public Quantity? RemnantBaryonic { get; init; }
+        public Quantity? NeutronStarMass { get; init; }
+        public bool Fallback { get; init; }
+        /// <summary>S16 yield of a star above 12 M☉, which the calibrated default halves.</summary>
+        public bool HalveCalibratedNickel { get; init; }
+        /// <summary>The electron-capture yield, the same in theory and observation.</summary>
+        public bool FixedNickel { get; init; }
+        public bool SmallKick { get; init; }
+        public double? Compactness { get; init; }
+        public bool Explodes => Energy is not null;
+    }
+
+    private Draft CoreCollapse(LabInputs x, PresupernovaStar star, List<string> notes)
+    {
+        var c = Explodability(x, star, notes);
+        return c.Explodes ? Exploded(x, star, c, notes) : Failed(x, star, c, notes);
+    }
+
+    private Collapse Explodability(LabInputs x, PresupernovaStar star, List<string> notes)
+    {
+        double m = x.InitialMass;
+        // Ruling R12: a PISN-range core above the metallicity ceiling collapses directly to a black hole. ProgenitorModel
+        // has already said so in a note; the ceiling for stripped stars is an approximation.
+        if (star.HeCoreMass.Value >= PisnHeCore) return new Collapse(Confidence.Speculative);
+
+        if (x.Stripping != Stripping.None) return StrippedStar(m, notes);
+
+        // Ruling R1: the S16 per-mass results answer only for single stars at Z☉ inside the table's 9–120 M☉.
+        var rows = _table.Rows;
+        if (IsSolar(x.Metallicity) && m >= rows[0].InitialMass && m <= rows[^1].InitialMass)
+            return FromRow(_table.Lookup(m), m, star, notes, solar: true);
+        // Other Z: key the lookup on M_CO, with the S16 M_CO column as the conversion.
+        if (m <= SingleStarLookupTop)
+            return FromRow(NearestCoCore(star.CoCoreMass.Value), m, star, notes, solar: false);
+        return HeavySingleStar(star, notes);
+    }
+
+    /// <summary>The S16 row (M ≤ 30 M☉) whose CO core is nearest; the lighter on a tie.</summary>
+    private ExplodabilityRow NearestCoCore(double co)
+    {
+        ExplodabilityRow best = _table.Rows[0];
+        foreach (var row in _table.Rows)
+        {
+            if (row.InitialMass > SingleStarLookupTop) break;
+            if (Math.Abs(row.CoCoreMass - co) < Math.Abs(best.CoCoreMass - co)) best = row;
+        }
+        return best;
+    }
+
+    private static Collapse FromRow(ExplodabilityRow row, double m, PresupernovaStar star, List<string> notes, bool solar)
+    {
+        // Off Z☉ the row stands in for a core whose mass comes from the approximate §2.2 scheme, so Speculative.
+        var conf = solar ? Confidence.ModelDependent : Confidence.Speculative;
+        var src = solar ? S16Explosions : S16Explosions with
+        {
+            Citation = S16Explosions.Citation + $"; solar model of {row.InitialMass:0.##} M☉ matched on the CO-core mass",
+        };
+        string who = solar ? $"A star of {UnitFormat.Mass(m)}" : "This star";
+        if (!solar)
+            notes.Add($"Away from the Sun's metal content, whether it explodes is judged by its carbon-oxygen core " +
+                      $"({UnitFormat.Mass(star.CoCoreMass.Value)}), matched to the solar model of " +
+                      $"{UnitFormat.Mass(row.InitialMass)} with the most similar core.");
+
+        Collapse c;
+        switch (row.Result)
+        {
+            case CollapseResult.DirectBlackHole:
+                notes.Add($"{who} collapses straight to a black hole in this model: its core is too compact for neutrinos " +
+                          "to restart the shock.");
+                c = new Collapse(conf) { Compactness = row.Compactness25 };
+                break;
+            case CollapseResult.FallbackBlackHole:
+                notes.Add($"{who} explodes weakly, but so much matter falls back that the newborn neutron star collapses " +
+                          "to a black hole.");
+                // Step 5: a fallback black hole makes ⁵⁶Ni ≈ 0; the table's ~10⁻¹³ M☉ is numerical noise.
+                c = new Collapse(conf)
+                {
+                    Energy = Q(row.ExplosionEnergyErg, "erg", conf, src),
+                    Nickel = Q(0, MSun, conf, src with { Citation = src.Citation + "; fallback swallows the ⁵⁶Ni (M_Ni ≈ 0)" }),
+                    RemnantBaryonic = Q(row.RemnantBaryonicMass, MSun, conf, src),
+                    Fallback = true,
+                };
+                break;
+            default:
+                notes.Add($"{who} explodes in this model: neutrinos from the newborn neutron star restart the stalled shock.");
+                c = new Collapse(conf)
+                {
+                    Energy = Q(row.ExplosionEnergyErg, "erg", conf, src),
+                    Nickel = Q(row.NickelMass, MSun, conf, src),
+                    RemnantBaryonic = Q(row.RemnantBaryonicMass, MSun, conf, src),
+                    HalveCalibratedNickel = row.InitialMass > NickelCalibrationAbove,
+                };
+                break;
+        }
+
+        if (solar && m >= VariableBandLow && m <= VariableBandHigh)
+            notes.Add("Between 15 and 22 M☉ the outcome changes with small differences in mass (Sukhbold et al. 2016), " +
+                      "so a neighbouring mass may end differently.");
+        return c;
+    }
+
+    /// <summary>Step 4, H-rich single stars above 30 M☉ (away from Z☉, or above the table's 120 M☉).</summary>
+    private static Collapse HeavySingleStar(PresupernovaStar star, List<string> notes)
+    {
+        double he = star.HeCoreMass.Value;
+        if (he >= HeavyStarDirectCollapseHeCore)
+        {
+            notes.Add($"Its helium core of {UnitFormat.Mass(he)} is above about 7.5 M☉, so the core collapses straight to " +
+                      "a black hole.");
+            return new Collapse(Confidence.ModelDependent);
+        }
+
+        notes.Add($"Winds have stripped it to a compact {UnitFormat.Mass(star.FinalMass.Value)} Wolf–Rayet star. Models " +
+                  "with strong explosion engines make such stars explode (Sukhbold et al. 2016), but this depends on the model.");
+        var src = new Source("Sukhbold et al. 2016, ApJ 821, 38 (W18 / N20 engines, wind-stripped 60–120 M☉ stars)",
+            "outcomes §1.4, §8.2 step 4");
+        return new Collapse(Confidence.ModelDependent)
+        {
+            Energy = Q(0.6e51, "erg", Confidence.ModelDependent, src),
+            Nickel = Q(0.08, MSun, Confidence.ModelDependent, src),
+            // [APPROX] Step 4 gives no neutron-star mass for this branch. §1.4's band for these Wolf–Rayet stars has
+            // neutron stars of ~1.7–2.0 M☉ baryonic; we take the middle.
+            RemnantBaryonic = Q(1.85, MSun, Confidence.Speculative,
+                src with { Citation = src.Citation + "; middle of the 1.7–2.0 M☉ baryonic band [APPROX]" }, 1.7, 2.0),
+        };
+    }
+
+    /// <summary>Step 4, stripped stars: Sch21's Case A/B ranges, keyed on the initial mass.</summary>
+    private static Collapse StrippedStar(double m, List<string> notes)
+    {
+        string mass = UnitFormat.Mass(m);
+        if ((m > StrippedBlackHoleLow && m < StrippedBlackHoleHigh) || m >= StrippedBlackHoleAbove)
+        {
+            notes.Add($"Even stripped by a companion, a star of {mass} has a core too compact to explode (Schneider et al. " +
+                      "2021), so it collapses to a black hole.");
+            return new Collapse(Confidence.ModelDependent);
+        }
+
+        notes.Add($"Stripped by a companion, a star of {mass} has a core that neutrinos can explode (Schneider et al. " +
+                  "2021), leaving a neutron star.");
+        // Sch21: Ib/c explosion energies 0.88 ± 0.31 B, mean ⁵⁶Ni 0.059 M☉, stripped NS average 1.42 M☉.
+        const double nsMass = 1.42;
+        return new Collapse(Confidence.ModelDependent)
+        {
+            Energy = Q(0.88e51, "erg", Confidence.ModelDependent, Sch21, 0.57e51, 1.19e51),
+            Nickel = Q(0.059, MSun, Confidence.ModelDependent, Sch21),
+            NeutronStarMass = Q(nsMass, MSun, Confidence.ModelDependent, Sch21),
+            RemnantBaryonic = Q(RemnantModel.BaryonicMass(nsMass), MSun, Confidence.ModelDependent,
+                Sch21 with { Citation = Sch21.Citation + "; baryonic mass from Lattimer & Yahil 1989, ApJ 340, 426" }),
+        };
+    }
+
+    /// <summary>Step 1, electron-capture supernova: E = 0.1 B, M_Ni = 0.003, NS 1.25 M☉, M_ej = M_f − 1.36.</summary>
+    private static Collapse ElectronCapture(List<string> notes)
+    {
+        notes.Add("It explodes weakly (about 10⁵⁰ erg) and makes very little nickel, leaving a light neutron star.");
+        const string refs = "outcomes §1.1, §8.2 step 1";
+        var md = Confidence.ModelDependent;
+        return new Collapse(md)
+        {
+            Energy = Q(1e50, "erg", md, new Source("Kitaura, Janka & Hillebrandt 2006, A&A 450, 345", refs)),
+            Nickel = Q(0.003, MSun, md, new Source("Wanajo et al. 2011, as quoted in Sukhbold et al. 2016 §4.2", refs)),
+            NeutronStarMass = Q(1.25, MSun, md,
+                new Source("Sukhbold et al. 2016 §5.1; Schwab, Podsiadlowski & Rappaport 2010, ApJ 719, 722", refs)),
+            RemnantBaryonic = Q(1.36, MSun, md, new Source("Sukhbold et al. 2016 §5.1 (ECSN neutron star, baryonic)", refs)),
+            FixedNickel = true,
+            SmallKick = true,
+        };
+    }
+
+    // ---------------------------------------------------------------- steps 5, 6 and 8
+
+    private static Draft Exploded(LabInputs x, PresupernovaStar star, Collapse c, List<string> notes)
+    {
+        var (baseType, typeNote) = SpectralTyper.Classify(star, x.InitialMass, x.Stripping, x.Mixing);
+        notes.Add(typeNote);
+
+        var energy = c.Energy!;
+        var remnantBaryonic = c.RemnantBaryonic!;
+        var neutronStarMass = c.NeutronStarMass;
+        bool smallKick = c.SmallKick;
+        double mf = star.FinalMass.Value;
+        Quantity ejecta;
+        if (mf - remnantBaryonic.Value < MinEjecta)
+        {
+            // Ruling R9 [APPROX]: the W19 fits, extrapolated below ~13 M☉, leave stripped stars lighter than a neutron
+            // star plus ejecta. Such ultra-stripped stars are taken to eject 0.1 M☉, and the remnant is what is left.
+            var floor = new Source("[APPROX] ultra-stripped supernova: ejecta floored at 0.1 M☉, remnant M_f − 0.1 M☉",
+                "outcomes §3.3, §8.2 step 5");
+            ejecta = Q(MinEjecta, MSun, Confidence.Speculative, floor);
+            remnantBaryonic = Q(mf - MinEjecta, MSun, Confidence.Speculative, floor);
+            neutronStarMass = null;
+            smallKick = true;
+            energy = energy with { Confidence = Confidence.Speculative };
+            notes.Add($"The stripped star ({UnitFormat.Mass(mf)}) is barely heavier than a neutron star. As an " +
+                      "ultra-stripped supernova it is taken to throw off only 0.1 M☉ and leave a lighter neutron star; " +
+                      "this is an approximation.");
+        }
+        else
+        {
+            ejecta = Q(mf - remnantBaryonic.Value, MSun, RemnantModel.Weakest(star.FinalMass.Confidence, remnantBaryonic.Confidence),
+                new Source("M_ej = M_f − M_rem,bary (Sukhbold et al. 2016, ApJ 821, 38)", "outcomes §1.4, §8.2 step 5"));
+        }
+
+        Remnant remnant;
+        if (c.Fallback)
+            remnant = RemnantModel.BlackHole(remnantBaryonic, RemnantModel.FallbackFormationTime(),
+                RemnantModel.BlackHoleKick(remnantBaryonic.Value, directCollapse: false));
+        else
+        {
+            remnant = neutronStarMass is not null
+                ? RemnantModel.NeutronStar(neutronStarMass, smallKick)
+                : RemnantModel.FromBaryonicMass(remnantBaryonic, smallKick);
+            if (remnant.Kind == RemnantKind.BlackHole)
+                notes.Add("The neutron star would be heavier than about 2.2 M☉, more than a neutron star can hold, so it " +
+                          "collapses to a black hole.");
+        }
+
+        var nickel = c.Fallback || c.FixedNickel || x.Yield == NickelYield.Theory ? c.Nickel! : CalibratedNickel(c, baseType);
+
+        var type = baseType;
+        if (x.DenseCsm)
+        {
+            type = SpectralTyper.WithDenseCsm(baseType);
+            notes.Add("Dense gas thrown off shortly before the explosion surrounds the star; the collision makes narrow " +
+                      $"lines, so it is seen as a Type {type} supernova (a speculative mapping).");
+        }
+
+        var peak = SpectralTyper.HasPlateau(baseType) ? PeakRule.Plateau : PeakRule.Arnett;
+        bool peakSpeculative = x.DenseCsm || baseType == SupernovaType.IIL;
+        return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, peak, peakSpeculative);
+    }
+
+    /// <summary>
+    /// Step 5, "observed-calibrated" ⁵⁶Ni [APPROXIMATION]: theory exceeds the observed SN II median about twice, so S16
+    /// yields above 12 M☉ are halved; stripped-envelope classes take Anderson 2019's observed medians.
+    /// </summary>
+    private static Quantity CalibratedNickel(Collapse c, SupernovaType baseType)
+    {
+        var theory = c.Nickel!;
+        const string refs = "outcomes §1.2, §8.2 step 5";
+        if (SpectralTyper.HasPlateau(baseType))
+            return c.HalveCalibratedNickel
+                ? Q(0.5 * theory.Value, MSun, Confidence.Speculative, new Source(theory.Source.Citation +
+                    "; halved to match the observed SN II median 0.032 M☉ (Anderson 2019, A&A 628, A7) [APPROX]", refs))
+                : theory;
+
+        // Anderson 2019 medians: IIb 0.102, Ib 0.163, Ic 0.155 M☉.
+        double median = baseType switch { SupernovaType.IIb => 0.102, SupernovaType.Ib => 0.163, _ => 0.155 };
+        return Q(median, MSun, Confidence.Speculative,
+            new Source($"Anderson 2019, A&A 628, A7 (observed median for SNe {baseType}) [APPROX]", refs));
+    }
+
+    private static Draft Failed(LabInputs x, PresupernovaStar star, Collapse c, List<string> notes)
+    {
+        // Step 5, failed SN: M_BH = M_He (S16 default), up to M_f − 0.3 M☉ if the whole star falls in.
+        double he = star.HeCoreMass.Value, mf = star.FinalMass.Value, whole = mf - NeutrinoMassLossMax;
+        var mass = Q(he, MSun, RemnantModel.Weakest(star.HeCoreMass.Confidence, c.Confidence),
+            new Source("Sukhbold et al. 2016, ApJ 821, 38 §5.2 (black hole = He core; at most M_f − 0.3 M☉)",
+                "outcomes §1.5, §8.2 step 5"), Math.Min(he, whole), Math.Max(he, whole));
+        if (mf - he > 0.01)
+            notes.Add($"Its loosely bound outer layers ({UnitFormat.Mass(mf - he)}) may be thrown off in a faint outburst " +
+                      "as the core collapses (Lovegrove & Woosley 2013).");
+        if (x.DenseCsm)
+            notes.Add("With no explosion, the dense gas around the star has nothing to light it up.");
+
+        var remnant = RemnantModel.BlackHole(mass, RemnantModel.DirectCollapseTime(c.Compactness, c.Confidence),
+            RemnantModel.BlackHoleKick(he, directCollapse: true));
+        return new Draft(Fate.FailedSupernova, SupernovaType.None, remnant);
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private static bool IsSolar(double z) => Math.Abs(z - 1) < 1e-9;
+
+    private static double Lerp(double a, double b, double f) => a + (b - a) * f;
+
+    private static Quantity Q(double value, string unit, Confidence confidence, Source source, double? low = null, double? high = null)
+        => new(value, unit, confidence, source, low, high);
+}
