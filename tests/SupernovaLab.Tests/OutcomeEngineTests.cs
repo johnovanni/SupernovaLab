@@ -461,26 +461,8 @@ public class OutcomeEngineTests
     }
 
     [Fact]
-    public void WhiteDwarfKind_DoesNotThrowAndSaysTypeIaIsNotModeledYet()
-    {
-        var o = Engine.Compute(LabInputs.Default with { Kind = StarKind.WhiteDwarf });
-        Assert.Equal(RemnantKind.WhiteDwarf, o.Remnant.Kind);
-        Assert.Contains(o.Notes, n => n.Contains("not modeled yet"));
-    }
-
-    [Fact]
-    public void RotationAndField_AreTreatedAsSlowAndNormal_WithANote()
-    {
-        var o = Engine.Compute(LabInputs.Default with
-        {
-            InitialMass = 25, Metallicity = 0.1, Rotation = Rotation.Extreme, Field = CoreField.Strong,
-        });
-        Assert.False(o.Star!.ChemicallyHomogeneous);
-        Assert.False(o.HasGrb);
-        Assert.NotEqual(RemnantKind.Magnetar, o.Remnant.Kind);
-        Assert.Contains(o.Notes, n => n.Contains("not modeled yet"));
-        Assert.Equal(Rotation.Extreme, o.Inputs.Rotation); // the outcome keeps the inputs as given
-    }
+    public void Outcome_KeepsTheInputsAsGiven()
+        => Assert.Equal(Rotation.Extreme, Engine.Compute(LabInputs.Default with { Rotation = Rotation.Extreme }).Inputs.Rotation);
 
     [Fact]
     public void Pins_ReplaceModelValuesAndAreMarkedPublished()

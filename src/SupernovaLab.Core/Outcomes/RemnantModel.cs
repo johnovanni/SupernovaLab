@@ -23,6 +23,12 @@ public static class RemnantModel
     /// </summary>
     public const double MinNeutronStarMass = 1.2;
 
+    /// <summary>
+    /// [APPROX] The lightest black hole the lab makes when it sets a black hole's mass as M_f − M_ej (outcomes §8.2 step 7):
+    /// the baryonic mass of the heaviest neutron star, 2.2 + 0.075 × 2.2² = 2.563 M☉.
+    /// </summary>
+    public static double MinBlackHoleMass => BaryonicMass(MaxNeutronStarMass);
+
     /// <summary>Ruling R9 [APPROX]: an ultra-stripped explosion ejects at least 0.1 M☉.</summary>
     public const double MinEjectaMass = 0.1;
 

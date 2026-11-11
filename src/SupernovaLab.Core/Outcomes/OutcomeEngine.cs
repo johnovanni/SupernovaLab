@@ -6,10 +6,10 @@ namespace SupernovaLab.Core.Outcomes;
 /// <summary>
 /// Outcomes §8.2: turns the lab inputs into an <see cref="Outcome"/>. <see cref="ProgenitorModel"/> does steps 0–3; this
 /// class adds the step 3 outcomes, step 4 (does the core explode?), step 5 (explosion properties), step 6 (spectral type
-/// and peak luminosity) and step 8 (remnant). Rotation and the core field (step 7) and the Type Ia path (step 9) are
-/// not modeled yet. Pure and deterministic.
+/// and peak luminosity) and step 8 (remnant). Step 7 (rotation and the core field) is in RotationBranches.cs, and the
+/// Type Ia path (step 9) in <see cref="TypeIaModel"/>. Pure and deterministic.
 /// </summary>
-public sealed class OutcomeEngine
+public sealed partial class OutcomeEngine
 {
     private const string MSun = "M☉";
 
@@ -51,39 +51,52 @@ public sealed class OutcomeEngine
     public Outcome Compute(LabInputs inputs, PresetPins? pins = null)
     {
         var x = inputs.Clamped();
-        // Step 7 (rotation, core field) is not modeled yet: the star evolves as a slow rotator with a normal field. The
-        // unclamped inputs go in so that ProgenitorModel notes any clamping.
-        var (early, star, evolveNotes) =
-            ProgenitorModel.Evolve(inputs with { Rotation = Rotation.Slow, Field = CoreField.Normal }, _table);
+        // The unclamped inputs go in so that ProgenitorModel notes any clamping. It applies step 7a's CHE option.
+        var (early, star, evolveNotes) = ProgenitorModel.Evolve(inputs, _table);
         var notes = new List<string>(evolveNotes);
-        if (x.Kind == StarKind.MassiveStar && (x.Rotation != Rotation.Slow || x.Field != CoreField.Normal))
-            notes.Add("The effects of fast rotation and strong magnetic fields are not modeled yet, so the star is " +
-                      "treated as a slow rotator with a normal field.");
+        if (x.Kind == StarKind.WhiteDwarf)
+        {
+            var ia = TypeIa(x, notes);
+            NoteUnusedSpinAndField(x, early, star, false, ia, notes);
+            return Finish(x, ia, star, notes, pins);
+        }
 
-        Draft d = x.Kind == StarKind.WhiteDwarf
-            ? TypeIaNotModeled(star, notes)
-            : early switch
-            {
-                EarlyFate.NotDeadYet => new Draft(Fate.NotDeadYet, SupernovaType.None, Remnant.None),
-                EarlyFate.WhiteDwarf => new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(star)),
-                EarlyFate.PairInstability => PairInstability(star, notes),
-                EarlyFate.PulsationalPairInstability => PulsationalPairInstability(x, star, notes),
-                EarlyFate.DirectCollapseAbovePisn => AbovePairInstability(star),
-                EarlyFate.ElectronCapture or EarlyFate.CoreCollapse when TooLightToCollapse(x, star)
-                    => NeverCollapses(star, notes),
-                EarlyFate.ElectronCapture => Exploded(x, star, ElectronCapture(notes), notes),
-                _ => CoreCollapse(x, star, notes),
-            };
+        // Step 7d, before step 4: fast rotation without a strong field enlarges the cores.
+        bool coresRaised = early == EarlyFate.CoreCollapse && RaisesCores(x, star);
+        if (coresRaised) star = WithRotatingCores(x, star, notes);
+
+        Draft d = early switch
+        {
+            EarlyFate.NotDeadYet => new Draft(Fate.NotDeadYet, SupernovaType.None, Remnant.None),
+            EarlyFate.WhiteDwarf => new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(star)),
+            EarlyFate.PairInstability => PairInstability(star, notes),
+            EarlyFate.PulsationalPairInstability => PulsationalPairInstability(x, star, notes),
+            EarlyFate.DirectCollapseAbovePisn => AbovePairInstability(star),
+            EarlyFate.ElectronCapture or EarlyFate.CoreCollapse when TooLightToCollapse(x, star)
+                => NeverCollapses(star, notes),
+            EarlyFate.ElectronCapture => Exploded(x, star, ElectronCapture(notes), notes),
+            _ => CoreCollapse(x, star, coresRaised, notes),
+        };
+        NoteUnusedSpinAndField(x, early, star, coresRaised, d, notes);
         return Finish(x, d, star, notes, pins);
     }
 
     // ---------------------------------------------------------------- assembling the outcome
 
-    private enum PeakRule { None, Plateau, Arnett }
+    private enum PeakRule { None, Plateau, Arnett, Magnetar }
 
-    /// <summary>The outcome before preset pins and the peak luminosity, which depends on the pinned values.</summary>
+    /// <summary>
+    /// The outcome before preset pins and the peak luminosity, which depends on the pinned values. <see cref="Branch"/>
+    /// records which step 7 branch, if any, shaped it.
+    /// </summary>
     private sealed record Draft(Fate Fate, SupernovaType Type, Remnant Remnant, Quantity? Energy = null,
-        Quantity? Ejecta = null, Quantity? Nickel = null, PeakRule Peak = PeakRule.None, bool PeakSpeculative = false);
+        Quantity? Ejecta = null, Quantity? Nickel = null, PeakRule Peak = PeakRule.None, bool PeakSpeculative = false)
+    {
+        public bool HasGrb { get; init; }
+        public Quantity? MagnetarEnergy { get; init; }
+        public Quantity? MagnetarTimescale { get; init; }
+        public Step7 Branch { get; init; }
+    }
 
     private static Outcome Finish(LabInputs x, Draft d, PresupernovaStar star, List<string> notes, PresetPins? pins)
     {
@@ -103,16 +116,25 @@ public sealed class OutcomeEngine
             if (pins.RadiusCm is double r) star = star with { RadiusCm = Pin(r, "cm") };
         }
 
-        return new Outcome(x, d.Fate, d.Type, HasGrb: false, d.Remnant, star, energy, ejecta, nickel,
-            PeakLuminosity(d, star, energy, nickel), MagnetarEnergyErg: null, MagnetarTimescaleS: null, notes, published);
+        return new Outcome(x, d.Fate, d.Type, d.HasGrb, d.Remnant, star, energy, ejecta, nickel,
+            PeakLuminosity(d, star, energy, ejecta, nickel), d.MagnetarEnergy, d.MagnetarTimescale, notes, published);
     }
 
     /// <summary>
     /// Step 6 light-curve output. II-P / II-L: the day-50 plateau luminosity of S16 eq. 15 with M10 = M_H,env / 10.
-    /// Stripped supernovae: Arnett's rule, L_peak = 2.0×10⁴³ (M_Ni / M☉) erg/s (§7.2).
+    /// Stripped supernovae and SNe Ia: Arnett's rule, L_peak = 2.0×10⁴³ (M_Ni / M☉) erg/s (§7.2). Magnetar-powered
+    /// superluminous supernovae (step 7b): the spin-down power at the diffusion time (<see cref="MagnetarModel"/>).
     /// </summary>
-    private static Quantity? PeakLuminosity(Draft d, PresupernovaStar star, Quantity? energy, Quantity? nickel)
+    private static Quantity? PeakLuminosity(Draft d, PresupernovaStar star, Quantity? energy, Quantity? ejecta, Quantity? nickel)
     {
+        // [APPROX] The ⁵⁶Ni heating (~10⁴² erg/s) is left out next to the magnetar's ~10⁴⁴ erg/s.
+        if (d.Peak == PeakRule.Magnetar && d.MagnetarEnergy is { } ep && d.MagnetarTimescale is { } tp &&
+            ejecta is { Value: > 0 } && energy is { Value: > 0 })
+            return new Quantity(MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, energy.Value), "erg/s",
+                Confidence.Speculative,
+                new Source("Kasen & Bildsten 2010, ApJ 717, 245 (spin-down power at the diffusion time, eq. 12 and 14, " +
+                           "κ = 0.2 cm²/g) [APPROX]", "outcomes §5.3, §8.2 step 7b"));
+
         var env = star.HydrogenEnvelopeMass;
         if (d.Peak == PeakRule.Plateau && energy is { Value: > 0 } && env.Value > 0)
         {
@@ -234,12 +256,11 @@ public sealed class OutcomeEngine
         return new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(mass));
     }
 
-    /// <summary>Placeholder for the Type Ia path (§8.2 step 9), which Task 5 replaces.</summary>
-    private static Draft TypeIaNotModeled(PresupernovaStar star, List<string> notes)
+    /// <summary>Step 9: the Type Ia explosion of the chosen white dwarf; Arnett's rule gives its peak.</summary>
+    private static Draft TypeIa(LabInputs x, List<string> notes)
     {
-        notes.Add("The Type Ia explosion of a white dwarf is not modeled yet in this version of the lab, so the white " +
-                  "dwarf is shown as it is.");
-        return new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(star));
+        var ia = TypeIaModel.Explode(x, notes);
+        return new Draft(Fate.Supernova, ia.Type, ia.Remnant, ia.Energy, ia.Ejecta, ia.Nickel, PeakRule.Arnett);
     }
 
     // ---------------------------------------------------------------- step 4: does the core explode?
@@ -264,13 +285,15 @@ public sealed class OutcomeEngine
         public bool Explodes => Energy is not null;
     }
 
-    private Draft CoreCollapse(LabInputs x, PresupernovaStar star, List<string> notes)
+    private Draft CoreCollapse(LabInputs x, PresupernovaStar star, bool coresRaised, List<string> notes)
     {
-        var c = Explodability(x, star, notes);
-        return c.Explodes ? Exploded(x, star, c, notes) : Failed(x, star, c, notes);
+        var c = Explodability(x, star, coresRaised, notes);
+        // Step 7 a and c, applied after step 4, can override its verdict.
+        return RotationBranch(x, star, c, notes)
+            ?? (c.Explodes ? Exploded(x, star, c, notes) : Failed(x, star, c, notes));
     }
 
-    private Collapse Explodability(LabInputs x, PresupernovaStar star, List<string> notes)
+    private Collapse Explodability(LabInputs x, PresupernovaStar star, bool coresRaised, List<string> notes)
     {
         double m = x.InitialMass;
         // Ruling R12: a PISN-range core above the metallicity ceiling collapses directly to a black hole. ProgenitorModel
@@ -283,10 +306,16 @@ public sealed class OutcomeEngine
         // at Z☉ the nearest row by initial mass, at other Z the row with the nearest CO core (the S16 M_CO column as the
         // conversion). Heavier stars follow step 4's M > 30 rules at every Z, Z☉ included, so the fate does not jump at
         // Z = 1. (This drops S16's wind-dependent 70 M☉ black-hole island, which is model-dependent anyway.)
+        // Step 7d: cores that rotation has enlarged are matched on the CO core at every Z, as for other Z.
         if (m <= SingleStarLookupTop)
-            return IsSolar(x.Metallicity)
-                ? FromRow(_table.Lookup(m), m, star, notes, solar: true)
-                : FromRow(NearestCoCore(star.CoCoreMass.Value), m, star, notes, solar: false);
+        {
+            if (IsSolar(x.Metallicity) && !coresRaised) return FromRow(_table.Lookup(m), m, star, notes, matchNote: null);
+            string why = coresRaised ? "With its cores enlarged by rotation" : "Away from the Sun's metal content";
+            var row = NearestCoCore(star.CoCoreMass.Value);
+            return FromRow(row, m, star, notes,
+                $"{why}, whether it explodes is judged by its carbon-oxygen core ({UnitFormat.Mass(star.CoCoreMass.Value)}), " +
+                $"matched to the solar model of {UnitFormat.Mass(row.InitialMass)} with the most similar core.");
+        }
         return HeavySingleStar(star, notes);
     }
 
@@ -302,19 +331,21 @@ public sealed class OutcomeEngine
         return best;
     }
 
-    private static Collapse FromRow(ExplodabilityRow row, double m, PresupernovaStar star, List<string> notes, bool solar)
+    /// <summary>
+    /// The step 4 verdict of an S16 row: the star's own row (<paramref name="matchNote"/> null), or the row matched on the
+    /// CO core, explained by <paramref name="matchNote"/>.
+    /// </summary>
+    private static Collapse FromRow(ExplodabilityRow row, double m, PresupernovaStar star, List<string> notes, string? matchNote)
     {
-        // Off Z☉ the row stands in for a core whose mass comes from the approximate §2.2 scheme, so Speculative.
+        bool solar = matchNote is null;
+        // A matched row stands in for a core whose mass comes from an approximate scheme (§2.2 or step 7d), so Speculative.
         var conf = solar ? Confidence.ModelDependent : Confidence.Speculative;
         var src = solar ? S16Explosions : S16Explosions with
         {
             Citation = S16Explosions.Citation + $"; solar model of {row.InitialMass:0.##} M☉ matched on the CO-core mass",
         };
         string who = solar ? $"A star of {UnitFormat.Mass(m)}" : "This star";
-        if (!solar)
-            notes.Add($"Away from the Sun's metal content, whether it explodes is judged by its carbon-oxygen core " +
-                      $"({UnitFormat.Mass(star.CoCoreMass.Value)}), matched to the solar model of " +
-                      $"{UnitFormat.Mass(row.InitialMass)} with the most similar core.");
+        if (matchNote is not null) notes.Add(matchNote);
 
         Collapse c;
         switch (row.Result)
@@ -504,16 +535,45 @@ public sealed class OutcomeEngine
         nickel = CapNickel(nickel, ejecta.Value);
 
         var type = baseType;
-        if (x.DenseCsm)
-        {
-            type = SpectralTyper.WithDenseCsm(baseType);
-            notes.Add("Dense gas thrown off shortly before the explosion surrounds the star; the collision makes narrow " +
-                      $"lines, so it is seen as a Type {type} supernova (a speculative mapping).");
-        }
-
         var peak = SpectralTyper.HasPlateau(baseType) ? PeakRule.Plateau : PeakRule.Arnett;
         bool peakSpeculative = x.DenseCsm || baseType == SupernovaType.IIL;
-        return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, peak, peakSpeculative);
+        Quantity? spinDownEnergy = null, spinDownTime = null;
+        var branch = Step7.None;
+        if (x.Field == CoreField.Strong && remnant.Kind == RemnantKind.NeutronStar)
+        {
+            // Step 7b: a strong core field makes the neutron star a magnetar.
+            var mag = Magnetar(x, star, remnant, energy, notes);
+            (remnant, energy, spinDownEnergy, spinDownTime, branch) =
+                (mag.Remnant, mag.Energy, mag.SpinDownEnergy, mag.SpinDownTime, Step7.Magnetar);
+            if (mag.Superluminous is { } slsn)
+            {
+                type = slsn;
+                peak = PeakRule.Magnetar;
+                peakSpeculative = true;
+            }
+        }
+        type = WithDenseCsm(x, type, notes);
+
+        return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, peak, peakSpeculative)
+        {
+            MagnetarEnergy = spinDownEnergy, MagnetarTimescale = spinDownTime, Branch = branch,
+        };
+    }
+
+    /// <summary>
+    /// The "pre-supernova eruption / dense CSM" override (step 6): narrow lines from the surrounding gas, where the class
+    /// has a narrow-line version (<see cref="SpectralTyper.WithDenseCsm"/>).
+    /// </summary>
+    private static SupernovaType WithDenseCsm(LabInputs x, SupernovaType type, List<string> notes)
+    {
+        if (!x.DenseCsm) return type;
+        var csm = SpectralTyper.WithDenseCsm(type);
+        notes.Add(csm != type
+            ? "Dense gas thrown off shortly before the explosion surrounds the star; the collision makes narrow " +
+              $"lines, so it is seen as a Type {csm} supernova (a speculative mapping)."
+            : "Dense gas thrown off shortly before the explosion surrounds the star. The collision adds light, but the " +
+              "lab does not change the class of this kind of supernova for it.");
+        return csm;
     }
 
     /// <summary>
@@ -543,7 +603,7 @@ public sealed class OutcomeEngine
     /// Ruling R15 [APPROX]: ⁵⁶Ni is at most half the ejecta, so a tiny explosion (ultra-stripped, or one with heavy
     /// fallback) cannot be made mostly of nickel.
     /// </summary>
-    private static Quantity CapNickel(Quantity nickel, double ejecta)
+    internal static Quantity CapNickel(Quantity nickel, double ejecta)
     {
         double cap = NickelMaxEjectaFraction * ejecta;
         if (nickel.Value <= cap) return nickel;
