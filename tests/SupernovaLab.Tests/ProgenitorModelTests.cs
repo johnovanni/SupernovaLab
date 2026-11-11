@@ -131,12 +131,48 @@ public class ProgenitorModelTests
     }
 
     [Fact]
-    public void Mass15_FullStripping_FinalMassFollowsW19()
+    public void Mass15_FullStripping_ErodesTheS16HeCoreWithW19()
     {
-        // outcomes §3.3: M_final ≈ 0.0548 M^1.40 for M < 30. 15^1.40 = e^(1.40 × 2.70805) = e^3.79127 = 44.30;
-        // × 0.0548 = 2.43 M☉ (by hand). The model interpolates W19 Table 4, so allow 0.05.
+        // Ruling R14: S16 cores at 15.0 M☉ (archive row): M_He = 4.36318, M_CO = 3.1564. W19 Table 4 between 4 → 3.15
+        // and 6 → 4.45: 3.15 + 0.36318 × 1.30 / 2 = 3.38607 M☉ (by hand). The shell floor 3.1564 + 0.16 = 3.3164 does
+        // not bind, so M_f = 3.38607 and the He shell is 0.22967 M☉.
         var (_, star, _) = Evolve(15, stripping: Stripping.Full);
-        Assert.Equal(2.43, star.FinalMass.Value, 0.05);
+        Assert.Equal(3.38607, star.FinalMass.Value, 4);
+        Assert.Equal(3.1564, star.CoCoreMass.Value, 4);
+        Assert.Equal(0.22967, star.HeliumEnvelopeMass.Value, 4);
+        Assert.Equal(Confidence.ModelDependent, star.FinalMass.Confidence);
+    }
+
+    [Fact]
+    public void Mass20_FullStripping_KeepsAtLeast0Point16OfHelium()
+    {
+        // Ruling R14: S16 20.0 M☉ row M_He = 6.2175, M_CO = 4.978. W19 erosion: 4.45 + 0.2175 × 1.19 / 2 = 4.57941, below
+        // M_CO + 0.16 = 5.138 (by hand), so the floor binds: M_f = 5.138, Speculative.
+        var (_, star, _) = Evolve(20, stripping: Stripping.Full);
+        Assert.Equal(5.138, star.FinalMass.Value, 4);
+        Assert.Equal(0.16, star.HeliumEnvelopeMass.Value, 9);
+        Assert.Equal(Confidence.Speculative, star.FinalMass.Confidence);
+    }
+
+    [Fact]
+    public void StrippedStars_UpTo30_EndBelowTheirS16HeCoreAndAboveTheirCoCore()
+    {
+        // Ruling R14: M_CO < M_f < M_He,i, where M_He,i is the S16 He core (interpolated between archive rows).
+        var rows = Table.Rows;
+        foreach (Stripping s in new[] { Stripping.Partial, Stripping.Full, Stripping.HydrogenAndHelium })
+        foreach (double z in new[] { 0.001, 0.1, 0.5, 1, 2 })
+        for (double m = 9.3; m <= 30.0001; m += 0.1)
+        {
+            int i = 1;
+            while (rows[i].InitialMass < m) i++;
+            double f = (m - rows[i - 1].InitialMass) / (rows[i].InitialMass - rows[i - 1].InitialMass);
+            double heInitial = rows[i - 1].HeCoreMass + (rows[i].HeCoreMass - rows[i - 1].HeCoreMass) * f;
+            var star = Evolve(m, z, s).Star;
+            double heStar = star.FinalMass.Value - star.HydrogenEnvelopeMass.Value; // the He star under any H envelope
+            string where = $"M={m:0.0}, Z={z}, {s}";
+            Assert.True(heStar < heInitial, $"{where}: He star {heStar} not below M_He,i {heInitial}");
+            Assert.True(star.FinalMass.Value > star.CoCoreMass.Value, where);
+        }
     }
 
     [Fact]
@@ -228,11 +264,10 @@ public class ProgenitorModelTests
     }
 
     [Fact]
-    public void ExtrapolatedW19Values_AreSpeculative()
+    public void ExtrapolatedOrFlooredStrippedValues_AreSpeculative()
     {
-        // 12 M☉ Full: the He star ends below 2.45 M☉, under Table 4's lowest CO entry. 300 M☉ Full: M_He,i = 144.13,
-        // above Table 4's 120 M☉.
-        Assert.Equal(Confidence.Speculative, Evolve(12, stripping: Stripping.Full).Star.CoCoreMass.Confidence);
+        // 20 M☉ Full: the R14 He-shell floor binds. 300 M☉ Full: M_He,i = 144.13, above Table 4's 120 M☉.
+        Assert.Equal(Confidence.Speculative, Evolve(20, stripping: Stripping.Full).Star.CoCoreMass.Confidence);
         Assert.Equal(Confidence.Speculative, Evolve(300, stripping: Stripping.Full).Star.FinalMass.Confidence);
         Assert.Equal(Confidence.ModelDependent, Evolve(40, stripping: Stripping.Full).Star.FinalMass.Confidence);
     }

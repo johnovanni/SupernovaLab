@@ -106,11 +106,11 @@ public class OutcomeEngineTests
     public void Mass15_FullStrippingWithWeakMixing_FollowsTheDessartThreshold()
     {
         // outcomes §8.2 step 6: with weak ⁵⁶Ni mixing, Ic is allowed up to ~1.6 M☉ of He (Dessart et al. 2012).
-        // By hand: W19 He core 0.0385 × 15^1.603 = 2.9562; final 0.939 × 2.9562^0.872 = 2.4163;
-        // CO 2.4163 × 1.61 / 2.45 = 1.5878; He shell 0.8284 M☉ ≤ 1.6, so Ic.
+        // By hand (ruling R14): S16 15.0 M☉ cores M_He = 4.36318, M_CO = 3.1564; W19 erosion 3.15 + 0.36318 × 0.65 =
+        // 3.38607; He shell 3.38607 − 3.1564 = 0.22967 M☉ ≤ 1.6, so Ic (with well-mixed nickel, ≥ 0.14 gives Ib).
         var o = Compute(15, stripping: Stripping.Full, mixing: NickelMixing.Weak);
         double he = o.Star!.HeliumEnvelopeMass.Value;
-        Assert.Equal(0.8284, he, 2);
+        Assert.Equal(0.22967, he, 3);
         Assert.Equal(he > SpectralTyper.HeliumVisibleWeakMixing ? SupernovaType.Ib : SupernovaType.Ic, o.Type);
         Assert.Equal(SupernovaType.Ic, o.Type);
     }
@@ -261,61 +261,72 @@ public class OutcomeEngineTests
     [Fact]
     public void UltraStrippedExplosion_HasE1e50AndAnEjectaFloor()
     {
-        // Rulings R9 / R13. 13.5 M☉, H&He-stripped: W19 He 0.0385 × 13.5^1.603 = 2.49682; He star 0.939 × 2.49682^0.872
-        // = 2.08545; CO 2.08545 × 1.61 / 2.45 = 1.37044; M_f = 1.37044 + 0.05 = 1.42044, below 1.5712 + 0.1.
-        // Remnant capped at 1.32044 baryonic → (−1 + √(1 + 0.3 × 1.32044)) / 0.15 = 1.2105 gravitational (≥ 1.2).
-        var o = Compute(13.5, stripping: Stripping.HydrogenAndHelium);
+        // Rulings R9 / R13 / R14. 9.5 M☉ H&He-stripped: S16 M_CO = 1.50058, so M_f = 1.55058, below Sch21's NS
+        // (1.42 grav = 1.57123 bary) + 0.1. Remnant capped at 1.45058 baryonic → (−1 + √(1 + 0.3 × 1.45058)) / 0.15 =
+        // (1.197988 − 1) / 0.15 = 1.3199 gravitational (≥ 1.2). Ejecta 0.1 ≤ 0.2, so E = 1e50 erg.
+        var o = Compute(9.5, stripping: Stripping.HydrogenAndHelium);
         Assert.Equal(Fate.Supernova, o.Fate);
+        Assert.Equal(SupernovaType.Ic, o.Type);
         Assert.Equal(0.1, o.EjectaMass!.Value, 9);
         Assert.Equal(Confidence.Speculative, o.EjectaMass.Confidence);
-        Assert.Equal(1.2105, o.Remnant.Mass!.Value, 3);
-        // R13: ejecta ≤ 0.2 M☉ is an ultra-stripped explosion with E = 1e50 erg, not Sch21's 0.88 B.
+        Assert.Equal(1.3199, o.Remnant.Mass!.Value, 3);
         Assert.Equal(1e50, o.ExplosionEnergyErg!.Value);
         Assert.Equal(Confidence.Speculative, o.ExplosionEnergyErg.Confidence);
         Assert.Contains(o.Notes, n => n.Contains("ultra-stripped"));
+
+        // 10.5 M☉ H&He: M_CO = 1.68872, M_f = 1.73872, M_ej = 1.73872 − 1.57123 = 0.16749 ≤ 0.2 (by hand): no floor,
+        // the Sch21 neutron star, but the ultra-stripped energy.
+        var u = Compute(10.5, stripping: Stripping.HydrogenAndHelium);
+        Assert.Equal(0.16749, u.EjectaMass!.Value, 4);
+        Assert.Equal(1.42, u.Remnant.Mass!.Value, 6);
+        Assert.Equal(1e50, u.ExplosionEnergyErg!.Value);
     }
 
     [Fact]
-    public void LightestHeliumStrippedStarThatExplodes_LeavesANeutronStarOfAtLeast1_2()
+    public void Mass12_HeliumStripped_ExplodesAsIc()
     {
-        // Ruling R13: collapse needs M_f ≥ M_bary(1.2) + 0.1 = 1.2 + 0.075 × 1.44 + 0.1 = 1.408 M☉. For H&He stripping
-        // at Z☉, M_f = CO + 0.05 with CO = 1.61 / 2.45 × 0.939 He^0.872, He = 0.0385 M^1.603. Solving by hand:
-        // CO = 1.358 → He star final 2.06652 → He 2.47095 → M = (64.1805)^(1/1.603) = 13.413 M☉.
-        // Masses from 9.3 M☉ (above the electron-capture window) in 0.01 M☉ steps.
-        Outcome? previous = null;
-        for (int i = 0; i <= 1070; i++)
+        // Ruling R14: 12 M☉ H&He at Z☉: S16 M_CO = 2.08636, M_f = 2.13636; M_ej = 2.13636 − 1.57123 = 0.56513 (by hand),
+        // above 0.2, so Sch21's 0.88 B and 1.42 M☉ neutron star.
+        var o = Compute(12, stripping: Stripping.HydrogenAndHelium);
+        Assert.Equal(Fate.Supernova, o.Fate);
+        Assert.Equal(SupernovaType.Ic, o.Type);
+        Assert.Equal(RemnantKind.NeutronStar, o.Remnant.Kind);
+        Assert.True(o.Remnant.Mass!.Value >= 1.2);
+        Assert.Equal(0.56513, o.EjectaMass!.Value, 4);
+        Assert.Equal(0.88e51, o.ExplosionEnergyErg!.Value, 1e45);
+    }
+
+    [Fact]
+    public void StrippedStars_NeverEndAsWhiteDwarfs_AndLeaveNeutronStarsOfAtLeast1_2()
+    {
+        // Ruling R14 keeps every stripped star from 9.3 M☉ (above the electron-capture window) at M_f ≥ M_CO + 0.05
+        // ≥ 1.51 M☉, above the R13 limit of 1.408 M☉; R13 is the safety net (see the RemnantModel test below).
+        foreach (Stripping s in new[] { Stripping.Partial, Stripping.Full, Stripping.HydrogenAndHelium })
+        foreach (double z in new[] { 0.001, 1, 2 })
+        for (double m = 9.3; m <= 30.0001; m += 0.1)
         {
-            double m = 9.3 + 0.01 * i;
-            var o = Compute(m, stripping: Stripping.HydrogenAndHelium);
-            if (o.Fate == Fate.Supernova)
-            {
-                Assert.InRange(m, 13.41, 13.43);
-                Assert.Equal(RemnantKind.NeutronStar, o.Remnant.Kind);
-                Assert.True(o.Remnant.Mass!.Value >= 1.2, $"NS {o.Remnant.Mass.Value} at {m}");
-                Assert.Equal(Fate.WhiteDwarf, previous!.Fate);
-                return;
-            }
-            Assert.Equal(Fate.WhiteDwarf, o.Fate);
-            previous = o;
+            var o = Compute(m, z, s);
+            string where = $"M={m:0.0}, Z={z}, {s}";
+            Assert.NotEqual(Fate.WhiteDwarf, o.Fate);
+            if (o.Remnant.Kind == RemnantKind.NeutronStar)
+                Assert.True(o.Remnant.Mass!.Value >= RemnantModel.MinNeutronStarMass, $"{where}: NS {o.Remnant.Mass.Value}");
         }
-        Assert.Fail("No H&He-stripped star exploded below 20 M☉.");
     }
 
     [Fact]
-    public void StrippedStarTooLightToCollapse_EndsAsAWhiteDwarf()
+    public void RemnantModel_CollapseNeedsA1_2NeutronStarPlus0_1OfEjecta()
     {
-        // 13.3 M☉ H&He-stripped: He 0.0385 × 13.3^1.603 = 2.4378; He star 0.939 × 2.4378^0.872 = 2.0424;
-        // CO 2.0424 × 1.61 / 2.45 = 1.3422; M_f = 1.3922 < 1.408 (R13). The white dwarf is the CO core.
-        var o = Compute(13.3, stripping: Stripping.HydrogenAndHelium);
-        Assert.Equal(Fate.WhiteDwarf, o.Fate);
-        Assert.Equal(SupernovaType.None, o.Type);
-        Assert.Equal(RemnantKind.WhiteDwarf, o.Remnant.Kind);
-        Assert.Equal(1.3422, o.Remnant.Mass!.Value, 3);
-        Assert.Equal(Confidence.Speculative, o.Remnant.Mass.Confidence);
-        Assert.NotNull(o.Remnant.RadiusKm);
-        Assert.Null(o.ExplosionEnergyErg);
-        Assert.Contains(o.Notes, n => n.Contains("never reached collapse") && n.Contains("white dwarf"));
-        Assert.DoesNotContain(o.Notes, n => n.Contains("collapses")); // ProgenitorModel's collapse note is removed
+        // Ruling R13: 1.2 + 0.075 × 1.2² + 0.1 = 1.2 + 0.108 + 0.1 = 1.408 M☉ (by hand). Lighter stripped stars end as
+        // white dwarfs. Since ruling R14 this is not reachable from LabInputs, so the rule is tested here.
+        Assert.Equal(1.408, RemnantModel.MinCollapseFinalMass, 9);
+        Assert.False(RemnantModel.CanCollapse(1.40));
+        Assert.True(RemnantModel.CanCollapse(1.409));
+        Assert.True(RemnantModel.CanCollapse(1.5));
+        // The white dwarf of that branch gets a cold white-dwarf radius.
+        var wd = RemnantModel.WhiteDwarf(Q(1.3));
+        Assert.Equal(RemnantKind.WhiteDwarf, wd.Kind);
+        Assert.Equal(1.3, wd.Mass!.Value);
+        Assert.InRange(wd.RadiusKm!.Value, 1000, 5000);
     }
 
     [Theory]

@@ -31,10 +31,7 @@ public sealed class OutcomeEngine
     // Step 5, failed SN: neutrino losses before the horizon forms are unlikely to exceed ~0.3 M☉ (S16 §5.2).
     private const double NeutrinoMassLossMax = 0.3;
     // Ruling R9 [APPROX]: an ultra-stripped star ejects at least 0.1 M☉ (ultra-stripped supernovae eject ~0.05–0.2 M☉).
-    private const double MinEjecta = 0.1;
-    // Ruling R13: a stripped star collapses only if it can make a ≥ 1.2 M☉ (gravitational) neutron star plus the 0.1 M☉
-    // ejecta floor: M_f ≥ 1.2 + 0.075 × 1.2² + 0.1 = 1.408 M☉.
-    private static readonly double MinCollapseFinalMass = RemnantModel.BaryonicMass(RemnantModel.MinNeutronStarMass) + MinEjecta;
+    private const double MinEjecta = RemnantModel.MinEjectaMass;
     // Ruling R13: an explosion with ≤ 0.2 M☉ of ejecta is ultra-stripped and gets E = 1e50 erg.
     private const double UltraStrippedMaxEjecta = 0.2, UltraStrippedEnergy = 1e50;
 
@@ -197,12 +194,13 @@ public sealed class OutcomeEngine
     }
 
     private static bool TooLightToCollapse(LabInputs x, PresupernovaStar star)
-        => x.Stripping != Stripping.None && star.FinalMass.Value < MinCollapseFinalMass;
+        => x.Stripping != Stripping.None && !RemnantModel.CanCollapse(star.FinalMass.Value);
 
     /// <summary>
     /// Ruling R13 [APPROX]: a stripped star too light to make a 1.2 M☉ neutron star plus 0.1 M☉ of ejecta never reaches
     /// collapse in this model. It ends as an O-Ne or C-O white dwarf, taken to be its CO core (the thin He and H layers
-    /// above are neglected, as for ProgenitorModel's white dwarfs).
+    /// above are neglected, as for ProgenitorModel's white dwarfs). A safety net: since ruling R14 every stripped star
+    /// ends at M_CO + 0.05 ≥ 1.45 M☉, so no LabInputs reach it; RemnantModel.CanCollapse carries the tested rule.
     /// </summary>
     private static Draft NeverCollapses(PresupernovaStar star, List<string> notes)
     {
@@ -425,8 +423,9 @@ public sealed class OutcomeEngine
         Quantity ejecta;
         if (mf - remnantBaryonic.Value < MinEjecta)
         {
-            // Ruling R9 [APPROX]: the W19 fits, extrapolated below ~13 M☉, leave stripped stars lighter than a neutron
-            // star plus ejecta. Such ultra-stripped stars are taken to eject 0.1 M☉, and the remnant is what is left.
+            // Ruling R9 [APPROX]: the lightest stripped stars (H&He-stripped below ~10 M☉, M_f ≈ M_CO + 0.05) are lighter
+            // than a neutron star plus ejecta. Such ultra-stripped stars are taken to eject 0.1 M☉, and the remnant is
+            // what is left.
             // TooLightToCollapse (R13) has already sent stars below 1.408 M☉ to a white dwarf, so this remnant is at
             // least 1.308 M☉ baryonic = 1.2 M☉ gravitational.
             var floor = new Source("[APPROX] ultra-stripped supernova: ejecta floored at 0.1 M☉, remnant M_f − 0.1 M☉",

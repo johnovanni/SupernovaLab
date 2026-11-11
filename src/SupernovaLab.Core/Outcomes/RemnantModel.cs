@@ -23,6 +23,18 @@ public static class RemnantModel
     /// </summary>
     public const double MinNeutronStarMass = 1.2;
 
+    /// <summary>Ruling R9 [APPROX]: an ultra-stripped explosion ejects at least 0.1 M☉.</summary>
+    public const double MinEjectaMass = 0.1;
+
+    /// <summary>
+    /// Ruling R13: the lightest stripped star whose core collapses must make a <see cref="MinNeutronStarMass"/> neutron
+    /// star plus <see cref="MinEjectaMass"/> of ejecta: 1.2 + 0.075 × 1.2² + 0.1 = 1.408 M☉.
+    /// </summary>
+    public static double MinCollapseFinalMass => BaryonicMass(MinNeutronStarMass) + MinEjectaMass;
+
+    /// <summary>Ruling R13: whether a stripped star of this final mass (M☉) can collapse, rather than end as a white dwarf.</summary>
+    public static bool CanCollapse(double finalMass) => finalMass >= MinCollapseFinalMass;
+
     private static readonly string LattimerYahil = "Lattimer & Yahil 1989, ApJ 340, 426 (via Fryer et al. 2012, ApJ 749, 91, eq. 13)";
 
     /// <summary>Lattimer & Yahil inverse (outcomes §1.5): M_grav = (−1 + √(1 + 0.3 M_bary)) / 0.15.</summary>

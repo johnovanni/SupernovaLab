@@ -38,6 +38,9 @@ public static class ProgenitorModel
     private const double ExtendedEnvelopeMinMass = 2.0;
     // §5.1 / §8.2 step 7a CHE option: extreme rotation, Z ≤ 0.004 (≈ 0.3 Z☉), 20 ≲ M ≲ 60 (upper bound APPROXIMATION).
     private const double CheMaxZ = 0.3, CheMinMass = 20, CheMaxMass = 60;
+    // Ruling R14: stripped stars up to 30 M☉ take S16's Z-independent cores (outcomes §2.2 step 1) and keep a He shell
+    // of at least 0.16 M☉ when Full-stripped (Yoon, Woosley & Langer 2010, outcomes §3.2) [APPROX].
+    private const double StrippedS16CoresTop = 30, MinStrippedHeShell = 0.16;
 
     /// <summary>
     /// Hydrogen mass fraction X_H of the H-rich envelope (outcomes §1.3, APPROXIMATION): 0.6 for 9–20 M☉, 0.5 above (the
@@ -349,7 +352,7 @@ public static class ProgenitorModel
     private static Structure Stripped(double m, double z, Stripping stripping, bool ecsn, ExplodabilityTable table)
     {
         double heInitial, final, co;
-        bool extrapolated = false;
+        bool extrapolated = false, s16Cores = false;
         if (ecsn)
         {
             // [APPROX] The W19 fits fall below the 1.36 M☉ that an ECSN leaves behind, so a stripped ECSN keeps the
@@ -357,6 +360,23 @@ public static class ProgenitorModel
             var row = table.Rows[0];
             heInitial = final = row.HeCoreMass;
             co = row.CoCoreMass;
+        }
+        else if (m <= StrippedS16CoresTop)
+        {
+            // Ruling R14, outcomes §2.2 step 1: up to 30 M☉ the He and CO cores are S16's, independent of Z. The W19 fits
+            // (§1.3, §3.3) extrapolated below their range left 9–13 M☉ stripped stars lighter than their own S16 CO core
+            // (12 M☉: 1.77 vs 2.09). The S16 He core is eroded by W19's He-star relation, then the final mass is floored
+            // at the CO core plus the He layer that stays (below), so it never falls under M_CO.
+            // Known step: at 30.01 M☉ the W19 He-core fit takes over and a Full-stripped star's final mass drops from
+            // ~9.3 to ~6.3 M☉ (S16's 30 M☉ He core is 10.4 M☉, W19's fit 9.1). Deferred minor, left as it is.
+            var b = Bracket(table, m);
+            heInitial = Lerp(b, r => r.HeCoreMass);
+            co = Lerp(b, r => r.CoCoreMass);
+            final = HeStar.Eroded(heInitial, z, out extrapolated);
+            // R14, H&He: M_f = max(the W19 rule, M_CO + 0.05), i.e. the larger of the two CO cores plus 0.05 M☉. At low Z
+            // the barely eroded He star's W19 CO core can exceed S16's by up to ~0.1 M☉.
+            if (stripping == Stripping.HydrogenAndHelium) co = Math.Max(co, HeStar.CoCore(final, out _));
+            s16Cores = true;
         }
         else
         {
@@ -366,10 +386,23 @@ public static class ProgenitorModel
             extrapolated = finalExtrapolated || coExtrapolated;
         }
 
-        bool speculative = stripping == Stripping.Partial || ecsn || extrapolated || !IsSolar(z);
+        // Ruling R14 [APPROX]: a Full-stripped star keeps a He shell of at least 0.16 M☉, the low end of the 0.16–1.5 M☉
+        // that binary Ib/c progenitors retain at Z☉ (Yoon, Woosley & Langer 2010, ApJ 725, 940; outcomes §3.2). The S16
+        // He core minus CO core is at least 0.33 M☉ above the ECSN window, so the floor stays below M_He,i.
+        bool shellFloored = false;
+        if (s16Cores && stripping != Stripping.HydrogenAndHelium && final < co + MinStrippedHeShell)
+        {
+            final = co + MinStrippedHeShell;
+            shellFloored = true;
+        }
+
+        bool speculative = stripping == Stripping.Partial || ecsn || extrapolated || shellFloored || !IsSolar(z);
         var conf = speculative ? Confidence.Speculative : Confidence.ModelDependent;
-        string cite = "Woosley 2019, ApJ 878, 49 (He-core fit and Table 4)";
+        string cite = s16Cores
+            ? "Sukhbold et al. 2016, ApJ 821, 38 (He and CO cores); Woosley 2019, ApJ 878, 49 (He-star erosion)"
+            : "Woosley 2019, ApJ 878, 49 (He-core fit and Table 4)";
         if (extrapolated) cite += ", extrapolated beyond Table 4 [APPROX]";
+        if (shellFloored) cite += "; He shell ≥ 0.16 M☉ (Yoon, Woosley & Langer 2010, ApJ 725, 940) [APPROX]";
         if (stripping == Stripping.HydrogenAndHelium) cite += "; Hachinger et al. 2012, MNRAS 422, 70";
         if (stripping == Stripping.Partial) cite += "; Chevalier & Soderberg 2010, ApJL 711, L40 [APPROX defaults]";
         if (!IsSolar(z)) cite += "; He-star erosion scaled by (Z/Z☉)^0.6 [APPROX]";
