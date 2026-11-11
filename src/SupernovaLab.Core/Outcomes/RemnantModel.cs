@@ -17,6 +17,12 @@ public static class RemnantModel
     /// </summary>
     public const double MaxNeutronStarMass = 2.2;
 
+    /// <summary>
+    /// Ruling R13: no neutron star is lighter than 1.2 M☉ (gravitational); the lightest measured are ~1.17–1.2 M☉
+    /// (outcomes §6, Özel & Freire 2016).
+    /// </summary>
+    public const double MinNeutronStarMass = 1.2;
+
     private static readonly string LattimerYahil = "Lattimer & Yahil 1989, ApJ 340, 426 (via Fryer et al. 2012, ApJ 749, 91, eq. 13)";
 
     /// <summary>Lattimer & Yahil inverse (outcomes §1.5): M_grav = (−1 + √(1 + 0.3 M_bary)) / 0.15.</summary>
@@ -68,6 +74,19 @@ public static class RemnantModel
         var r = star.RadiusCm;
         return new Remnant(RemnantKind.WhiteDwarf, star.FinalMass,
             new Quantity(r.Value / 1e5, "km", r.Confidence, r.Source, r.Low / 1e5, r.High / 1e5), null, null, null, null);
+    }
+
+    /// <summary>
+    /// A white dwarf of this mass, with the cold white-dwarf radius. [APPROX] Not in the research files: Nauenberg 1972
+    /// (ApJ 175, 417), R = 0.0112 R☉ [(M/M_Ch)^(−2/3) − (M/M_Ch)^(2/3)]^(1/2) with M_Ch = 1.44 M☉, as ProgenitorModel uses.
+    /// </summary>
+    public static Remnant WhiteDwarf(Quantity mass)
+    {
+        double mu = Math.Min(mass.Value / 1.44, 0.999);
+        double radiusKm = 0.0112 * PhysicalConstants.RSun / 1e5 * Math.Sqrt(Math.Pow(mu, -2.0 / 3) - Math.Pow(mu, 2.0 / 3));
+        var radius = new Quantity(radiusKm, "km", Confidence.Speculative,
+            new Source("Nauenberg 1972, ApJ 175, 417 [APPROX]", "outcomes §1.1"));
+        return new Remnant(RemnantKind.WhiteDwarf, mass, radius, null, null, null, null);
     }
 
     // ---------------------------------------------------------------- black-hole formation time (signals §1.3)

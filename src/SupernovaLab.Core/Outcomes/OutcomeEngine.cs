@@ -32,6 +32,11 @@ public sealed class OutcomeEngine
     private const double NeutrinoMassLossMax = 0.3;
     // Ruling R9 [APPROX]: an ultra-stripped star ejects at least 0.1 M☉ (ultra-stripped supernovae eject ~0.05–0.2 M☉).
     private const double MinEjecta = 0.1;
+    // Ruling R13: a stripped star collapses only if it can make a ≥ 1.2 M☉ (gravitational) neutron star plus the 0.1 M☉
+    // ejecta floor: M_f ≥ 1.2 + 0.075 × 1.2² + 0.1 = 1.408 M☉.
+    private static readonly double MinCollapseFinalMass = RemnantModel.BaryonicMass(RemnantModel.MinNeutronStarMass) + MinEjecta;
+    // Ruling R13: an explosion with ≤ 0.2 M☉ of ejecta is ultra-stripped and gets E = 1e50 erg.
+    private const double UltraStrippedMaxEjecta = 0.2, UltraStrippedEnergy = 1e50;
 
     private static readonly Source S16Explosions =
         new("Sukhbold et al. 2016, ApJ 821, 38 (per-model Z9.6 / N20 results, doi:10.17617/1.b)", "outcomes §1.2, §1.4, §8.2 steps 4–5");
@@ -63,6 +68,8 @@ public sealed class OutcomeEngine
                 EarlyFate.PairInstability => PairInstability(star, notes),
                 EarlyFate.PulsationalPairInstability => PulsationalPairInstability(x, star, notes),
                 EarlyFate.DirectCollapseAbovePisn => AbovePairInstability(star),
+                EarlyFate.ElectronCapture or EarlyFate.CoreCollapse when TooLightToCollapse(x, star)
+                    => NeverCollapses(star, notes),
                 EarlyFate.ElectronCapture => Exploded(x, star, ElectronCapture(notes), notes),
                 _ => CoreCollapse(x, star, notes),
             };
@@ -162,6 +169,8 @@ public sealed class OutcomeEngine
 
     private static Draft PulsationalPairInstability(LabInputs x, PresupernovaStar star, List<string> notes)
     {
+        // Consequence of the research's min(M_He, 45) rule: a bare He star of 35–45 M☉ (M_f = M_He) keeps all its mass,
+        // so the pulses eject 0 M☉ (e.g. Full-stripped 100 M☉ at Z = 0.1). Kept as the research states it.
         double he = star.HeCoreMass.Value, mf = star.FinalMass.Value, mbh = Math.Min(he, PpisnMaxBlackHole);
         var src = new Source("Farmer et al. 2019, ApJ 887, 53; Woosley 2017, ApJ 836, 244 (M_BH ≈ min(M_He, 45 M☉)) [APPROX]",
             "outcomes §2.3, §8.2 step 3");
@@ -185,6 +194,25 @@ public sealed class OutcomeEngine
                 "outcomes §2.3, §8.2 step 3"));
         return new Draft(Fate.FailedSupernova, SupernovaType.None, RemnantModel.BlackHole(mass,
             RemnantModel.DirectCollapseTime(null), RemnantModel.BlackHoleKick(mass.Value, directCollapse: true)));
+    }
+
+    private static bool TooLightToCollapse(LabInputs x, PresupernovaStar star)
+        => x.Stripping != Stripping.None && star.FinalMass.Value < MinCollapseFinalMass;
+
+    /// <summary>
+    /// Ruling R13 [APPROX]: a stripped star too light to make a 1.2 M☉ neutron star plus 0.1 M☉ of ejecta never reaches
+    /// collapse in this model. It ends as an O-Ne or C-O white dwarf, taken to be its CO core (the thin He and H layers
+    /// above are neglected, as for ProgenitorModel's white dwarfs).
+    /// </summary>
+    private static Draft NeverCollapses(PresupernovaStar star, List<string> notes)
+    {
+        var mass = Q(star.CoCoreMass.Value, MSun, Confidence.Speculative,
+            new Source($"{star.CoCoreMass.Source.Citation}; the CO core of a stripped star too light to collapse " +
+                       "(ruling R13) [APPROX]", "outcomes §1.1, §3.3, §6"));
+        notes.Add($"In this model, though, the star ({UnitFormat.Mass(star.FinalMass.Value)}) was stripped so heavily that " +
+                  "its core never reached collapse: it is too light to make even the lightest neutron star. It ends as a " +
+                  $"{UnitFormat.Mass(mass.Value)} oxygen-neon or carbon-oxygen white dwarf, with no supernova.");
+        return new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(mass));
     }
 
     /// <summary>Placeholder for the Type Ia path (§8.2 step 9), which Task 5 replaces.</summary>
@@ -309,6 +337,9 @@ public sealed class OutcomeEngine
     /// <summary>Step 4, H-rich single stars above 30 M☉ (away from Z☉, or above the table's 120 M☉).</summary>
     private static Collapse HeavySingleStar(PresupernovaStar star, List<string> notes)
     {
+        // Consequence of the step 4 rule on ProgenitorModel's structure: above 120 M☉ at Z☉ the star keeps the 120 M☉
+        // model's 5% (a bare He star of ~7.5 M☉ at 150 M☉), so 150 M☉ explodes as Ib (He 7.497 < 7.5) while heavier
+        // stars, with bigger cores, collapse. Kept as the rules state it; the structure there is Speculative.
         double he = star.HeCoreMass.Value;
         if (he >= HeavyStarDirectCollapseHeCore)
         {
@@ -392,6 +423,8 @@ public sealed class OutcomeEngine
         {
             // Ruling R9 [APPROX]: the W19 fits, extrapolated below ~13 M☉, leave stripped stars lighter than a neutron
             // star plus ejecta. Such ultra-stripped stars are taken to eject 0.1 M☉, and the remnant is what is left.
+            // TooLightToCollapse (R13) has already sent stars below 1.408 M☉ to a white dwarf, so this remnant is at
+            // least 1.308 M☉ baryonic = 1.2 M☉ gravitational.
             var floor = new Source("[APPROX] ultra-stripped supernova: ejecta floored at 0.1 M☉, remnant M_f − 0.1 M☉",
                 "outcomes §3.3, §8.2 step 5");
             ejecta = Q(MinEjecta, MSun, Confidence.Speculative, floor);
@@ -407,6 +440,18 @@ public sealed class OutcomeEngine
         {
             ejecta = Q(mf - remnantBaryonic.Value, MSun, RemnantModel.Weakest(star.FinalMass.Confidence, remnantBaryonic.Confidence),
                 new Source("M_ej = M_f − M_rem,bary (Sukhbold et al. 2016, ApJ 821, 38)", "outcomes §1.4, §8.2 step 5"));
+        }
+
+        if (x.Stripping != Stripping.None && !c.Fallback && ejecta.Value <= UltraStrippedMaxEjecta)
+        {
+            // Ruling R13 [APPROX]: an ultra-stripped explosion has E ~ 10⁵⁰ erg, not Sch21's 0.88 B. Tauris, Langer &
+            // Podsiadlowski 2015 (arXiv:1505.00270) scale their ultra-stripped light curves in units of 10⁵⁰ erg and
+            // quote ≲ 10⁵⁰ erg from electron-capture explosion models (Kitaura et al. 2006); no fitted value is given.
+            energy = Q(UltraStrippedEnergy, "erg", Confidence.Speculative,
+                new Source("Tauris, Langer & Podsiadlowski 2015 (arXiv:1505.00270), energy scale ~10^50 erg; " +
+                           "Kitaura, Janka & Hillebrandt 2006, A&A 450, 345 [APPROX]", "outcomes §1.1, §8.2 step 5"));
+            notes.Add($"With only {UnitFormat.Mass(ejecta.Value)} of ejecta this is an ultra-stripped supernova, a weak " +
+                      "explosion of about 10⁵⁰ erg.");
         }
 
         Remnant remnant;
