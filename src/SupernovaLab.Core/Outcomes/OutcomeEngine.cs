@@ -601,9 +601,10 @@ public sealed partial class OutcomeEngine
 
     /// <summary>
     /// Ruling R15 [APPROX]: ⁵⁶Ni is at most half the ejecta, so a tiny explosion (ultra-stripped, or one with heavy
-    /// fallback) cannot be made mostly of nickel.
+    /// fallback) cannot be made mostly of nickel. Ruling R17: core-collapse and pair-instability outcomes only; Type Ia
+    /// and Iax keep their published yields (<see cref="TypeIaModel"/>).
     /// </summary>
-    internal static Quantity CapNickel(Quantity nickel, double ejecta)
+    private static Quantity CapNickel(Quantity nickel, double ejecta)
     {
         double cap = NickelMaxEjectaFraction * ejecta;
         if (nickel.Value <= cap) return nickel;

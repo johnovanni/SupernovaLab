@@ -86,10 +86,9 @@ public class OutcomeEngineExtremeTests
         Assert.Equal(RemnantKind.Magnetar, o.Remnant.Kind);
         Assert.InRange(o.Remnant.SpinPeriodS!.Value, 1e-3, 5e-3);
         Assert.Equal(2.4e-3, o.Remnant.SpinPeriodS.Value, 9);            // N17 median for fast rotation (step 7b)
-        // Step 7b's default for fast or extreme rotation is the N17 median 0.8e14 G, just under the brief's 1e14–1e15
-        // range; its N17 1σ range 0.2–1.8e14 G reaches into it.
-        Assert.Equal(0.8e14, o.Remnant.MagneticFieldG!.Value, 1e9);
-        Assert.True(o.Remnant.MagneticFieldG.High >= 1e14);
+        // Ruling R18: step 7b's default for fast or extreme rotation is the N17 median 0.8e14 G.
+        Assert.InRange(o.Remnant.MagneticFieldG!.Value, 5e13, 1e15);
+        Assert.Equal(0.8e14, o.Remnant.MagneticFieldG.Value, 1e9);
         Assert.Equal(Confidence.Speculative, o.Remnant.MagneticFieldG.Confidence); // §8.3: progenitor → P, B SPECULATIVE
 
         // KB10: E_p = 2e52 / 2.4² = 3.4722e51 erg; t_p = 1.3 yr × 3.156e7 s/yr × (2.4 / 10)² / 0.8² = 3.6925e6 s.
@@ -244,6 +243,29 @@ public class OutcomeEngineExtremeTests
         var o = TypeIa(TypeIaChannel.SubChandrasekhar, 1.0);
         Assert.Equal(0.38333, o.NickelMass!.Value, 4);
         Assert.Equal(Confidence.ModelDependent, o.NickelMass.Confidence);
+    }
+
+    [Fact]
+    public void SubChandrasekhar_115_MakesSim2010s08AndIs91TLike()
+    {
+        // Ruling R17: the published yield, not capped at half the ejecta (0.575): Sim et al. 2010, 1.15 M☉ → 0.8 M☉.
+        // Step 9: 91T-like when M_Ni ≥ 0.8.
+        var o = TypeIa(TypeIaChannel.SubChandrasekhar, 1.15);
+        Assert.Equal(0.8, o.NickelMass!.Value, 9);
+        Assert.Equal(SupernovaType.Ia91T, o.Type);
+        // Arnett: 2.0e43 × 0.8 = 1.6e43 erg/s.
+        Assert.Equal(1.6e43, o.PeakLuminosityErgS!.Value, 0.016e43);
+    }
+
+    [Fact]
+    public void SubChandrasekhar_AboveSim2010_HoldsItsHighestYield()
+    {
+        // [APPROX] above Sim's 1.15 M☉ model the yield stays at 0.8 M☉ (a linear extension would reach M_ej at ~1.35).
+        var o = TypeIa(TypeIaChannel.SubChandrasekhar, 1.38);
+        Assert.Equal(0.8, o.NickelMass!.Value, 9);
+        Assert.True(o.NickelMass.Value < o.EjectaMass!.Value);
+        Assert.Equal(Confidence.Speculative, o.NickelMass.Confidence);
+        Assert.Equal(SupernovaType.Ia91T, o.Type);
     }
 
     [Fact]

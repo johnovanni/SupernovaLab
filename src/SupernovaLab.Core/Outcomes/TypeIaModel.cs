@@ -62,12 +62,10 @@ public static class TypeIaModel
                       "nothing left behind.");
         }
 
-        var capped = OutcomeEngine.CapNickel(nickel, ejecta.Value);
-        if (capped.Value < nickel.Value)
-            notes.Add($"Detonation models make about {UnitFormat.Mass(nickel.Value)} of nickel for a white dwarf this " +
-                      $"heavy, but the lab holds nickel to at most half the ejected mass ({UnitFormat.Mass(capped.Value)}); " +
-                      "this limit is an approximation.");
-        nickel = capped;
+        // Ruling R17: thermonuclear explosions keep the published yields, without the core-collapse cap Ni ≤ 0.5 M_ej
+        // (SNe Ia are ~45–70% ⁵⁶Ni by mass). The sanity bound Ni < M_ej holds by construction: 0.6 < 1.38 near M_Ch;
+        // below 0.97 the steep fall stays under 0.3 < M_WD; on the Sim line Ni < M_WD up to 1.15 (0.8 < 1.15); above 1.15
+        // Ni is held at 0.8.
 
         // [APPROX] Step 9: E_K ≈ 1.2–1.5 B from W7-type models; the middle is taken.
         var energy = new Quantity(1.35e51, "erg", Confidence.Speculative,
@@ -91,7 +89,8 @@ public static class TypeIaModel
     /// <summary>
     /// Sub-Chandrasekhar ⁵⁶Ni (step 9, §7.3): linear in M_WD between Sim et al.'s 0.97 → 0.3 and 1.15 → 0.8 M☉
     /// (ModelDependent). [APPROX] Below 0.97 the yield "falls steeply": log-linear through ~0.05 M☉ at ~0.9 M☉, extended to
-    /// the 0.85 M☉ slider end. [APPROX] Above 1.15 the line is extended. Both Speculative.
+    /// the 0.85 M☉ slider end. [APPROX] Above 1.15, Sim et al.'s heaviest model, the yield is held at its 0.8 M☉ rather
+    /// than extrapolated (the line would reach M_ej near 1.35 M☉). Both Speculative.
     /// </summary>
     private static Quantity SubChandrasekharNickel(double mwd)
     {
@@ -105,10 +104,11 @@ public static class TypeIaModel
                 Citation = sim.Citation + "; below 0.97 M☉ falling steeply, log-linear through ~0.05 M☉ at ~0.9 M☉ [APPROX]",
             });
         }
+        if (mwd > SimHighMass)
+            return new Quantity(SimHighNickel, MSun, Confidence.Speculative,
+                sim with { Citation = sim.Citation + ", held at the 1.15 M☉ value above it [APPROX]" });
         double linear = SimLowNickel + (SimHighNickel - SimLowNickel) * (mwd - SimLowMass) / (SimHighMass - SimLowMass);
-        return mwd <= SimHighMass
-            ? new Quantity(linear, MSun, Confidence.ModelDependent, sim with { Citation = sim.Citation + ", interpolated" })
-            : new Quantity(linear, MSun, Confidence.Speculative, sim with { Citation = sim.Citation + ", extrapolated above 1.15 M☉ [APPROX]" });
+        return new Quantity(linear, MSun, Confidence.ModelDependent, sim with { Citation = sim.Citation + ", interpolated" });
     }
 
     /// <summary>
@@ -125,8 +125,8 @@ public static class TypeIaModel
             Citation = Kromer13.Citation + "; a 1.40 M☉ model applied to a lighter white dwarf [APPROX]",
         };
         var ejecta = new Quantity(IaxEjecta, MSun, conf, src, 0.3, 0.4);
-        var nickel = OutcomeEngine.CapNickel(new Quantity(IaxNickel, MSun, conf,
-            src with { Citation = src.Citation + "; Iax range 0.003–0.3 M☉ (Jha 2017, arXiv:1707.01110)" }, 0.003, 0.3), IaxEjecta);
+        var nickel = new Quantity(IaxNickel, MSun, conf,
+            src with { Citation = src.Citation + "; Iax range 0.003–0.3 M☉ (Jha 2017, arXiv:1707.01110)" }, 0.003, 0.3);
         var energy = new Quantity(IaxEnergy, "erg", conf, src);
         var remnantMass = new Quantity(mwd - IaxEjecta, MSun, conf,
             src with { Citation = src.Citation + "; bound remnant = M_WD − M_ej" });

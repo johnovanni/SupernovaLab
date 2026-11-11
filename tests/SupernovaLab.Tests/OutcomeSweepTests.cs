@@ -100,9 +100,15 @@ public class OutcomeSweepTests
                     $"no field note at {where}");
             }
 
-            // Ruling R15: ⁵⁶Ni never exceeds half the ejecta, on every exploding outcome.
+            // Rulings R15 / R17: ⁵⁶Ni never exceeds half the ejecta in core-collapse and pair-instability explosions;
+            // thermonuclear ones (Ia, Iax) keep the published yields, bounded only by Ni < M_ej.
             if (o.NickelMass is { } ni && o.EjectaMass is { } ej)
-                Assert.True(ni.Value <= 0.5 * ej.Value + 1e-12, $"Ni {ni.Value} > 0.5 × M_ej {ej.Value} at {where}");
+            {
+                if (x.Kind == StarKind.WhiteDwarf)
+                    Assert.True(ni.Value < ej.Value, $"Ni {ni.Value} ≥ M_ej {ej.Value} at {where}");
+                else
+                    Assert.True(ni.Value <= 0.5 * ej.Value + 1e-12, $"Ni {ni.Value} > 0.5 × M_ej {ej.Value} at {where}");
+            }
             if (o.Fate is Fate.Supernova or Fate.PairInstabilitySupernova)
             {
                 Assert.NotNull(o.NickelMass);
