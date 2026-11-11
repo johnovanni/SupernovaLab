@@ -221,8 +221,9 @@ public sealed class OutcomeEngine
     private static Draft NeverCollapses(PresupernovaStar star, List<string> notes)
     {
         var mass = Q(star.CoCoreMass.Value, MSun, Confidence.Speculative,
-            new Source($"{star.CoCoreMass.Source.Citation}; the CO core of a stripped star too light to collapse " +
-                       "(ruling R13) [APPROX]", "outcomes §1.1, §3.3, §6"));
+            new Source($"{star.CoCoreMass.Source.Citation}; the CO core of a stripped star too light to make a 1.2 M☉ " +
+                       "neutron star, the lightest measured (Özel & Freire 2016, ARA&A 54, 401), plus 0.1 M☉ of ejecta [APPROX]",
+                "outcomes §1.1, §3.3, §6"));
         // ProgenitorModel's fate note for this path says the core collapses ("The iron core of this … collapses …" or the
         // electron-capture "… core collapses when electrons are captured …"). It is the only note so far that says
         // "collapses", and this override contradicts it, so it goes.
@@ -353,7 +354,10 @@ public sealed class OutcomeEngine
         return c;
     }
 
-    /// <summary>Step 4, H-rich single stars above 30 M☉ (away from Z☉, or above the table's 120 M☉).</summary>
+    /// <summary>
+    /// Step 4, unstripped single stars above 30 M☉, at every Z including Z☉ (ruling R16): a direct black hole when the
+    /// He core is ≳ 7.5 M☉, otherwise a wind-stripped Wolf–Rayet star that explodes.
+    /// </summary>
     private static Collapse HeavySingleStar(PresupernovaStar star, List<string> notes)
     {
         // Consequence of the step 4 rule on ProgenitorModel's structure: above 120 M☉ at Z☉ the star keeps the 120 M☉
@@ -544,7 +548,7 @@ public sealed class OutcomeEngine
         double cap = NickelMaxEjectaFraction * ejecta;
         if (nickel.Value <= cap) return nickel;
         return Q(cap, MSun, Confidence.Speculative, new Source(nickel.Source.Citation +
-            "; capped at half the ejecta mass (ruling R15) [APPROX]", "outcomes §8.2 step 5"));
+            "; capped at half the ejecta mass, since an explosion cannot be mostly nickel [APPROX]", "outcomes §8.2 step 5"));
     }
 
     private static Draft Failed(LabInputs x, PresupernovaStar star, Collapse c, List<string> notes)

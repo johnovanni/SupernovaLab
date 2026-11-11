@@ -316,22 +316,39 @@ public static class ProgenitorModel
             return new Structure(final, he, co, envelope, he - co, Confidence.Speculative, MetallicitySchemeSource, radius, blue);
         }
 
-        // The wind removes the whole envelope and then eats into the He core. [APPROX] The CO core keeps its fraction of
-        // the He core, so every mass stays continuous where the envelope runs out.
+        // The wind removes the whole envelope and then eats into the He core.
         notes.Add("Its winds blow away the whole hydrogen envelope, and then some of the helium, before it dies.");
-        double bareCo = co * final / he;
-        // [APPROX] A star that S16 already ends bare at Z☉ (45–120 M☉: M_f = M_He = M_CO, a He-poor WC/WO surface,
-        // outcomes §1.3) keeps S16's CO-to-final ratio instead, so its CO core and He shell (and so its Ib/Ic class) are
-        // continuous across Z☉ (Task 4 review, ruling R16).
-        if (inTable)
-        {
-            var b = Bracket(table, m);
-            double finalS16 = Lerp(b, r => r.PreSnMass);
-            if (Lerp(b, r => r.HydrogenEnvelopeMass) <= 0)
-                bareCo = final * Math.Min(1, Lerp(b, r => r.CoCoreMass) / finalS16);
-        }
+        double bareCo = BareCoCore(m, final, he, co, finalSun, table);
         return new Structure(final, final, bareCo, 0, final - bareCo, Confidence.Speculative, MetallicitySchemeSource,
             HeStarRadius(he), false);
+    }
+
+    /// <summary>
+    /// [APPROX] CO core of a star whose wind has eaten into its He core (final mass <paramref name="final"/> below the
+    /// scheme's He core <paramref name="he"/>, CO core <paramref name="co"/>). Two anchors:
+    /// <list type="bullet">
+    /// <item>where the envelope just runs out (M_f = M_He) the CO core is the scheme's own <paramref name="co"/>;</item>
+    /// <item>at the solar final mass <paramref name="finalSun"/> it is the S16 Z☉ CO core (above 120 M☉ the 120 M☉
+    /// model's CO-to-final ratio, as for the final mass). S16 tags its 45–120 M☉ Wolf–Rayet stars M_CO = M_f.</item>
+    /// </list>
+    /// In between the CO core is linear in M_f, and below M_f☉ it keeps the solar CO-to-final ratio. Because the scheme's
+    /// CO core is never below S16's, the CO core never rises as the wind (and Z) grows; it is continuous in Z and in mass,
+    /// and equals S16 at Z☉, so the Ib/Ic class does not jump there. When the solar star still has its envelope
+    /// (M_He ≥ M_f☉, up to ~41.5 M☉) the CO core keeps its fraction of the He core, which meets the rule above where
+    /// M_He = M_f☉, since the scheme's cores are S16's there.
+    /// </summary>
+    private static double BareCoCore(double m, double final, double he, double co, double finalSun, ExplodabilityTable table)
+    {
+        if (he <= finalSun) return co * final / he;
+        var last = table.Rows[^1];
+        double coSun = m <= last.InitialMass
+            ? Lerp(Bracket(table, m), r => r.CoCoreMass)
+            : finalSun * last.CoCoreMass / last.PreSnMass;
+        coSun = Math.Min(coSun, Math.Min(co, finalSun));
+        double bare = final >= finalSun
+            ? Lerp(co, coSun, (he - final) / (he - finalSun))
+            : final * coSun / finalSun;
+        return Math.Min(final, bare); // rounding must not leave a negative He shell
     }
 
     /// <summary>

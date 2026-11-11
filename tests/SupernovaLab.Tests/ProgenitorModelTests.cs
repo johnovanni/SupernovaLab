@@ -419,6 +419,69 @@ public class ProgenitorModelTests
         }
     }
 
+    // ---- CO core and He shell of wind-stripped stars (Task 4 review, fix round 2) ----
+
+    private static readonly double[] HeavySweepMasses =
+        { 30.5, 35, 40, 41, 41.5, 42, 44, 44.99, 45, 45.01, 50, 55, 58, 60, 70, 80, 100, 119.99, 120, 120.01, 150, 200, 300 };
+
+    public static IEnumerable<object[]> HeavyMasses() => HeavySweepMasses.Select(m => new object[] { m });
+
+    [Theory]
+    [MemberData(nameof(HeavyMasses))]
+    public void CoCoreAndHeShell_AreContinuousInZ_AndTheCoCoreNeverRises(double mass)
+    {
+        // Z from 0.001 to 2 in steps of 0.005 (Z☉ included). Each step may change the CO core by at most 10% of itself
+        // and the He shell by at most 10% of the final mass (the shell can approach 0, so it is measured against M_f).
+        PresupernovaStar? previous = null;
+        for (int k = 0; k <= 400; k++)
+        {
+            double z = Math.Max(0.001, 0.005 * k);
+            var star = Evolve(mass, z).Star;
+            if (previous is not null)
+            {
+                double co0 = previous.CoCoreMass.Value, co1 = star.CoCoreMass.Value;
+                double sh0 = previous.HeliumEnvelopeMass.Value, sh1 = star.HeliumEnvelopeMass.Value;
+                string where = $"M={mass}, Z={z}: CO {co0} → {co1}, He shell {sh0} → {sh1}";
+                Assert.True(co1 <= co0 + 1e-9, $"CO core rose. {where}");
+                Assert.True(Math.Abs(co1 - co0) <= 0.10 * Math.Max(co0, co1), where);
+                Assert.True(Math.Abs(sh1 - sh0) <= 0.10 * Math.Max(previous.FinalMass.Value, star.FinalMass.Value), where);
+            }
+            previous = star;
+        }
+    }
+
+    [Theory]
+    [InlineData(0.001)]
+    [InlineData(0.1)]
+    [InlineData(0.37)]
+    [InlineData(0.54)]
+    [InlineData(0.999)]
+    [InlineData(1.0)]
+    [InlineData(1.001)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void CoCoreAndHeShell_AreContinuousInMass_Across45And120(double z)
+    {
+        // Unstripped stars from 30.05 to 300 M☉ in 0.05 M☉ steps, crossing 45 M☉ (where S16's stars become bare) and
+        // 120 M☉ (the end of the table), with the same 10% limits as the Z sweep. The sweep starts above 30 M☉ because
+        // the §2.2 wind exponent switches there (0.5 → 0.85), a known step in the final mass off Z☉ (deferred minor).
+        PresupernovaStar? previous = null;
+        for (int k = 1; k <= 5399; k++)
+        {
+            double m = 30 + 0.05 * k;
+            var star = Evolve(m, z).Star;
+            if (previous is not null)
+            {
+                double co0 = previous.CoCoreMass.Value, co1 = star.CoCoreMass.Value;
+                double sh0 = previous.HeliumEnvelopeMass.Value, sh1 = star.HeliumEnvelopeMass.Value;
+                string where = $"Z={z}, M={m:0.00}: CO {co0} → {co1}, He shell {sh0} → {sh1}";
+                Assert.True(Math.Abs(co1 - co0) <= 0.10 * Math.Max(co0, co1), where);
+                Assert.True(Math.Abs(sh1 - sh0) <= 0.10 * Math.Max(previous.FinalMass.Value, star.FinalMass.Value), where);
+            }
+            previous = star;
+        }
+    }
+
     [Theory]
     [InlineData(Stripping.None)]
     [InlineData(Stripping.Partial)]
