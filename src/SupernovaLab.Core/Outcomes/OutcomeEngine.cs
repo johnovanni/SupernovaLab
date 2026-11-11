@@ -209,7 +209,11 @@ public sealed class OutcomeEngine
         var mass = Q(star.CoCoreMass.Value, MSun, Confidence.Speculative,
             new Source($"{star.CoCoreMass.Source.Citation}; the CO core of a stripped star too light to collapse " +
                        "(ruling R13) [APPROX]", "outcomes §1.1, §3.3, §6"));
-        notes.Add($"In this model, though, the star ({UnitFormat.Mass(star.FinalMass.Value)}) was stripped so heavily that " +
+        // ProgenitorModel's fate note for this path says the core collapses ("The iron core of this … collapses …" or the
+        // electron-capture "… core collapses when electrons are captured …"). It is the only note so far that says
+        // "collapses", and this override contradicts it, so it goes.
+        notes.RemoveAll(n => n.Contains("collapses", StringComparison.Ordinal));
+        notes.Add($"The star ({UnitFormat.Mass(star.FinalMass.Value)}) was stripped so heavily that " +
                   "its core never reached collapse: it is too light to make even the lightest neutron star. It ends as a " +
                   $"{UnitFormat.Mass(mass.Value)} oxygen-neon or carbon-oxygen white dwarf, with no supernova.");
         return new Draft(Fate.WhiteDwarf, SupernovaType.None, RemnantModel.WhiteDwarf(mass));

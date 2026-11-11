@@ -315,6 +315,7 @@ public class OutcomeEngineTests
         Assert.NotNull(o.Remnant.RadiusKm);
         Assert.Null(o.ExplosionEnergyErg);
         Assert.Contains(o.Notes, n => n.Contains("never reached collapse") && n.Contains("white dwarf"));
+        Assert.DoesNotContain(o.Notes, n => n.Contains("collapses")); // ProgenitorModel's collapse note is removed
     }
 
     [Theory]
