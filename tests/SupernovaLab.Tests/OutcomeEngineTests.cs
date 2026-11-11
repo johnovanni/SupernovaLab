@@ -89,6 +89,27 @@ public class OutcomeEngineTests
         var o = Compute(26);
         Assert.Equal(Fate.Supernova, o.Fate);
         Assert.Equal(RemnantKind.NeutronStar, o.Remnant.Kind);
+        // Ruling R8: in the S16 N20 data 15.0 M☉ fails.
+        Assert.Equal(Fate.FailedSupernova, Compute(15).Fate);
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(45)]
+    [InlineData(58)]
+    [InlineData(70)]
+    [InlineData(100)]
+    [InlineData(120)]
+    public void HeavySingleStars_HaveTheSameFateAndTypeJustOffSolarZ(double mass)
+    {
+        // Ruling R16: above 30 M☉ the step 4 "M > 30" rules apply at every Z, so nothing jumps at Z = 1.
+        var solar = Compute(mass);
+        foreach (double z in new[] { 0.999, 1.001 })
+        {
+            var near = Compute(mass, z);
+            Assert.Equal(solar.Fate, near.Fate);
+            Assert.Equal(solar.Type, near.Type);
+        }
     }
 
     [Theory]
@@ -250,10 +271,11 @@ public class OutcomeEngineTests
     [Fact]
     public void StrippedStar_PeakFollowsArnettsRule()
     {
-        // Ib: calibrated ⁵⁶Ni = Anderson 2019 Ib median 0.163; L = 2.0e43 × 0.163 = 3.26e42 erg/s.
+        // Ib: calibrated ⁵⁶Ni = min(Sch21 0.059, Anderson 2019 Ib median 0.163) = 0.059 (ruling R15);
+        // L = 2.0e43 × 0.059 = 1.18e42 erg/s.
         var o = Compute(15, stripping: Stripping.Full);
-        Assert.Equal(0.163, o.NickelMass!.Value, 6);
-        Assert.Equal(3.26e42, o.PeakLuminosityErgS!.Value, 1e39);
+        Assert.Equal(0.059, o.NickelMass!.Value, 6);
+        Assert.Equal(1.18e42, o.PeakLuminosityErgS!.Value, 1e39);
         Assert.Equal(0.88e51, o.ExplosionEnergyErg!.Value, 1e45); // Sch21 Ib/c mean
         Assert.Equal(1.42, o.Remnant.Mass!.Value, 6);              // Sch21 stripped NS average
     }
@@ -273,6 +295,9 @@ public class OutcomeEngineTests
         Assert.Equal(1e50, o.ExplosionEnergyErg!.Value);
         Assert.Equal(Confidence.Speculative, o.ExplosionEnergyErg.Confidence);
         Assert.Contains(o.Notes, n => n.Contains("ultra-stripped"));
+        // R15: theory 0.059 capped at half the ejecta, 0.05.
+        Assert.Equal(0.05, o.NickelMass!.Value, 9);
+        Assert.Equal(122.87, o.Remnant.KickKmS!.Value, 1); // √(8/π) × 77, the slow component (§6)
 
         // 10.5 M☉ H&He: M_CO = 1.68872, M_f = 1.73872, M_ej = 1.73872 − 1.57123 = 0.16749 ≤ 0.2 (by hand): no floor,
         // the Sch21 neutron star, but the ultra-stripped energy.
@@ -280,6 +305,41 @@ public class OutcomeEngineTests
         Assert.Equal(0.16749, u.EjectaMass!.Value, 4);
         Assert.Equal(1.42, u.Remnant.Mass!.Value, 6);
         Assert.Equal(1e50, u.ExplosionEnergyErg!.Value);
+        Assert.Equal(0.059, u.NickelMass!.Value, 9);       // theory, under the 0.0837 cap
+        Assert.Equal(122.87, u.Remnant.KickKmS!.Value, 1); // ultra-stripped: slow kick component
+    }
+
+    [Fact]
+    public void NickelNeverExceedsHalfTheEjecta()
+    {
+        // Ruling R15, over the sweep masses × Z × stripping × yield × mixing.
+        double[] masses = { 9.1, 9.3, 9.5, 10, 10.5, 11, 12, 15, 16, 20, 26, 27.4, 29, 40, 60, 100, 150, 200, 250 };
+        foreach (double m in masses)
+        foreach (double z in new[] { 0.001, 0.1, 1, 2 })
+        foreach (Stripping s in Enum.GetValues<Stripping>())
+        foreach (NickelYield y in Enum.GetValues<NickelYield>())
+        foreach (NickelMixing mix in Enum.GetValues<NickelMixing>())
+        {
+            var o = Compute(m, z, s, mix, y);
+            if (o.NickelMass is null) continue;
+            Assert.True(o.NickelMass.Value <= 0.5 * o.EjectaMass!.Value + 1e-12,
+                $"M={m}, Z={z}, {s}, {y}, {mix}: Ni {o.NickelMass.Value} vs M_ej {o.EjectaMass.Value}");
+            if (y == NickelYield.Calibrated && o.Type is not SupernovaType.Pisn)
+                Assert.True(o.NickelMass.Value <= Compute(m, z, s, mix, NickelYield.Theory).NickelMass!.Value + 1e-12,
+                    $"M={m}, Z={z}, {s}, {mix}: calibrated above theory");
+        }
+    }
+
+    [Fact]
+    public void PulsationsThatEjectNothing_ShowNoTransient()
+    {
+        // Full-stripped 100 M☉ at Z = 0.1: a bare He star of ~38.5 M☉ < 45, so M_BH = M_f and the pulses eject 0.
+        var o = Compute(100, z: 0.1, stripping: Stripping.Full);
+        Assert.Equal(Fate.PulsationalPairInstability, o.Fate);
+        Assert.Equal(SupernovaType.None, o.Type);
+        Assert.True(o.EjectaMass!.Value < 0.01);
+        Assert.Contains(o.Notes, n => n.Contains("too weak"));
+        Assert.DoesNotContain(o.Notes, n => n.Contains("Colliding shells"));
     }
 
     [Fact]
@@ -455,10 +515,11 @@ public class OutcomeEngineTests
 
     [Theory]
     [InlineData(3.0, SupernovaType.IIP)]
-    [InlineData(1.0, SupernovaType.IIL)]
+    [InlineData(1.0, SupernovaType.IIL)]    // hydrogen 0.6 × 1.0 = 0.6 M☉ > 0.5: II-L
+    [InlineData(0.7, SupernovaType.IIb)]    // envelope above 0.5 but hydrogen 0.6 × 0.7 = 0.42 M☉ ≤ 0.5: IIb wins
     [InlineData(0.4, SupernovaType.IIb)]    // hydrogen 0.6 × 0.4 = 0.24 M☉
     [InlineData(0.002, SupernovaType.IIb)]  // hydrogen 0.6 × 0.002 = 0.0012 M☉ ≥ 0.001
-    [InlineData(0.0015, SupernovaType.Ib)]  // hydrogen 0.6 × 0.0015 = 0.0009 M☉ < 0.001; He shell 0.83 ≥ 0.14
+    [InlineData(0.0015, SupernovaType.Ib)]  // hydrogen 0.6 × 0.0015 = 0.0009 M☉ < 0.001; He shell 0.22967 ≥ 0.14
     public void SpectralTyper_HydrogenThresholds(double envelope, SupernovaType expected)
     {
         // Ruling R10: II-P / II-L use the envelope mass; IIb needs ≥ 0.001 M☉ of hydrogen = X_H (0.6 at 15 M☉) × envelope.

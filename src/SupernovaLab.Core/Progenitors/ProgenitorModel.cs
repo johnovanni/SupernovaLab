@@ -320,6 +320,16 @@ public static class ProgenitorModel
         // the He core, so every mass stays continuous where the envelope runs out.
         notes.Add("Its winds blow away the whole hydrogen envelope, and then some of the helium, before it dies.");
         double bareCo = co * final / he;
+        // [APPROX] A star that S16 already ends bare at Z☉ (45–120 M☉: M_f = M_He = M_CO, a He-poor WC/WO surface,
+        // outcomes §1.3) keeps S16's CO-to-final ratio instead, so its CO core and He shell (and so its Ib/Ic class) are
+        // continuous across Z☉ (Task 4 review, ruling R16).
+        if (inTable)
+        {
+            var b = Bracket(table, m);
+            double finalS16 = Lerp(b, r => r.PreSnMass);
+            if (Lerp(b, r => r.HydrogenEnvelopeMass) <= 0)
+                bareCo = final * Math.Min(1, Lerp(b, r => r.CoCoreMass) / finalS16);
+        }
         return new Structure(final, final, bareCo, 0, final - bareCo, Confidence.Speculative, MetallicitySchemeSource,
             HeStarRadius(he), false);
     }

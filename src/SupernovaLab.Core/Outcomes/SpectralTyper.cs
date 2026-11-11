@@ -14,6 +14,8 @@ public static class SpectralTyper
     public const double LinearMinEnvelope = 0.5;
     /// <summary>IIb needs at least ~0.001 M☉ of hydrogen itself (Dessart et al. 2011); hydrogen = X_H × envelope (R10).</summary>
     public const double IIbMinHydrogen = 0.001;
+    /// <summary>IIb holds up to ~0.5 M☉ of hydrogen itself (outcomes §3.2, §8.2 step 6).</summary>
+    public const double IIbMaxHydrogen = 0.5;
     /// <summary>He mass that shows He I lines when ⁵⁶Ni is well mixed (Hachinger et al. 2012): Ib at or above it.</summary>
     public const double HeliumVisibleWellMixed = 0.14;
     /// <summary>With weak ⁵⁶Ni mixing, Ic is allowed up to ~1.6 M☉ of He (Dessart et al. 2012): Ib only above it.</summary>
@@ -34,12 +36,15 @@ public static class SpectralTyper
         if (envelope >= PlateauMinEnvelope)
             return (SupernovaType.IIP, $"It keeps a thick hydrogen envelope ({env}), so it is a Type II-P supernova, " +
                                        "whose light stays on a long plateau.");
+        // Step 6's IIb (0.001–0.5 M☉ of hydrogen) and II-L (envelope 0.5–2 M☉) overlap: an envelope just above 0.5 M☉
+        // holds under 0.5 M☉ of hydrogen. IIb wins there, because the IIb class is defined by the hydrogen actually seen
+        // (Dessart et al. 2011); II-L takes the rest of the thin envelopes.
+        if (hydrogen >= IIbMinHydrogen && hydrogen <= IIbMaxHydrogen)
+            return (SupernovaType.IIb, $"Only about {UnitFormat.Mass(hydrogen)} of hydrogen is left, enough to show " +
+                                       "hydrogen lines at first before helium takes over: a Type IIb supernova.");
         if (envelope > LinearMinEnvelope)
             return (SupernovaType.IIL, $"Its hydrogen envelope is thin ({env}, under 2 M☉), so the light fades without " +
                                        "a long plateau: a Type II-L supernova.");
-        if (hydrogen >= IIbMinHydrogen)
-            return (SupernovaType.IIb, $"Only about {UnitFormat.Mass(hydrogen)} of hydrogen is left, enough to show " +
-                                       "hydrogen lines at first before helium takes over: a Type IIb supernova.");
 
         if (stripping == Stripping.HydrogenAndHelium)
             return (SupernovaType.Ic, "Its companion removed the helium too, so the spectrum shows neither hydrogen nor " +

@@ -17,6 +17,8 @@ public sealed class OutcomeEngine
     private const double PisnHeCore = 64;
     // Step 3: M_BH ≈ min(M_He,final, ~45) after pulsational pair instability (F19; APPROXIMATION for the shape).
     private const double PpisnMaxBlackHole = 45;
+    // Below 0.01 M☉ of pulse ejecta the PPISN is shown without an interacting transient (Task 4 review).
+    private const double PpisnMinEjecta = 0.01;
     // Step 4: the S16 lookup stands in for core structure for H-rich single stars of M ≤ 30.
     private const double SingleStarLookupTop = 30;
     // Step 4, H-rich stars with M > 30: a final He core of ≳ 7.5 M☉ collapses directly to a black hole.
@@ -34,6 +36,8 @@ public sealed class OutcomeEngine
     private const double MinEjecta = RemnantModel.MinEjectaMass;
     // Ruling R13: an explosion with ≤ 0.2 M☉ of ejecta is ultra-stripped and gets E = 1e50 erg.
     private const double UltraStrippedMaxEjecta = 0.2, UltraStrippedEnergy = 1e50;
+    // Ruling R15 [APPROX]: ⁵⁶Ni never exceeds half the ejecta mass.
+    private const double NickelMaxEjectaFraction = 0.5;
 
     private static readonly Source S16Explosions =
         new("Sukhbold et al. 2016, ApJ 821, 38 (per-model Z9.6 / N20 results, doi:10.17617/1.b)", "outcomes §1.2, §1.4, §8.2 steps 4–5");
@@ -161,7 +165,8 @@ public sealed class OutcomeEngine
 
         var ejecta = new Quantity(mf, MSun, star.FinalMass.Confidence,
             new Source("Heger & Woosley 2002, ApJ 567, 532 (complete disruption, M_ej = M_f)", "outcomes §2.3, §8.2 step 3"));
-        return new Draft(Fate.PairInstabilitySupernova, SupernovaType.Pisn, Remnant.None, energy, ejecta, nickel);
+        return new Draft(Fate.PairInstabilitySupernova, SupernovaType.Pisn, Remnant.None, energy, ejecta,
+            CapNickel(nickel, ejecta.Value));
     }
 
     private static Draft PulsationalPairInstability(LabInputs x, PresupernovaStar star, List<string> notes)
@@ -175,9 +180,20 @@ public sealed class OutcomeEngine
         var ejecta = new Quantity(mf - mbh, MSun, Confidence.Speculative, src);
 
         // Step 3: an optional interacting transient, IIn-like with hydrogen, Ibn / Icn-like without [MODEL-DEPENDENT].
-        var type = SpectralTyper.WithDenseCsm(SpectralTyper.Classify(star, x.InitialMass, x.Stripping, x.Mixing).Type);
-        notes.Add($"The pulses throw off {UnitFormat.Mass(mf - mbh)} and leave a black hole of {UnitFormat.Mass(mbh)}. " +
-                  $"Colliding shells can shine as an interacting transient like a Type {type} supernova (model-dependent).");
+        // With (almost) nothing ejected there is no transient to show.
+        SupernovaType type;
+        if (ejecta.Value < PpisnMinEjecta)
+        {
+            type = SupernovaType.None;
+            notes.Add($"The pulses are too weak to throw off much mass, and the core collapses to a black hole of " +
+                      $"{UnitFormat.Mass(mbh)}.");
+        }
+        else
+        {
+            type = SpectralTyper.WithDenseCsm(SpectralTyper.Classify(star, x.InitialMass, x.Stripping, x.Mixing).Type);
+            notes.Add($"The pulses throw off {UnitFormat.Mass(mf - mbh)} and leave a black hole of {UnitFormat.Mass(mbh)}. " +
+                      $"Colliding shells can shine as an interacting transient like a Type {type} supernova (model-dependent).");
+        }
         var remnant = RemnantModel.BlackHole(mass, RemnantModel.DirectCollapseTime(null),
             RemnantModel.BlackHoleKick(mbh, directCollapse: true));
         return new Draft(Fate.PulsationalPairInstability, type, remnant, Ejecta: ejecta);
@@ -262,13 +278,14 @@ public sealed class OutcomeEngine
 
         if (x.Stripping != Stripping.None) return StrippedStar(m, notes);
 
-        // Ruling R1: the S16 per-mass results answer only for single stars at Z☉ inside the table's 9–120 M☉.
-        var rows = _table.Rows;
-        if (IsSolar(x.Metallicity) && m >= rows[0].InitialMass && m <= rows[^1].InitialMass)
-            return FromRow(_table.Lookup(m), m, star, notes, solar: true);
-        // Other Z: key the lookup on M_CO, with the S16 M_CO column as the conversion.
+        // Rulings R1 / R16, step 4: the S16 per-mass results decide the fate only for H-rich single stars of M ≤ 30 M☉ —
+        // at Z☉ the nearest row by initial mass, at other Z the row with the nearest CO core (the S16 M_CO column as the
+        // conversion). Heavier stars follow step 4's M > 30 rules at every Z, Z☉ included, so the fate does not jump at
+        // Z = 1. (This drops S16's wind-dependent 70 M☉ black-hole island, which is model-dependent anyway.)
         if (m <= SingleStarLookupTop)
-            return FromRow(NearestCoCore(star.CoCoreMass.Value), m, star, notes, solar: false);
+            return IsSolar(x.Metallicity)
+                ? FromRow(_table.Lookup(m), m, star, notes, solar: true)
+                : FromRow(NearestCoCore(star.CoCoreMass.Value), m, star, notes, solar: false);
         return HeavySingleStar(star, notes);
     }
 
@@ -445,6 +462,7 @@ public sealed class OutcomeEngine
                 new Source("M_ej = M_f − M_rem,bary (Sukhbold et al. 2016, ApJ 821, 38)", "outcomes §1.4, §8.2 step 5"));
         }
 
+        bool ultraStripped = false;
         if (x.Stripping != Stripping.None && !c.Fallback && ejecta.Value <= UltraStrippedMaxEjecta)
         {
             // Ruling R13 [APPROX]: an ultra-stripped explosion has E ~ 10⁵⁰ erg, not Sch21's 0.88 B. Tauris, Langer &
@@ -455,6 +473,9 @@ public sealed class OutcomeEngine
                            "Kitaura, Janka & Hillebrandt 2006, A&A 450, 345 [APPROX]", "outcomes §1.1, §8.2 step 5"));
             notes.Add($"With only {UnitFormat.Mass(ejecta.Value)} of ejecta this is an ultra-stripped supernova, a weak " +
                       "explosion of about 10⁵⁰ erg.");
+            // §6: ultra-stripped neutron stars get the slow kick component.
+            smallKick = true;
+            ultraStripped = true;
         }
 
         Remnant remnant;
@@ -471,7 +492,12 @@ public sealed class OutcomeEngine
                           "collapses to a black hole.");
         }
 
-        var nickel = c.Fallback || c.FixedNickel || x.Yield == NickelYield.Theory ? c.Nickel! : CalibratedNickel(c, baseType);
+        // Ruling R15: the theory yield for fallback, electron-capture and ultra-stripped explosions and for the Theory
+        // option; otherwise the observed-calibrated yield. Either way at most half the ejecta.
+        var nickel = c.Fallback || c.FixedNickel || ultraStripped || x.Yield == NickelYield.Theory
+            ? c.Nickel!
+            : CalibratedNickel(c, baseType);
+        nickel = CapNickel(nickel, ejecta.Value);
 
         var type = baseType;
         if (x.DenseCsm)
@@ -487,8 +513,10 @@ public sealed class OutcomeEngine
     }
 
     /// <summary>
-    /// Step 5, "observed-calibrated" ⁵⁶Ni [APPROXIMATION]: theory exceeds the observed SN II median about twice, so S16
-    /// yields above 12 M☉ are halved; stripped-envelope classes take Anderson 2019's observed medians.
+    /// Step 5, "observed-calibrated" ⁵⁶Ni [APPROXIMATION]; ruling R15 reads "clip it to the observed medians" as
+    /// min(theory, median), lowering a yield and never raising it. Theory exceeds the observed SN II median about twice,
+    /// so S16 yields above 12 M☉ are halved for II-P / II-L; stripped-envelope classes are clipped to Anderson 2019's
+    /// medians (IIb 0.102, Ib 0.163, Ic 0.155 M☉).
     /// </summary>
     private static Quantity CalibratedNickel(Collapse c, SupernovaType baseType)
     {
@@ -500,10 +528,23 @@ public sealed class OutcomeEngine
                     "; halved to match the observed SN II median 0.032 M☉ (Anderson 2019, A&A 628, A7) [APPROX]", refs))
                 : theory;
 
-        // Anderson 2019 medians: IIb 0.102, Ib 0.163, Ic 0.155 M☉.
         double median = baseType switch { SupernovaType.IIb => 0.102, SupernovaType.Ib => 0.163, _ => 0.155 };
+        if (theory.Value <= median) return theory;
         return Q(median, MSun, Confidence.Speculative,
-            new Source($"Anderson 2019, A&A 628, A7 (observed median for SNe {baseType}) [APPROX]", refs));
+            new Source($"{theory.Source.Citation}; clipped to the observed median for SNe {baseType} " +
+                       "(Anderson 2019, A&A 628, A7) [APPROX]", refs));
+    }
+
+    /// <summary>
+    /// Ruling R15 [APPROX]: ⁵⁶Ni is at most half the ejecta, so a tiny explosion (ultra-stripped, or one with heavy
+    /// fallback) cannot be made mostly of nickel.
+    /// </summary>
+    private static Quantity CapNickel(Quantity nickel, double ejecta)
+    {
+        double cap = NickelMaxEjectaFraction * ejecta;
+        if (nickel.Value <= cap) return nickel;
+        return Q(cap, MSun, Confidence.Speculative, new Source(nickel.Source.Citation +
+            "; capped at half the ejecta mass (ruling R15) [APPROX]", "outcomes §8.2 step 5"));
     }
 
     private static Draft Failed(LabInputs x, PresupernovaStar star, Collapse c, List<string> notes)
