@@ -21,8 +21,12 @@ public static class ProgenitorModel
 
     // Step 3 He-core boundaries at death (outcomes §2.3, §8.2 step 3), ±5 M☉.
     private const double PpisnHeCore = 35, PisnHeCore = 64, PisnTopHeCore = 133;
+    // Ruling R12, outcomes §2.3: a PISN from an H-rich very massive star needs Z ≲ Z☉/3 (Langer et al. 2007). A stripped
+    // (WC-type) progenitor needs "much lower Z"; no number is given. [APPROX] We take 0.1 Z☉, the metallicity below which
+    // §2.2 step 4 has stars stay compact and keep their mass, an order of magnitude below the H-rich ceiling.
+    private const double PisnMaxZHydrogenRich = 1.0 / 3, PisnMaxZStripped = 0.1;
 
-    // §2.2 / §8.2 step 2 wind-loss exponents: (Z/Z☉)^0.5 below 30 M☉ (H03), ^0.85 at and above (Vink et al. 2001).
+    // §2.2 / §8.2 step 2 wind exponents: (Z/Z☉)^0.5 below 30 M☉ (H03), ^0.85 at and above (Vink et al. 2001).
     private const double HeavyStarMass = 30;
     private const double AlphaLight = 0.5, AlphaHeavy = 0.85;
     // [APPROX] §2.2 step 3 scales He-star erosion by (Z/Z☉)^0.25–0.6. We take 0.6, the WNE iron exponent (W19 from
@@ -30,8 +34,17 @@ public static class ProgenitorModel
     private const double BetaHeStar = 0.6;
     // §2.2 step 4: low-Z stars die as blue supergiants below ~0.1 Z☉.
     private const double BlueSupergiantMaxZ = 0.1;
+    // H03 (outcomes §2.1, §3.2): a II-P (extended red supergiant) needs an H-rich envelope of ≳ 2 M☉.
+    private const double ExtendedEnvelopeMinMass = 2.0;
     // §5.1 / §8.2 step 7a CHE option: extreme rotation, Z ≤ 0.004 (≈ 0.3 Z☉), 20 ≲ M ≲ 60 (upper bound APPROXIMATION).
     private const double CheMaxZ = 0.3, CheMinMass = 20, CheMaxMass = 60;
+
+    /// <summary>
+    /// Hydrogen mass fraction X_H of the H-rich envelope (outcomes §1.3, APPROXIMATION): 0.6 for 9–20 M☉, 0.5 above (the
+    /// research gives 0.5 for 20–33 M☉; [APPROX] it is held at 0.5 for heavier stars). Hydrogen mass ≈ X_H × the
+    /// <see cref="PresupernovaStar.HydrogenEnvelopeMass"/>.
+    /// </summary>
+    public static double HydrogenMassFraction(double initialMass) => initialMass <= 20 ? 0.6 : 0.5;
 
     /// <summary>Evolves the (clamped) inputs to the star's state at death and its early fate.</summary>
     public static (EarlyFate Fate, PresupernovaStar Star, IReadOnlyList<string> Notes) Evolve(LabInputs inputs, ExplodabilityTable table)
@@ -78,7 +91,7 @@ public static class ProgenitorModel
         {
             s = ChemicallyHomogeneous(s);
             notes.Add("With extreme rotation at low metal content the star mixes completely as it burns (chemically " +
-                      "homogeneous evolution), so it never keeps a hydrogen envelope.");
+                      "homogeneous evolution), so it turns almost all of itself into helium and keeps no hydrogen envelope.");
         }
 
         EarlyFate fate;
@@ -91,7 +104,17 @@ public static class ProgenitorModel
         else
         {
             fate = PairInstabilityFate(s.HeCore);
-            notes.Add(FateNote(fate, m, s.HeCore));
+            bool hydrogenRich = x.Stripping == Stripping.None && s.HydrogenEnvelope > 0;
+            double ceiling = hydrogenRich ? PisnMaxZHydrogenRich : PisnMaxZStripped;
+            if (fate == EarlyFate.PairInstability && x.Metallicity > ceiling)
+            {
+                fate = EarlyFate.CoreCollapse;
+                notes.Add($"Its helium core of {UnitFormat.Mass(s.HeCore)} lies in the pair-instability range, but " +
+                          "pair-instability explosions need low metal content (below about " +
+                          (hydrogenRich ? "a third of the Sun's" : "a tenth of the Sun's, an approximate limit") +
+                          " for this kind of star), so here the core collapses to a black hole instead.");
+            }
+            else notes.Add(FateNote(fate, m, s.HeCore));
         }
 
         return (fate, BuildStar(s, x.Metallicity, che), notes);
@@ -133,9 +156,10 @@ public static class ProgenitorModel
             notes.Add("Companion stripping is ignored here: it only matters for stars that end in a supernova.");
     }
 
-    /// <summary>Cummings et al. 2018 IFMR (outcomes §1.1): MIST fit to 7.2 M☉, then the PARSEC fit extrapolated.</summary>
+    /// <summary>Cummings et al. 2018 IFMR (outcomes §1.1): MIST fit to 7.2 M☉, then the PARSEC slope.</summary>
     private static (double Mass, Confidence Confidence, Source Source) InitialFinalMass(double m)
     {
+        double mistTop = 0.107 * IfmrMistTop + 0.471; // 1.2414 M☉
         if (m <= IfmrMistTop)
         {
             double mwd = m < 2.85 ? 0.080 * m + 0.489
@@ -144,9 +168,11 @@ public static class ProgenitorModel
             return (mwd, Confidence.Established,
                 new Source("Cummings et al. 2018, ApJ 866, 21 (MIST-based IFMR)", "outcomes §1.1, §8.2 step 1"));
         }
-        // [APPROX] outcomes §1.1: above 7.2 M☉ extrapolate the PARSEC fit (valid to 8.2 M☉), here up to 9.0 M☉.
-        return (0.0835 * m + 0.565, Confidence.Speculative,
-            new Source("Cummings et al. 2018, ApJ 866, 21 (PARSEC-based IFMR, extrapolated)", "outcomes §1.1, §8.2 step 1"));
+        // [APPROX] outcomes §1.1: above 7.2 M☉ extrapolate the PARSEC fit (slope 0.0835, valid to 8.2 M☉), here up to
+        // 9.0 M☉. The PARSEC line itself sits 0.075 M☉ below the MIST line at 7.2 M☉, so it is offset to meet the MIST
+        // value there and keep the white-dwarf mass continuous.
+        return (mistTop + 0.0835 * (m - IfmrMistTop), Confidence.Speculative,
+            new Source("Cummings et al. 2018, ApJ 866, 21 (PARSEC slope, offset and extrapolated) [APPROX]", "outcomes §1.1, §8.2 step 1"));
     }
 
     private static PresupernovaStar WhiteDwarfStar(double mwd, Confidence massConfidence, Source massSource)
@@ -168,15 +194,18 @@ public static class ProgenitorModel
             Q(1e4, "K", Confidence.Speculative, noValue), NoWind(), NoWind(speed: true), false);
     }
 
-    /// <summary>A star still on the main sequence, approximated by the Sun's nominal values (outcomes §1.1).</summary>
+    /// <summary>
+    /// A star still on the main sequence (outcomes §1.1). [APPROX] It is described as it is now: its initial mass, no He
+    /// or CO core yet, and the Sun's nominal radius and temperature (a 0.8–0.9 M☉ dwarf is close to the Sun). All
+    /// Speculative, like the textbook lifetime scaling behind step 0.
+    /// </summary>
     private static PresupernovaStar MainSequenceStar(double m)
     {
         var src = new Source("Main-sequence lifetime t_MS ≈ 10 Gyr (M/M☉)^-2.5 [APPROX, textbook scaling]", "outcomes §1.1, §8.2 step 0");
-        // [APPROX] A 0.8–0.9 M☉ dwarf is close to the Sun: use the IAU 2015 nominal solar radius and temperature.
         var sun = new Source("IAU 2015 Resolution B3 nominal solar values (Prša et al. 2016, AJ 152, 41) [APPROX]", "signals §0.2");
-        return new PresupernovaStar(Q(m, MSun, Confidence.Established, src), Q(0, MSun, Confidence.Established, src),
-            Q(0, MSun, Confidence.Established, src), Q(m, MSun, Confidence.Established, src),
-            Q(0, MSun, Confidence.Established, src),
+        return new PresupernovaStar(Q(m, MSun, Confidence.Speculative, src), Q(0, MSun, Confidence.Speculative, src),
+            Q(0, MSun, Confidence.Speculative, src), Q(m, MSun, Confidence.Speculative, src),
+            Q(0, MSun, Confidence.Speculative, src),
             Q(PhysicalConstants.RSun, "cm", Confidence.Speculative, sun), Q(5772, "K", Confidence.Speculative, sun),
             NoWind(), NoWind(speed: true), false);
     }
@@ -194,7 +223,7 @@ public static class ProgenitorModel
         new("Sukhbold et al. 2016, ApJ 821, 38 (per-model data, doi:10.17617/1.b)", "outcomes §1.3, §8.2 step 2");
     private static readonly Source MetallicitySchemeSource =
         new("Heger et al. 2003, ApJ 591, 288; Vink et al. 2001, A&A 369, 574; Woosley 2019, ApJ 878, 49; " +
-            "Sukhbold et al. 2016, ApJ 821, 38 [APPROX scheme]", "outcomes §2.2, §8.2 step 2");
+            "Sukhbold et al. 2016, ApJ 821, 38 [APPROX scheme anchored to S16 at Z☉]", "outcomes §2.2, §8.2 step 2");
 
     private static bool IsSolar(double z) => Math.Abs(z - 1) < 1e-9;
 
@@ -222,39 +251,58 @@ public static class ProgenitorModel
     }
 
     /// <summary>
-    /// outcomes §2.2 (APPROXIMATION, so Speculative): cores fixed with Z, wind loss ΔM☉ (Z/Z☉)^α, bare stars eroded as
-    /// W19 He stars.
+    /// outcomes §2.2 (APPROXIMATION, so Speculative), anchored so that it equals S16 at Z☉ and the final mass falls
+    /// smoothly as Z rises.
     /// </summary>
     private static Structure MetallicityScheme(double m, double z, ExplodabilityTable table, List<string> notes)
     {
         var last = table.Rows[^1];
-        // ΔM☉ = M − M_f from the S16 table. [APPROX] Above 120 M☉, keep the 120 M☉ model's fractional loss (95%).
-        double windLossSun = m <= last.InitialMass
-            ? m - Lerp(Bracket(table, m), r => r.PreSnMass)
-            : m * (1 - last.PreSnMass / last.InitialMass);
-        double final = m - windLossSun * Math.Pow(z, m < HeavyStarMass ? AlphaLight : AlphaHeavy);
+        bool inTable = m <= last.InitialMass;
 
-        // §2.2 step 1: cores independent of Z for M ≲ 30, from the S16 table; above, the W19 He-core fit, whose CO core
-        // follows the W19 He-star relation.
+        // Solar final mass M_f☉: the S16 table. [APPROX] Above 120 M☉ the 120 M☉ model's retained fraction (5%) is kept,
+        // which is continuous with the table at 120 M☉.
+        double finalSun = inTable ? Lerp(Bracket(table, m), r => r.PreSnMass) : m * last.PreSnMass / last.InitialMass;
+
+        // [APPROX] §2.2 step 2 scales the wind loss as ΔM☉ (Z/Z☉)^α. Applied additively, that subtracts more than the
+        // whole star at Z > Z☉ for M ≳ 30 M☉ (S16 strips 90–95% of them) and needs a separate bare-star rule that does not
+        // reproduce S16 at Z☉. We use the same scaling on the mass-loss *rate* of a star whose wind is proportional to
+        // its mass: M_f = M (M_f☉ / M)^((Z/Z☉)^α). It equals S16 at Z☉, gives M at Z → 0 (§2.2 step 4, no winds), equals
+        // the additive form to first order when the loss is small, never goes negative, and falls monotonically with Z.
+        double final = m * Math.Pow(finalSun / m, Math.Pow(z, m < HeavyStarMass ? AlphaLight : AlphaHeavy));
+        // [APPROX] Floor above Z☉. The law above would strip S16's 6–7 M☉ Wolf–Rayet stars below a neutron star's mass
+        // (100 M☉ at 2 Z☉: 0.6 M☉). Such a star is already a bare He star whose wind is a WR wind, and the WR rate scales
+        // as (Z/Z☉)^0.6 (W19 WNE, §2.1); its final mass is allowed to shrink only in inverse proportion to that rate,
+        // M_f ≥ M_f☉ (Z/Z☉)^−0.6. The larger of two continuous, falling curves is itself continuous and falling.
+        if (z > 1) final = Math.Max(final, finalSun * Math.Pow(z, -BetaHeStar));
+
+        // §2.2 step 1: cores independent of Z. Up to 30 M☉ the S16 table; above, the W19 He-core fit at He ignition
+        // (S16's cores above ~45 M☉ have been eaten by Z☉ winds). [APPROX] Where the S16 presupernova core is the larger
+        // (30–40 M☉, still H-rich at Z☉ and grown during He burning) it is kept, so the core is continuous at 30 M☉.
         double he, co;
-        if (m <= HeavyStarMass)
+        double heW19 = W19HeCore(m);
+        double coW19 = HeStar.CoCore(heW19, out _);
+        if (inTable)
         {
             var b = Bracket(table, m);
-            he = Lerp(b, r => r.HeCoreMass);
-            co = Lerp(b, r => r.CoCoreMass);
+            he = Math.Max(Lerp(b, r => r.HeCoreMass), heW19);
+            co = Math.Min(he, Math.Max(Lerp(b, r => r.CoCoreMass), coW19));
         }
         else
         {
-            he = W19HeCore(m);
-            co = HeStar.CoCore(he);
+            he = heW19;
+            co = coW19;
         }
 
         if (final > he)
         {
+            double envelope = final - he;
             Quantity radius;
-            bool blue = z <= BlueSupergiantMaxZ;
-            if (blue)
+            bool blue = false;
+            if (envelope < ExtendedEnvelopeMinMass)
+                radius = ThinEnvelopeRadius(envelope);
+            else if (z <= BlueSupergiantMaxZ)
             {
+                blue = true;
                 // [APPROX] §2.2 step 4: R ~ 30–100 R☉ for Z ≲ 0.1 Z☉; 50 R☉ is inside SN 1987A's 30–60 R☉ progenitor.
                 radius = Q(50 * PhysicalConstants.RSun, "cm", Confidence.Speculative,
                     new Source("Sukhbold et al. 2016 §2.2 (SN 1987A progenitor Sk −69°202) [APPROX]", "outcomes §2.2"),
@@ -262,14 +310,28 @@ public static class ProgenitorModel
                 notes.Add("At low metal content the star dies as a compact blue supergiant rather than a red supergiant.");
             }
             else radius = RedSupergiantRadius(m, table);
-            return new Structure(final, he, co, final - he, he - co, Confidence.Speculative, MetallicitySchemeSource, radius, blue);
+            return new Structure(final, he, co, envelope, he - co, Confidence.Speculative, MetallicitySchemeSource, radius, blue);
         }
 
+        // The wind removes the whole envelope and then eats into the He core. [APPROX] The CO core keeps its fraction of
+        // the He core, so every mass stays continuous where the envelope runs out.
         notes.Add("Its winds blow away the whole hydrogen envelope, and then some of the helium, before it dies.");
-        double bare = HeStar.Eroded(he, z);
-        double bareCo = HeStar.CoCore(bare);
-        return new Structure(bare, bare, bareCo, 0, bare - bareCo, Confidence.Speculative, MetallicitySchemeSource,
+        double bareCo = co * final / he;
+        return new Structure(final, final, bareCo, 0, final - bareCo, Confidence.Speculative, MetallicitySchemeSource,
             HeStarRadius(he), false);
+    }
+
+    /// <summary>
+    /// [APPROX] Radius of a star with a thin H-rich envelope (under the 2 M☉ that H03 needs for a II-P red supergiant).
+    /// S16's 35 and 40 M☉ models keep 1.10 and 0.65 M☉ of envelope and are compact, log R = 12.16 and 11.91 (outcomes
+    /// §1.3); interpolate log R in envelope mass between them, held at the ends.
+    /// </summary>
+    private static Quantity ThinEnvelopeRadius(double envelope)
+    {
+        double logR = Lerp(11.91, 12.16, Math.Clamp((envelope - 0.65) / (1.10 - 0.65), 0, 1));
+        return Q(Math.Pow(10, logR), "cm", Confidence.Speculative,
+            new Source("Sukhbold et al. 2016, ApJ 821, 38 (35 and 40 M☉ models); Heger et al. 2003, ApJ 591, 288 [APPROX]",
+                "outcomes §1.3, §2.1"));
     }
 
     /// <summary>[APPROX] RSG radius in the §2.2 scheme: S16 radius to 33 M☉ (the last RSG row), then 1500 R☉.</summary>
@@ -277,8 +339,8 @@ public static class ProgenitorModel
     {
         if (m <= 33)
             return Q(TableRadius(table, m), "cm", Confidence.Speculative, S16Source with { ResearchRef = "outcomes §1.3, §2.2" });
-        // Above 33 M☉ every S16 model has lost its envelope, so there is no model RSG radius; use the largest observed
-        // Galactic RSGs (~1500 R☉), the top of the S16 range (1540 R☉).
+        // Above 33 M☉ every S16 model has lost most of its envelope, so there is no model RSG radius; a star that keeps a
+        // thick envelope gets the largest observed Galactic RSGs (~1500 R☉), the top of the S16 range (1540 R☉).
         return Q(1500 * PhysicalConstants.RSun, "cm", Confidence.Speculative,
             new Source("Levesque et al. 2005, ApJ 628, 973 [APPROX]", "outcomes §4.3"));
     }
@@ -287,6 +349,7 @@ public static class ProgenitorModel
     private static Structure Stripped(double m, double z, Stripping stripping, bool ecsn, ExplodabilityTable table)
     {
         double heInitial, final, co;
+        bool extrapolated = false;
         if (ecsn)
         {
             // [APPROX] The W19 fits fall below the 1.36 M☉ that an ECSN leaves behind, so a stripped ECSN keeps the
@@ -298,13 +361,15 @@ public static class ProgenitorModel
         else
         {
             heInitial = W19HeCore(m);
-            final = HeStar.Eroded(heInitial, z);
-            co = HeStar.CoCore(final);
+            final = HeStar.Eroded(heInitial, z, out bool finalExtrapolated);
+            co = HeStar.CoCore(final, out bool coExtrapolated);
+            extrapolated = finalExtrapolated || coExtrapolated;
         }
 
-        bool speculative = stripping == Stripping.Partial || ecsn || !IsSolar(z);
+        bool speculative = stripping == Stripping.Partial || ecsn || extrapolated || !IsSolar(z);
         var conf = speculative ? Confidence.Speculative : Confidence.ModelDependent;
         string cite = "Woosley 2019, ApJ 878, 49 (He-core fit and Table 4)";
+        if (extrapolated) cite += ", extrapolated beyond Table 4 [APPROX]";
         if (stripping == Stripping.HydrogenAndHelium) cite += "; Hachinger et al. 2012, MNRAS 422, 70";
         if (stripping == Stripping.Partial) cite += "; Chevalier & Soderberg 2010, ApJL 711, L40 [APPROX defaults]";
         if (!IsSolar(z)) cite += "; He-star erosion scaled by (Z/Z☉)^0.6 [APPROX]";
@@ -314,9 +379,8 @@ public static class ProgenitorModel
         {
             case Stripping.Partial:
             {
-                // [APPROX] §8.2 step 2: 0.1 M☉ of hydrogen. The H-rich envelope holding it is M_H / X_H, with X_H from
-                // §1.3 (0.6 for 9–20 M☉, 0.5 above).
-                double envelope = 0.1 / (m <= 20 ? 0.6 : 0.5);
+                // [APPROX] §8.2 step 2: 0.1 M☉ of hydrogen, held in an H-rich envelope of M_H / X_H.
+                double envelope = 0.1 / HydrogenMassFraction(m);
                 // Chevalier & Soderberg 2010: an envelope above 0.1 M☉ makes an extended (eIIb) progenitor of ~10^13 cm.
                 var radius = envelope > 0.1
                     ? Q(1e13, "cm", Confidence.Speculative, new Source("Chevalier & Soderberg 2010, ApJL 711, L40 [APPROX]", "outcomes §3.2, §8.2 step 2"))
@@ -334,14 +398,21 @@ public static class ProgenitorModel
         }
     }
 
-    /// <summary>§8.2 step 7a CHE option: M_H = 0 even without a companion (Yoon et al. 2006).</summary>
+    /// <summary>
+    /// §8.2 step 7a CHE option: M_H = 0 even without a companion (Yoon, Langer & Norman 2006).
+    /// [APPROX] The research gives no CHE core masses. A chemically homogeneous star is mixed throughout and burns
+    /// nearly all its hydrogen into helium, so it ends as a He star of (about) its whole final mass: the He core is set
+    /// to the final mass, and the CO core follows the W19 He-star relation. Keeping the ordinary He core instead would
+    /// make a 20–26 M☉ CHE star's CO core 5–7 M☉, below the M_CO ≳ 7 that Task 5's collapsar condition (§8.2 step 7a)
+    /// needs, which contradicts Yoon et al.'s CHE-to-GRB picture; the whole-star core gives M_CO well above 7 M☉.
+    /// </summary>
     private static Structure ChemicallyHomogeneous(Structure s)
     {
         if (s.HydrogenEnvelope <= 0) return s;
-        var src = new Source(s.MassSource.Citation + "; Yoon, Langer & Norman 2006, A&A 460, 199 [APPROX]",
+        double co = HeStar.CoCore(s.Final, out _);
+        var src = new Source(s.MassSource.Citation + "; Yoon, Langer & Norman 2006, A&A 460, 199; Woosley 2019, ApJ 878, 49 [APPROX]",
             "outcomes §5.1, §8.2 step 7a");
-        return new Structure(s.HeCore, s.HeCore, s.CoCore, 0, s.HeliumEnvelope, Confidence.Speculative, src,
-            HeStarRadius(s.HeCore), false);
+        return new Structure(s.Final, s.Final, co, 0, s.Final - co, Confidence.Speculative, src, HeStarRadius(s.Final), false);
     }
 
     /// <summary>W19 He-core mass at He ignition (outcomes §1.3).</summary>
@@ -377,21 +448,27 @@ public static class ProgenitorModel
         /// <summary>
         /// Final mass of a He star of initial mass <paramref name="heInitial"/>, with its wind loss scaled by
         /// (Z/Z☉)^0.6 (§2.2 step 3). Table 4 inside 3–120 M☉; below 3, the W19 fit 0.939 M^0.872 (equal to the table at 3);
-        /// [APPROX] above 120, the last table segment extended.
+        /// [APPROX] above 120, the last table segment extended (<paramref name="extrapolated"/> is then true).
         /// </summary>
-        public static double Eroded(double heInitial, double z)
+        public static double Eroded(double heInitial, double z, out bool extrapolated)
         {
+            extrapolated = heInitial > Initial[^1];
             double finalSun = heInitial < Initial[0] ? 0.939 * Math.Pow(heInitial, 0.872) : Piecewise(Initial, Final, heInitial);
             return heInitial - (heInitial - finalSun) * Math.Pow(z, BetaHeStar);
         }
 
         /// <summary>
         /// CO-core mass of a He star (or bare He core) of mass <paramref name="heMass"/> at death, from the Table 4
-        /// final-mass → CO pairs. [APPROX] Below 2.45 M☉, the 2.45 M☉ star's CO fraction; above 60.78, the last segment.
+        /// final-mass → CO pairs. [APPROX] Below 2.45 M☉, the 2.45 M☉ star's CO fraction; above 60.78, the last segment
+        /// (<paramref name="extrapolated"/> is then true).
         /// </summary>
-        public static double CoCore(double heMass) => heMass < Final[0]
-            ? heMass * Co[0] / Final[0]
-            : Math.Min(heMass, Piecewise(Final, Co, heMass));
+        public static double CoCore(double heMass, out bool extrapolated)
+        {
+            extrapolated = heMass < Final[0] || heMass > Final[^1];
+            return heMass < Final[0]
+                ? heMass * Co[0] / Final[0]
+                : Math.Min(heMass, Piecewise(Final, Co, heMass));
+        }
     }
 
     // ---------------------------------------------------------------- surface temperature and wind
@@ -406,6 +483,7 @@ public static class ProgenitorModel
     private const double RedSupergiantMinRadiusRSun = 400; // §4.3 / §2.2 step 4: RSGs are ~400–1500 R☉
     private const double ExtendedEnvelopeMinRadiusCm = 1e13; // Chevalier & Soderberg 2010 extended vs compact (§3.2)
 
+    // The temperature and wind states follow the radius, which the structure keys on the envelope mass.
     private static bool IsRedSupergiant(Structure s)
         => s.HydrogenEnvelope > 0 && s.Radius.Value >= RedSupergiantMinRadiusRSun * PhysicalConstants.RSun;
 

@@ -169,24 +169,72 @@ public class ProgenitorModelTests
     [Fact]
     public void LowZ_ScalesWindLoss_AndIsSpeculative()
     {
-        // outcomes §2.2: ΔM☉ = 15 − 12.5966 = 2.4034; × 0.1^0.5 (= 0.316228) = 0.76002; M_f = 15 − 0.76002 = 14.24 (by hand).
+        // outcomes §2.2, anchored form M_f = M (M_f☉/M)^((Z/Z☉)^0.5): M_f☉/M = 12.5966/15 = 0.839773, ln = −0.174624;
+        // × 0.1^0.5 (= 0.316228) = −0.055221; e^-0.055221 = 0.946276; × 15 = 14.194 M☉ (by hand).
         // At Z ≤ 0.1 Z☉ the star is a blue supergiant of ~30–100 R☉.
         var (_, star, _) = Evolve(15, z: 0.1);
-        Assert.Equal(14.240, star.FinalMass.Value, 1e-3);
+        Assert.Equal(14.194, star.FinalMass.Value, 1e-3);
         Assert.Equal(Confidence.Speculative, star.FinalMass.Confidence);
         Assert.InRange(star.RadiusCm.Value / RSun, 30, 100);
     }
 
     [Fact]
-    public void AboveTheTable_AtSolarZ_UsesTheMetallicityScheme_NotTheLastRow()
+    public void AboveTheTable_AtSolarZ_ContinuesThe120SolarMassModel_NotTheLastRow()
     {
-        // Ruling R1: no clamped 120 M☉ row. W19: M_He,i = 0.50 × 150 − 5.87 = 69.13. The scaled wind (95% loss, as at
-        // 120 M☉) bares the star, which is then eroded as a W19 He star: Table 4 between 60 (29.53) and 80 (39.83):
-        // 29.53 + (9.13 / 20) × 10.30 = 34.23 M☉ (by hand).
+        // Ruling R1: no clamped 120 M☉ row. The 120 M☉ model keeps 5.99728/120 of its mass, so 150 M☉ keeps
+        // 150 × 5.99728 / 120 = 7.4966 M☉ (by hand), all of it bare He core.
         var (fate, star, _) = Evolve(150);
-        Assert.Equal(34.23, star.FinalMass.Value, 0.01);
+        Assert.Equal(7.4966, star.FinalMass.Value, 1e-3);
+        Assert.Equal(star.FinalMass.Value, star.HeCoreMass.Value, 1e-9);
         Assert.Equal(0, star.HydrogenEnvelopeMass.Value);
         Assert.Equal(EarlyFate.CoreCollapse, fate);
+    }
+
+    [Fact]
+    public void ThinEnvelope_AtNearSolarZ_IsCompact_NotARedSupergiant()
+    {
+        // 40 M☉ at Z = 0.9: M_f = 40 × (15.337/40)^(0.9^0.85) = 16.650 M☉, He core 14.688 (S16), envelope 1.96 M☉ (by
+        // hand), under the 2 M☉ H03 needs for an extended red supergiant. S16's 35 and 40 M☉ models are 12–21 R☉.
+        var (_, star, _) = Evolve(40, z: 0.9);
+        Assert.Equal(1.96, star.HydrogenEnvelopeMass.Value, 0.01);
+        Assert.True(star.RadiusCm.Value < 100 * RSun, $"radius {star.RadiusCm.Value / RSun} R☉");
+        Assert.NotEqual(3500, star.SurfaceTemperatureK.Value);
+        Assert.Equal(1000, star.WindSpeedKmS.Value);
+    }
+
+    [Fact]
+    public void AboveSolarZ_WolfRayetFinalMass_IsFloored()
+    {
+        // S16 100 M☉: M_f☉ = 6.03642. The anchored law alone gives ~0.63 M☉ at 2 Z☉; the floor is
+        // M_f☉ × 2^−0.6 = 6.03642 × 0.659754 = 3.9825 M☉ (by hand).
+        Assert.Equal(3.9825, Evolve(100, z: 2).Star.FinalMass.Value, 1e-3);
+    }
+
+    [Fact]
+    public void HydrogenMassFraction_FollowsOutcomes1Point3()
+    {
+        Assert.Equal(0.6, ProgenitorModel.HydrogenMassFraction(15));
+        Assert.Equal(0.5, ProgenitorModel.HydrogenMassFraction(25));
+    }
+
+    [Fact]
+    public void WhiteDwarfMass_IsContinuousAt7Point2()
+    {
+        // MIST at 7.2: 0.107 × 7.2 + 0.471 = 1.2414 M☉ (by hand). Above, the PARSEC slope is offset to meet it.
+        double below = Evolve(7.2).Star.FinalMass.Value, above = Evolve(7.2001).Star.FinalMass.Value;
+        Assert.Equal(1.2414, below, 1e-4);
+        Assert.Equal(below, above, 1e-3);
+        Assert.Equal(Confidence.Speculative, Evolve(7.5).Star.FinalMass.Confidence);
+    }
+
+    [Fact]
+    public void ExtrapolatedW19Values_AreSpeculative()
+    {
+        // 12 M☉ Full: the He star ends below 2.45 M☉, under Table 4's lowest CO entry. 300 M☉ Full: M_He,i = 144.13,
+        // above Table 4's 120 M☉.
+        Assert.Equal(Confidence.Speculative, Evolve(12, stripping: Stripping.Full).Star.CoCoreMass.Confidence);
+        Assert.Equal(Confidence.Speculative, Evolve(300, stripping: Stripping.Full).Star.FinalMass.Confidence);
+        Assert.Equal(Confidence.ModelDependent, Evolve(40, stripping: Stripping.Full).Star.FinalMass.Confidence);
     }
 
     // ---- Step 3: pair instability ----
@@ -209,8 +257,34 @@ public class ProgenitorModelTests
         // W19: M_He = 0.50 × 300 − 5.87 = 144.13 M☉ (by hand). Step 3: He core > 133 gives direct collapse; 64–133 PISN.
         var (fate, star, _) = Evolve(300, z: 0.001);
         Assert.Equal(144.13, star.HeCoreMass.Value, 0.01);
-        Assert.Equal(star.HeCoreMass.Value > 133 ? EarlyFate.DirectCollapseAbovePisn : EarlyFate.PairInstability, fate);
         Assert.Equal(EarlyFate.DirectCollapseAbovePisn, fate);
+    }
+
+    [Fact]
+    public void Mass300_AtSolarZ_IsNotPairInstability()
+    {
+        // Ruling R12: a PISN needs Z ≤ 1/3 (H-rich) or ≤ 0.1 (stripped). Unstripped and Full-stripped both fail at Z☉.
+        Assert.NotEqual(EarlyFate.PairInstability, Evolve(300).Fate);
+        Assert.NotEqual(EarlyFate.PairInstability, Evolve(300, stripping: Stripping.Full).Fate);
+    }
+
+    [Fact]
+    public void Mass200_AtHalfSolarZ_IsNotPairInstability() => Assert.NotEqual(EarlyFate.PairInstability, Evolve(200, z: 0.5).Fate);
+
+    [Fact]
+    public void StrippedPisnCeiling_Is0Point1SolarZ()
+    {
+        // 300 M☉ Full: M_He,i = 144.13; Table 4 extended to 144.13: 60.78 + 24.13 × 20.95/40 = 73.418. Eroded He star
+        // = 144.13 − 70.712 × Z^0.6: Z = 0.08 → 128.59, Z = 0.2 → 117.21 (by hand). Both cores are in the PISN range;
+        // only the first is under the stripped ceiling of 0.1 Z☉.
+        var (lowFate, low, _) = Evolve(300, z: 0.08, stripping: Stripping.Full);
+        Assert.Equal(128.59, low.HeCoreMass.Value, 0.01);
+        Assert.Equal(EarlyFate.PairInstability, lowFate);
+
+        var (highFate, high, notes) = Evolve(300, z: 0.2, stripping: Stripping.Full);
+        Assert.Equal(117.21, high.HeCoreMass.Value, 0.01);
+        Assert.Equal(EarlyFate.CoreCollapse, highFate);
+        Assert.Contains(notes, n => n.Contains("black hole"));
     }
 
     // ---- CHE ----
@@ -266,5 +340,59 @@ public class ProgenitorModelTests
     {
         var (_, star, _) = Evolve(LabInputs.Default with { Kind = StarKind.WhiteDwarf, IaChannel = channel, WhiteDwarfMass = 0.9 });
         Assert.All(Quantities(star), q => Assert.False(string.IsNullOrWhiteSpace(q.Source.Citation)));
+    }
+
+    // ---- Continuity and monotonicity of the final mass in Z (review fix round 1) ----
+
+    private static readonly double[] SweepMasses = { 0.8, 0.85, 3, 7.5, 8.5, 9.1, 12, 15, 23, 40, 80, 150, 200, 300 };
+
+    public static IEnumerable<object[]> MassStrippingRotation()
+    {
+        foreach (double m in SweepMasses)
+        foreach (Stripping s in Enum.GetValues<Stripping>())
+        foreach (Rotation r in new[] { Rotation.Slow, Rotation.Extreme })
+            yield return new object[] { m, s, r };
+    }
+
+    /// <summary>Z = 0.001, then 0.05, 0.10, … 2.00.</summary>
+    private static double[] ZGrid() => new[] { 0.001 }.Concat(Enumerable.Range(1, 40).Select(k => 0.05 * k)).ToArray();
+
+    [Theory]
+    [MemberData(nameof(MassStrippingRotation))]
+    public void FinalMass_NeverRisesWithZ_AndNeverJumpsMoreThan25Percent(double mass, Stripping stripping, Rotation rotation)
+    {
+        double previous = double.PositiveInfinity;
+        foreach (double z in ZGrid())
+        {
+            double final = Evolve(mass, z, stripping, rotation).Star.FinalMass.Value;
+            Assert.True(final <= previous + 1e-9, $"M_f rose from {previous} to {final} at Z = {z}");
+            if (!double.IsPositiveInfinity(previous))
+                Assert.True((previous - final) / previous <= 0.25, $"M_f fell from {previous} to {final} at Z = {z}");
+            previous = final;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(MassStrippingRotation))]
+    public void FinalMass_IsContinuousAcrossSolarZ(double mass, Stripping stripping, Rotation rotation)
+    {
+        double solar = Evolve(mass, 1.0, stripping, rotation).Star.FinalMass.Value;
+        foreach (double z in new[] { 0.999, 1.001 })
+        {
+            double near = Evolve(mass, z, stripping, rotation).Star.FinalMass.Value;
+            Assert.True(Math.Abs(near - solar) <= 0.02 * solar, $"M_f {near} at Z = {z} vs {solar} at Z☉");
+        }
+    }
+
+    [Theory]
+    [InlineData(Stripping.None)]
+    [InlineData(Stripping.Partial)]
+    [InlineData(Stripping.Full)]
+    [InlineData(Stripping.HydrogenAndHelium)]
+    public void FinalMass_IsContinuousAcross120SolarMasses(Stripping stripping)
+    {
+        double atTable = Evolve(120, stripping: stripping).Star.FinalMass.Value;
+        double above = Evolve(120.01, stripping: stripping).Star.FinalMass.Value;
+        Assert.True(Math.Abs(above - atTable) <= 0.05 * atTable, $"M_f {atTable} at 120 vs {above} at 120.01");
     }
 }
