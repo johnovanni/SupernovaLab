@@ -31,6 +31,45 @@ public static class TypeIaModel
     private static readonly Source Kromer13 =
         new("Kromer et al. 2013, MNRAS 429, 2287 (deflagration model N5def)", Refs);
 
+    // Step 9: M_bol = 4.74 − 2.5 log10(L_peak / 3.828×10³³ erg/s), and M_B ≈ M_bol (BC_B ≈ 0 at peak, APPROXIMATION).
+    private const double MbolSun = 4.74;
+    // §7.2: Phillips et al. 1999 B band, M_B = M_B,0 + a (Δm15 − 1.1) + b (Δm15 − 1.1)², a = 0.786, b = 0.633, with
+    // M_B,0 = −19.3 (step 9), valid for 0.85 < Δm15(B) < 1.70.
+    private const double PhillipsA = 0.786, PhillipsB = 0.633, PhillipsZeroPoint = -19.3, PhillipsPivot = 1.1;
+    private const double Dm15Min = 0.85, Dm15Max = 1.7;
+
+    /// <summary>
+    /// Step 9: peak absolute B magnitude from the peak luminosity, M_B ≈ M_bol = 4.74 − 2.5 log10(L / L☉). Speculative:
+    /// BC_B ≈ 0 is an approximation.
+    /// </summary>
+    public static Quantity PeakAbsoluteMagB(Quantity peakLuminosity)
+        => new(MbolSun - 2.5 * Math.Log10(peakLuminosity.Value / PhysicalConstants.LSun), "mag", Confidence.Speculative,
+            new Source("M_bol = 4.74 − 2.5 log10(L_peak / L☉) with BC_B ≈ 0 at peak [APPROX]; L_peak from " +
+                       peakLuminosity.Source.Citation, "outcomes §7.2, §8.2 step 9"));
+
+    /// <summary>
+    /// Step 9: Δm15(B) from the inverted Phillips 1999 quadratic with M_B,0 = −19.3. With u = Δm15 − 1.1 and
+    /// ΔM = M_B − M_B,0, b u² + a u − ΔM = 0 gives u = (−a + √(a² + 4 b ΔM)) / (2b), the branch through u = 0. Outside
+    /// the relation's 0.85–1.7 range (or brighter than the parabola's vertex) Δm15 is clamped to the nearer end, with a
+    /// note. Speculative, like the M_B it comes from.
+    /// </summary>
+    public static Quantity DeclineRateDm15B(Quantity peakMagB, List<string> notes)
+    {
+        double dm = peakMagB.Value - PhillipsZeroPoint;
+        double disc = PhillipsA * PhillipsA + 4 * PhillipsB * dm;
+        double dm15 = disc < 0 ? Dm15Min : PhillipsPivot + (-PhillipsA + Math.Sqrt(disc)) / (2 * PhillipsB);
+        bool clamped = dm15 < Dm15Min || dm15 > Dm15Max;
+        dm15 = Math.Clamp(dm15, Dm15Min, Dm15Max);
+        var src = new Source("Phillips et al. 1999, AJ 118, 1766, Table 3 (B band, inverted), M_B,0 = −19.3 (Riess et al. " +
+                             "2022, ApJL 934, L7)" + (clamped ? "; clamped to the fit's 0.85–1.7 mag range [APPROX]" : ""),
+            "outcomes §7.2, §8.2 step 9");
+        if (clamped)
+            notes.Add($"Its peak brightness lies outside the range the Phillips relation covers, so its decline rate is " +
+                      $"held at the end of that range ({dm15.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} " +
+                      "mag in 15 days); this is an extrapolation.");
+        return new Quantity(dm15, "mag", Confidence.Speculative, src);
+    }
+
     public static TypeIaExplosion Explode(LabInputs inputs, List<string> notes)
     {
         var x = inputs.Clamped();
@@ -127,7 +166,9 @@ public static class TypeIaModel
         var ejecta = new Quantity(IaxEjecta, MSun, conf, src, 0.3, 0.4);
         var nickel = new Quantity(IaxNickel, MSun, conf,
             src with { Citation = src.Citation + "; Iax range 0.003–0.3 M☉ (Jha 2017, arXiv:1707.01110)" }, 0.003, 0.3);
-        var energy = new Quantity(IaxEnergy, "erg", conf, src);
+        // The research files give no Iax kinetic energy; N5def's (checked against the paper) is used, Speculative.
+        var energy = new Quantity(IaxEnergy, "erg", Confidence.Speculative,
+            src with { Citation = src.Citation + "; Iax E_K not in the research files [APPROX]" });
         var remnantMass = new Quantity(mwd - IaxEjecta, MSun, conf,
             src with { Citation = src.Citation + "; bound remnant = M_WD − M_ej" });
 

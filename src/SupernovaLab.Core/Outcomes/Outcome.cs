@@ -30,8 +30,11 @@ public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, 
 /// The lab's result (spec §3). <see cref="Inputs"/> are the inputs as used, held inside their slider ranges.
 /// Energies in erg, masses in M☉, luminosity in erg/s, times in s. Quantities that do not apply are null.
 /// <see cref="UsesPublishedValues"/> is true when preset pins replaced any model value.
+/// <see cref="PeakAbsoluteMagB"/> (mag) and <see cref="DeclineRateDm15B"/> (Δm15(B), mag) are the outcomes §8.2 step 9
+/// Phillips outputs, set for Type Ia (including Iax) only (ruling R21).
 /// </summary>
 public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bool HasGrb, Remnant Remnant,
     PresupernovaStar? Star, Quantity? ExplosionEnergyErg, Quantity? EjectaMass, Quantity? NickelMass,
     Quantity? PeakLuminosityErgS, Quantity? MagnetarEnergyErg, Quantity? MagnetarTimescaleS,
-    IReadOnlyList<string> Notes, bool UsesPublishedValues);
+    IReadOnlyList<string> Notes, bool UsesPublishedValues,
+    Quantity? PeakAbsoluteMagB = null, Quantity? DeclineRateDm15B = null);

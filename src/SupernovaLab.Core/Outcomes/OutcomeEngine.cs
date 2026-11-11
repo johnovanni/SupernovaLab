@@ -13,8 +13,9 @@ public sealed partial class OutcomeEngine
 {
     private const string MSun = "M☉";
 
-    // Step 3 (outcomes §2.3): the He-core mass at which pair instability disrupts the star, as in ProgenitorModel.
-    private const double PisnHeCore = 64;
+    // Step 3 (outcomes §2.3): the He-core masses at which pulsational and full pair instability set in, as in
+    // ProgenitorModel.
+    private const double PpisnHeCore = 35, PisnHeCore = 64;
     // Step 3: M_BH ≈ min(M_He,final, ~45) after pulsational pair instability (F19; APPROXIMATION for the shape).
     private const double PpisnMaxBlackHole = 45;
     // Below 0.01 M☉ of pulse ejecta the PPISN is shown without an interacting transient (Task 4 review).
@@ -41,6 +42,9 @@ public sealed partial class OutcomeEngine
 
     private static readonly Source S16Explosions =
         new("Sukhbold et al. 2016, ApJ 821, 38 (per-model Z9.6 / N20 results, doi:10.17617/1.b)", "outcomes §1.2, §1.4, §8.2 steps 4–5");
+    private static readonly Source MagnetarPeakSource =
+        new("Kasen & Bildsten 2010, ApJ 717, 245 (spin-down power at the diffusion time, eq. 12 and 14, κ = 0.2 cm²/g) " +
+            "[APPROX]", "outcomes §5.3, §8.2 step 7b");
     private static readonly Source Sch21 =
         new("Schneider, Podsiadlowski & Müller 2021, A&A 645, A5 (stripped Case A/B stars)", "outcomes §3.3, §8.2 steps 4–5");
 
@@ -61,9 +65,22 @@ public sealed partial class OutcomeEngine
             return Finish(x, ia, star, notes, pins);
         }
 
-        // Step 7d, before step 4: fast rotation without a strong field enlarges the cores.
+        // Step 7d, before step 4: fast rotation without a strong field enlarges an unstripped star's cores. Ruling R20:
+        // step 3 is then re-run on the raised He core, which can reach the PPISN range (it stays below 64 M☉, since it
+        // started below 35; a core already above the PISN ceiling stays a direct collapse).
         bool coresRaised = early == EarlyFate.CoreCollapse && RaisesCores(x, star);
-        if (coresRaised) star = WithRotatingCores(x, star, notes);
+        if (coresRaised)
+        {
+            double heBefore = star.HeCoreMass.Value;
+            star = WithRotatingCores(x, star, notes);
+            if (heBefore < PpisnHeCore && star.HeCoreMass.Value >= PpisnHeCore)
+            {
+                early = EarlyFate.PulsationalPairInstability;
+                notes.Add($"Its enlarged helium core of {UnitFormat.Mass(star.HeCoreMass.Value)} reaches the pulsational " +
+                          "pair-instability range (about 35–64 M☉): pulses throw off mass before the core collapses to a " +
+                          "black hole.");
+            }
+        }
 
         Draft d = early switch
         {
@@ -95,6 +112,11 @@ public sealed partial class OutcomeEngine
         public bool HasGrb { get; init; }
         public Quantity? MagnetarEnergy { get; init; }
         public Quantity? MagnetarTimescale { get; init; }
+        /// <summary>
+        /// E_SN + E_p before the displayed E_K's 9.8 B cap: the energy that sets a magnetar supernova's diffusion time
+        /// (outcomes §5.3).
+        /// </summary>
+        public double? MagnetarDiffusionEnergy { get; init; }
         public Step7 Branch { get; init; }
     }
 
@@ -116,8 +138,16 @@ public sealed partial class OutcomeEngine
             if (pins.RadiusCm is double r) star = star with { RadiusCm = Pin(r, "cm") };
         }
 
-        return new Outcome(x, d.Fate, d.Type, d.HasGrb, d.Remnant, star, energy, ejecta, nickel,
-            PeakLuminosity(d, star, energy, ejecta, nickel), d.MagnetarEnergy, d.MagnetarTimescale, notes, published);
+        var peak = PeakLuminosity(d, star, energy, ejecta, nickel);
+        // Step 9 / ruling R21: the Phillips outputs for Type Ia outcomes.
+        Quantity? magB = null, dm15 = null;
+        if (x.Kind == StarKind.WhiteDwarf && peak is not null)
+        {
+            magB = TypeIaModel.PeakAbsoluteMagB(peak);
+            dm15 = TypeIaModel.DeclineRateDm15B(magB, notes);
+        }
+        return new Outcome(x, d.Fate, d.Type, d.HasGrb, d.Remnant, star, energy, ejecta, nickel, peak,
+            d.MagnetarEnergy, d.MagnetarTimescale, notes, published, magB, dm15);
     }
 
     /// <summary>
@@ -127,13 +157,15 @@ public sealed partial class OutcomeEngine
     /// </summary>
     private static Quantity? PeakLuminosity(Draft d, PresupernovaStar star, Quantity? energy, Quantity? ejecta, Quantity? nickel)
     {
-        // [APPROX] The ⁵⁶Ni heating (~10⁴² erg/s) is left out next to the magnetar's ~10⁴⁴ erg/s.
+        // [APPROX] The ⁵⁶Ni heating (~10⁴² erg/s) is left out next to the magnetar's heating. The diffusion time uses
+        // E_SN + E_p uncapped (§5.3), unless a preset pinned the kinetic energy, which is then the real one.
         if (d.Peak == PeakRule.Magnetar && d.MagnetarEnergy is { } ep && d.MagnetarTimescale is { } tp &&
             ejecta is { Value: > 0 } && energy is { Value: > 0 })
-            return new Quantity(MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, energy.Value), "erg/s",
-                Confidence.Speculative,
-                new Source("Kasen & Bildsten 2010, ApJ 717, 245 (spin-down power at the diffusion time, eq. 12 and 14, " +
-                           "κ = 0.2 cm²/g) [APPROX]", "outcomes §5.3, §8.2 step 7b"));
+        {
+            double kinetic = energy.Published ? energy.Value : d.MagnetarDiffusionEnergy ?? energy.Value;
+            return new Quantity(MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, kinetic), "erg/s",
+                Confidence.Speculative, MagnetarPeakSource);
+        }
 
         var env = star.HydrogenEnvelopeMass;
         if (d.Peak == PeakRule.Plateau && energy is { Value: > 0 } && env.Value > 0)
@@ -465,6 +497,7 @@ public sealed partial class OutcomeEngine
     private static Draft Exploded(LabInputs x, PresupernovaStar star, Collapse c, List<string> notes)
     {
         var (baseType, typeNote) = SpectralTyper.Classify(star, x.InitialMass, x.Stripping, x.Mixing);
+        int typeNoteAt = notes.Count;
         notes.Add(typeNote);
 
         var energy = c.Energy!;
@@ -538,25 +571,32 @@ public sealed partial class OutcomeEngine
         var peak = SpectralTyper.HasPlateau(baseType) ? PeakRule.Plateau : PeakRule.Arnett;
         bool peakSpeculative = x.DenseCsm || baseType == SupernovaType.IIL;
         Quantity? spinDownEnergy = null, spinDownTime = null;
+        double? diffusionEnergy = null;
         var branch = Step7.None;
         if (x.Field == CoreField.Strong && remnant.Kind == RemnantKind.NeutronStar)
         {
             // Step 7b: a strong core field makes the neutron star a magnetar.
-            var mag = Magnetar(x, star, remnant, energy, notes);
-            (remnant, energy, spinDownEnergy, spinDownTime, branch) =
-                (mag.Remnant, mag.Energy, mag.SpinDownEnergy, mag.SpinDownTime, Step7.Magnetar);
-            if (mag.Superluminous is { } slsn)
+            var mag = Magnetar(x, star, remnant, energy, ejecta, notes);
+            (remnant, energy, spinDownEnergy, spinDownTime, diffusionEnergy, branch) =
+                (mag.Remnant, mag.Energy, mag.SpinDownEnergy, mag.SpinDownTime, mag.DiffusionEnergy, Step7.Magnetar);
+            if (mag.PowersLight)
             {
-                type = slsn;
                 peak = PeakRule.Magnetar;
                 peakSpeculative = true;
+            }
+            if (mag.Superluminous is { } slsn)
+            {
+                // Ruling R22: the superluminous class replaces the base class, so its sentence goes.
+                type = slsn;
+                notes.RemoveAt(typeNoteAt);
             }
         }
         type = WithDenseCsm(x, type, notes);
 
         return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, peak, peakSpeculative)
         {
-            MagnetarEnergy = spinDownEnergy, MagnetarTimescale = spinDownTime, Branch = branch,
+            MagnetarEnergy = spinDownEnergy, MagnetarTimescale = spinDownTime, MagnetarDiffusionEnergy = diffusionEnergy,
+            Branch = branch,
         };
     }
 

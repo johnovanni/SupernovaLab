@@ -26,6 +26,8 @@ public sealed partial class OutcomeEngine
     private const double SlsnMinEnergy = 1e51, SlsnMinTime = PhysicalConstants.Day, SlsnMaxTime = 100 * PhysicalConstants.Day;
     // Step 7b: E_K ≈ E_SN + E_p, capped by N17's typical 1.9–9.8 B.
     private const double SlsnMaxEnergy = 9.8e51;
+    // Ruling R22 [APPROX]: an H-rich magnetar supernova is SLSN-II only if its peak is ≥ 7×10⁴³ erg/s (M ≲ −21).
+    private const double SlsnIIMinPeak = 7e43;
     // Step 7d [APPROX]: rotational mixing raises M_He and M_CO by ~10–25%; the middle is taken.
     private const double RotatingCoreFactor = 1.175, RotatingCoreLow = 1.10, RotatingCoreHigh = 1.25;
 
@@ -162,13 +164,17 @@ public sealed partial class OutcomeEngine
 
     /// <summary>
     /// What step 7b makes of a newborn neutron star: the magnetar remnant, the kinetic energy, the spin-down energy and
-    /// time when they change the light, and the superluminous class when they power one.
+    /// time when they change the light (<see cref="PowersLight"/>, with <see cref="DiffusionEnergy"/> = E_SN + E_p
+    /// uncapped for the diffusion time), and the superluminous class when they power one.
     /// </summary>
     private sealed record MagnetarOutcome(Remnant Remnant, Quantity Energy, Quantity? SpinDownEnergy, Quantity? SpinDownTime,
-        SupernovaType? Superluminous);
+        double? DiffusionEnergy, SupernovaType? Superluminous)
+    {
+        public bool PowersLight => SpinDownEnergy is not null;
+    }
 
     private static MagnetarOutcome Magnetar(LabInputs x, PresupernovaStar star, Remnant neutronStar, Quantity energy,
-        List<string> notes)
+        Quantity ejecta, List<string> notes)
     {
         var remnant = MagnetarModel.Magnetar(neutronStar, x.Rotation);
         var period = remnant.SpinPeriodS!;
@@ -181,29 +187,44 @@ public sealed partial class OutcomeEngine
             // Step 7b: slow rotation gives a normal supernova with a magnetar remnant and no light-curve effect.
             notes.Add($"The strong magnetic field makes the neutron star a magnetar. It {spin}, so its spin-down energy " +
                       $"(about {UnitFormat.Energy(ep.Value)}) is too small to change the light curve.");
-            return new MagnetarOutcome(remnant, energy, null, null, null);
+            return new MagnetarOutcome(remnant, energy, null, null, null, null);
         }
 
-        string rotation = x.Rotation == Rotation.Extreme ? "extreme" : "fast";
+        string born = $"With {(x.Rotation == Rotation.Extreme ? "extreme" : "fast")} rotation and a strong magnetic field " +
+                      $"the neutron star is born a magnetar. It {spin}";
         bool superluminous = ep.Value >= SlsnMinEnergy && tp.Value >= SlsnMinTime && tp.Value <= SlsnMaxTime;
         if (!superluminous)
         {
-            notes.Add($"With {rotation} rotation and a strong magnetic field the neutron star is born a magnetar. It " +
-                      $"{spin}; its spin-down adds about {UnitFormat.Energy(ep.Value)} over about {UnitFormat.Time(tp.Value)}.");
-            return new MagnetarOutcome(remnant, energy, ep, tp, null);
+            notes.Add($"{born}; its spin-down adds about {UnitFormat.Energy(ep.Value)} over about {UnitFormat.Time(tp.Value)}.");
+            return new MagnetarOutcome(remnant, energy, ep, tp, energy.Value + ep.Value, null);
         }
 
-        var kinetic = Q(Math.Min(energy.Value + ep.Value, SlsnMaxEnergy), "erg", Confidence.Speculative,
+        // Step 7b: E_K ≈ E_SN + E_p, capped at N17's 9.8 B for display; the diffusion time takes the uncapped sum (§5.3).
+        double total = energy.Value + ep.Value;
+        var kinetic = Q(Math.Min(total, SlsnMaxEnergy), "erg", Confidence.Speculative,
             new Source($"E_K ≈ E_SN + E_p, capped at 9.8 B (Nicholl, Guillochon & Berger 2017, ApJ 850, 55); E_SN from " +
                        energy.Source.Citation, "outcomes §5.3, §8.2 step 7b"));
-        bool hydrogen = star.HydrogenEnvelopeMass.Value > 0;
-        notes.Add($"With {rotation} rotation and a strong magnetic field the neutron star is born a magnetar. It {spin}, " +
-                  $"and as it slows it pours about {UnitFormat.Energy(ep.Value)} into the ejecta over about " +
-                  $"{UnitFormat.Time(tp.Value)}. That makes a superluminous supernova " +
-                  (hydrogen
-                      ? "with hydrogen lines (Type II); how such hydrogen-rich events arise is speculative."
-                      : "without hydrogen (Type I). The step from the star to its spin and field is speculative."));
-        return new MagnetarOutcome(remnant, kinetic, ep, tp, hydrogen ? SupernovaType.SlsnII : SupernovaType.SlsnI);
+        string pours = $"{born}, and as it slows it pours about {UnitFormat.Energy(ep.Value)} into the ejecta over about " +
+                       $"{UnitFormat.Time(tp.Value)}.";
+
+        if (star.HydrogenEnvelopeMass.Value <= 0)
+        {
+            notes.Add($"{pours} That makes a superluminous supernova without hydrogen (Type I). The step from the star to " +
+                      "its spin and field is speculative.");
+            return new MagnetarOutcome(remnant, kinetic, ep, tp, total, SupernovaType.SlsnI);
+        }
+
+        // Ruling R22 [APPROX]: hydrogen-rich events count as SLSN-II only above the usual superluminous cut.
+        double peak = MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, total);
+        if (peak >= SlsnIIMinPeak)
+        {
+            notes.Add($"{pours} That makes a superluminous supernova with hydrogen lines (Type II); how such " +
+                      "hydrogen-rich events arise is speculative.");
+            return new MagnetarOutcome(remnant, kinetic, ep, tp, total, SupernovaType.SlsnII);
+        }
+        notes.Add($"{pours} Its hydrogen envelope holds the light back, so it is not superluminous; it stays a " +
+                  "hydrogen-rich supernova, made unusually luminous by the magnetar (speculative).");
+        return new MagnetarOutcome(remnant, kinetic, ep, tp, total, null);
     }
 
     private static string FieldText(double gauss)
@@ -212,49 +233,41 @@ public sealed partial class OutcomeEngine
     // ---------------------------------------------------------------- step 7d: rotation-enlarged cores
 
     /// <summary>
-    /// Step 7d applies to fast or extreme rotation without a strong field. A chemically homogeneous star (the CHE option)
-    /// is already mixed throughout, so its cores are left as they are.
+    /// Step 7d applies to fast or extreme rotation without a strong field, for unstripped stars only (ruling R20): a
+    /// stripped star's fate is keyed on its initial mass (Sch21), so raising its CO core would only erase its He shell. A
+    /// chemically homogeneous star (the CHE option) is already mixed throughout, so its cores are left as they are.
     /// </summary>
     private static bool RaisesCores(LabInputs x, PresupernovaStar star)
-        => x.Rotation != Rotation.Slow && x.Field == CoreField.Normal && !star.ChemicallyHomogeneous;
+        => x.Rotation != Rotation.Slow && x.Field == CoreField.Normal && x.Stripping == Stripping.None &&
+           !star.ChemicallyHomogeneous;
 
     /// <summary>
     /// Step 7d [APPROX]: raise M_He and M_CO by 17.5% (the middle of ~10–25%, Heger, Langer & Woosley 2000) before step 4,
-    /// keeping the final mass. The He core can grow only into an H-rich envelope the star made itself: a stripped star's He
-    /// core is what its companion left, so only its CO core grows (into the He shell). Speculative.
+    /// keeping the final mass (the He core grows into the H-rich envelope). Speculative.
     /// </summary>
     private static PresupernovaStar WithRotatingCores(LabInputs x, PresupernovaStar star, List<string> notes)
     {
         double mf = star.FinalMass.Value;
-        bool heGrows = x.Stripping == Stripping.None;
-        double He(double f) => heGrows ? Math.Min(star.HeCoreMass.Value * f, mf) : star.HeCoreMass.Value;
+        double He(double f) => Math.Min(star.HeCoreMass.Value * f, mf);
         double Co(double f) => Math.Min(star.CoCoreMass.Value * f, He(f));
         const string raised = "; raised by 17.5% (10–25%) for rotational mixing (Heger, Langer & Woosley 2000, ApJ 528, " +
                               "368; Limongi & Chieffi 2018) [APPROX]";
+        Source From(Quantity q) => new(q.Source.Citation + raised, q.Source.ResearchRef + "; outcomes §8.2 step 7d");
         Quantity Raised(Quantity q, Func<double, double> mass) => Q(mass(RotatingCoreFactor), MSun, Confidence.Speculative,
-            new Source(q.Source.Citation + raised, q.Source.ResearchRef + "; outcomes §8.2 step 7d"),
-            mass(RotatingCoreLow), mass(RotatingCoreHigh));
-        Quantity Layer(Quantity q, double value) => Q(value, MSun, Confidence.Speculative,
-            new Source(q.Source.Citation + raised, q.Source.ResearchRef + "; outcomes §8.2 step 7d"));
+            From(q), mass(RotatingCoreLow), mass(RotatingCoreHigh));
+        Quantity Layer(Quantity q, double value) => Q(value, MSun, Confidence.Speculative, From(q));
 
         double he = He(RotatingCoreFactor), co = Co(RotatingCoreFactor);
-        var raisedStar = star with
+        string rotation = x.Rotation == Rotation.Extreme ? "Extreme" : "Fast";
+        notes.Add($"{rotation} rotation mixes fresh fuel into the burning core, so its helium and carbon-oxygen cores grow " +
+                  $"by about a sixth (10–25%), to {UnitFormat.Mass(he)} and {UnitFormat.Mass(co)}. How much is model-dependent.");
+        return star with
         {
+            HeCoreMass = Raised(star.HeCoreMass, He),
             CoCoreMass = Raised(star.CoCoreMass, Co),
+            HydrogenEnvelopeMass = Layer(star.HydrogenEnvelopeMass, mf - he),
             HeliumEnvelopeMass = Layer(star.HeliumEnvelopeMass, he - co),
         };
-        if (heGrows)
-            raisedStar = raisedStar with
-            {
-                HeCoreMass = Raised(star.HeCoreMass, He),
-                HydrogenEnvelopeMass = Layer(star.HydrogenEnvelopeMass, mf - he),
-            };
-
-        string rotation = x.Rotation == Rotation.Extreme ? "Extreme" : "Fast";
-        notes.Add($"{rotation} rotation mixes fresh fuel into the burning core, so " +
-                  (heGrows ? "its helium and carbon-oxygen cores grow" : "its carbon-oxygen core grows") +
-                  $" by about a sixth (10–25%), to a carbon-oxygen core of {UnitFormat.Mass(co)}. How much is model-dependent.");
-        return raisedStar;
     }
 
     // ---------------------------------------------------------------- inputs that had no effect
@@ -278,7 +291,10 @@ public sealed partial class OutcomeEngine
                             d.Branch is Step7.Collapsar or Step7.Magnetorotational or Step7.Magnetar;
         if (spins && !rotationUsed)
         {
-            string why = early switch
+            string why = x.Stripping != Stripping.None && early == EarlyFate.CoreCollapse
+                ? "a stripped star's fate is set by its initial mass (Schneider et al. 2021), so the lab does not grow " +
+                  "its cores for rotation"
+                : early switch
             {
                 EarlyFate.NotDeadYet or EarlyFate.WhiteDwarf => "it matters only for stars whose core collapses",
                 EarlyFate.ElectronCapture => "the lab does not shift the electron-capture window for rotation",

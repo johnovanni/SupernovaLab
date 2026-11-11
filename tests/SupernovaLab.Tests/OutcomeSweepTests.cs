@@ -116,6 +116,20 @@ public class OutcomeSweepTests
                 Assert.NotNull(o.ExplosionEnergyErg);
             }
 
+            // Ruling R21: the Phillips outputs exist for Type Ia only; a magnitude can be negative.
+            if (x.Kind == StarKind.WhiteDwarf)
+            {
+                Assert.True(o.PeakAbsoluteMagB is { } mb && double.IsFinite(mb.Value), $"M_B at {where}");
+                Assert.InRange(o.DeclineRateDm15B!.Value, 0.85, 1.7);
+                Assert.False(string.IsNullOrWhiteSpace(o.DeclineRateDm15B.Source.Citation));
+                Assert.False(string.IsNullOrWhiteSpace(o.PeakAbsoluteMagB!.Source.Citation));
+            }
+            else
+            {
+                Assert.Null(o.PeakAbsoluteMagB);
+                Assert.Null(o.DeclineRateDm15B);
+            }
+
             if (o.HasGrb) Assert.Equal(SupernovaType.IcBL, o.Type);
             if (o.Remnant.Kind == RemnantKind.Magnetar)
                 Assert.Equal(CoreField.Strong, x.Field);

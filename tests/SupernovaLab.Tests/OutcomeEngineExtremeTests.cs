@@ -99,6 +99,8 @@ public class OutcomeEngineExtremeTests
         Assert.Equal(4.3522e51, o.ExplosionEnergyErg!.Value, 0.0001e51);
         Assert.True(o.PeakLuminosityErgS!.Value > 1e43);
         Assert.Contains(o.Notes, n => n.Contains("magnetar"));
+        // Ruling R22: the superluminous class replaces the base class (Ib here), so its sentence is gone.
+        Assert.DoesNotContain(o.Notes, n => n.Contains("Type Ib"));
     }
 
     [Fact]
@@ -113,6 +115,38 @@ public class OutcomeEngineExtremeTests
         Assert.Equal(SupernovaType.SlsnI, o.Type);
         // E_K = 0.88e51 + 13.889e51 = 14.77e51, capped at N17's 9.8 B.
         Assert.Equal(9.8e51, o.ExplosionEnergyErg!.Value);
+
+        // The diffusion time uses E_SN + E_p uncapped (§5.3). By hand, M_ej = 3.56677 M☉ = 7.09431e33 g,
+        // E = 1.47689e52 erg: v = √(E / 2M) = 1.02024e9 cm/s; t_d = √(3 M κ / (4π v c)) with κ = 0.2 = 3.3279e6 s;
+        // t_p = 4.1028e7 s × 0.12² / 0.8² = 9.2313e5 s; L = (E_p / t_p) / (1 + t_d / t_p)² = 1.50454e46 / 4.60504² =
+        // 7.0947e44 erg/s. (With the capped 9.8e51 it would be 6.03e44.)
+        Assert.Equal(7.0947e44, o.PeakLuminosityErgS!.Value, 0.005 * 7.0947e44);
+    }
+
+    [Fact]
+    public void StrongField_FastRotation_HydrogenRich_BelowTheSuperluminousCut_StaysIIP()
+    {
+        // Ruling R22: SLSN-II only if the model peak is ≥ 7e43 erg/s. 16 M☉ at Z☉: M_ej 11.59828 M☉ = 2.30690e34 g,
+        // E = 1.255e51 + 3.47222e51 = 4.72722e51 erg; v = 3.20091e8 cm/s; t_d = 1.07137e7 s; t_p = 3.69252e6 s;
+        // L = (3.47222e51 / 3.69252e6) / (1 + 2.90145)² = 9.40339e44 / 15.2213 = 6.178e43 erg/s, under the cut.
+        var o = Compute(16, rotation: Rotation.Fast, field: CoreField.Strong);
+        Assert.Equal(SupernovaType.IIP, o.Type);
+        Assert.Equal(RemnantKind.Magnetar, o.Remnant.Kind);
+        Assert.NotNull(o.MagnetarEnergyErg);
+        Assert.Equal(6.178e43, o.PeakLuminosityErgS!.Value, 0.005 * 6.178e43);
+        Assert.Contains(o.Notes, n => n.Contains("unusually luminous"));
+        Assert.Contains(o.Notes, n => n.Contains("Type II-P"));
+    }
+
+    [Fact]
+    public void StrongField_FastRotation_HydrogenRich_AboveTheSuperluminousCut_IsSlsnII()
+    {
+        // 12 M☉ at Z☉ has a lighter envelope (M_ej 9.37 M☉), so its peak, 7.43e43 erg/s, passes the 7e43 cut.
+        var o = Compute(12, rotation: Rotation.Fast, field: CoreField.Strong);
+        Assert.Equal(SupernovaType.SlsnII, o.Type);
+        Assert.True(o.PeakLuminosityErgS!.Value >= 7e43);
+        Assert.Equal(Confidence.Speculative, o.PeakLuminosityErgS.Confidence);
+        Assert.DoesNotContain(o.Notes, n => n.Contains("Type II-P"));
     }
 
     [Fact]
@@ -172,6 +206,39 @@ public class OutcomeEngineExtremeTests
     }
 
     // ---------------------------------------------------------------- step 7d: rotation enlarges the cores
+
+    [Theory]
+    [InlineData(20)]
+    [InlineData(25)]
+    [InlineData(29)]
+    public void FastRotation_OnAStrippedStar_LeavesItsCoresAndClass(double mass)
+    {
+        // Ruling R20: step 7d applies to unstripped stars only; a stripped star keeps its He shell and class.
+        var slow = Compute(mass, z: 0.1, stripping: Stripping.Full);
+        var fast = Compute(mass, z: 0.1, stripping: Stripping.Full, rotation: Rotation.Fast);
+        Assert.Equal(slow.Type, fast.Type);
+        Assert.Equal(slow.Star!.HeliumEnvelopeMass.Value, fast.Star!.HeliumEnvelopeMass.Value, 12);
+        Assert.Equal(slow.Star.CoCoreMass.Value, fast.Star.CoCoreMass.Value, 12);
+        Assert.True(fast.Star.HeliumEnvelopeMass.Value >= 0.16);
+        Assert.Contains(fast.Notes, n => n.Contains("rotation") && n.Contains("stripped star"));
+    }
+
+    [Theory]
+    [InlineData(75, 0.001)]
+    [InlineData(80, 0.001)]
+    [InlineData(75, 0.1)]
+    [InlineData(80, 0.1)]
+    public void FastRotation_RaisingTheHeCorePast35_LeadsToPulsationalPairInstability(double mass, double z)
+    {
+        // Ruling R20: step 3 re-runs on the raised He core. 75 M☉: W19 He = 0.5 × 75 − 5.87 = 31.63 < 35, raised by
+        // 17.5% to 37.165; 80 M☉: 34.13 → 40.103. Both are in the PPISN range (35–64).
+        var slow = Compute(mass, z);
+        Assert.Equal(Fate.FailedSupernova, slow.Fate);
+        var o = Compute(mass, z, rotation: Rotation.Fast);
+        Assert.Equal(Fate.PulsationalPairInstability, o.Fate);
+        Assert.Equal((0.5 * mass - 5.87) * 1.175, o.Star!.HeCoreMass.Value, 6);
+        Assert.Contains(o.Notes, n => n.Contains("pulsational pair-instability"));
+    }
 
     [Fact]
     public void FastRotation_NormalField_RaisesTheCores()
@@ -278,7 +345,51 @@ public class OutcomeEngineExtremeTests
         Assert.Equal(0.372, o.EjectaMass!.Value);
         Assert.Equal(0.158, o.NickelMass!.Value);
         Assert.Equal(1.34e50, o.ExplosionEnergyErg!.Value);
+        Assert.Equal(Confidence.Speculative, o.ExplosionEnergyErg.Confidence); // Iax E_K is not in the research files
         Assert.Equal(1.008, o.Remnant.Mass!.Value, 9);
+    }
+
+    [Fact]
+    public void NearChandrasekhar_PhillipsOutputs()
+    {
+        // Ruling R21, step 9. L_peak = 1.2e43 erg/s: M_B ≈ M_bol = 4.74 − 2.5 log10(1.2e43 / 3.828e33)
+        // = 4.74 − 2.5 × 9.496211 = −19.0005. Inverted Phillips 1999 (B: a 0.786, b 0.633, M_B,0 −19.3): ΔM = 0.2995,
+        // u = (−0.786 + √(0.617796 + 4 × 0.633 × 0.2995)) / 1.266 = (−0.786 + 1.173090) / 1.266 = 0.305758,
+        // Δm15 = 1.1 + 0.305758 = 1.4058.
+        var o = TypeIa(TypeIaChannel.NearChandrasekhar);
+        Assert.Equal(-19.0005, o.PeakAbsoluteMagB!.Value, 0.0005);
+        Assert.Equal(1.4058, o.DeclineRateDm15B!.Value, 0.0005);
+        Assert.Equal(Confidence.Speculative, o.PeakAbsoluteMagB.Confidence);
+    }
+
+    [Fact]
+    public void Bright91TLike_PhillipsOutputs()
+    {
+        // M_Ni 0.8: L = 1.6e43; M_B = 4.74 − 2.5 log10(4.179728e9) = 4.74 − 24.05285 = −19.3129. ΔM = −0.0129,
+        // u = (−0.786 + √(0.617796 − 0.032663)) / 1.266 = (−0.786 + 0.764940) / 1.266 = −0.016635, Δm15 = 1.0834.
+        var o = TypeIa(TypeIaChannel.SubChandrasekhar, 1.15);
+        Assert.Equal(-19.3129, o.PeakAbsoluteMagB!.Value, 3);
+        Assert.Equal(1.0834, o.DeclineRateDm15B!.Value, 3);
+    }
+
+    [Fact]
+    public void Faint91bgLike_DeclineRateIsClampedWithANote()
+    {
+        // M_Ni 0.013904: L = 2.7808e41; M_B = 4.74 − 2.5 log10(7.26437e7) = 4.74 − 19.65302 = −14.913, far fainter than
+        // the relation's faint end (Δm15 = 1.7 ⇔ M_B = −19.3 + 0.786 × 0.6 + 0.633 × 0.36 = −18.6005), so Δm15 = 1.7.
+        var o = TypeIa(TypeIaChannel.SubChandrasekhar, 0.85);
+        Assert.Equal(-14.913, o.PeakAbsoluteMagB!.Value, 2);
+        Assert.Equal(1.7, o.DeclineRateDm15B!.Value);
+        Assert.Contains("[APPROX]", o.DeclineRateDm15B.Source.Citation);
+        Assert.Contains(o.Notes, n => n.Contains("Phillips relation"));
+    }
+
+    [Fact]
+    public void CoreCollapse_HasNoPhillipsOutputs()
+    {
+        var o = Compute(16);
+        Assert.Null(o.PeakAbsoluteMagB);
+        Assert.Null(o.DeclineRateDm15B);
     }
 
     [Fact]
