@@ -98,8 +98,7 @@ public sealed class LightCurveModel : ISignalModel
         new("Nadyozhin 1994, ApJS 92, 527; Arnett, Fryer & Matheson 2017, ApJ 846, 33 (⁵⁶Ni/⁵⁶Co heating); Clocchiatti & " +
             "Wheeler 1997, ApJ 491, 375 (gamma-ray trapping, κ_γ = 0.03 [APPROX])", "signals §4.1"),
         new("Arnett 1982, ApJ 253, 785; Valenti et al. 2008, MNRAS 383, 1485; Inserra et al. 2013, ApJ 770, 128 (diffusion " +
-            "kernel). Type Ia opacity 0.19 cm²/g, set so the default Ia rises in 18 d (observed 17–19 d) [APPROX]",
-            "signals §4.2"),
+            "kernel)", "signals §4.2"),
         new("Goldberg, Bildsten & Paxton 2019, ApJ 879, 3 (plateau L50 and length); Kasen & Woosley 2009, ApJ 703, 2205 " +
             "(nickel extension); Fermi-Dirac drop, 3-day width (Olivares et al. 2010) [APPROX], onto the ⁵⁶Ni tail L_dep; " +
             "under 1 M☉ of hydrogen envelope, no plateau [APPROX]; a blue supergiant's ⁵⁶Ni dome (no recipe in the " +
@@ -108,14 +107,16 @@ public sealed class LightCurveModel : ISignalModel
             "trapping is assumed, so the late tail is overestimated", "signals §4.4"),
         new("Lyman, Bersier & James 2014, MNRAS 437, 3848 (bolometric corrections; the stripped-envelope fit also for " +
             "Type Ia, SLSN-I and pair-instability supernovae [APPROX]); blackbody colours at 6,000 K (hydrogen) and " +
-            "10,000 K (hydrogen-free) [APPROX]; Lira relation (Phillips et al. 1999, AJ 118, 1766; on Iax and 91bg-like " +
-            "events [APPROX]); Bessell, Castelli & Plez 1998 zero points", "signals §4.5"),
+            "10,000 K (hydrogen-free) [APPROX]; Bessell, Castelli & Plez 1998 zero points", "signals §4.5"),
         new("m_V = M_V + μ + A_V (Cardelli, Clayton & Mathis 1989); naked eye V ≈ 6 [APPROX]; ZTF ≈ 20.5 and Rubin ≈ 24 " +
             "per visit, in their own bands, compared with V here [APPROX]", "signals §4.7, §11"),
         new("Circumstellar interaction (Type IIn, Ibn, Icn) and the transients of pulsational pair instability are not " +
             "modeled: an interacting supernova is drawn without the collision's light (IIn mean peak M_B −18.6, II-P " +
             "−16.8; Richardson et al. 2014, AJ 147, 118) and with an ordinary photosphere's colour (6,000 K with " +
-            "hydrogen), redder than the hot, blue early spectra of interacting supernovae", "signals §4.6; outcomes §2.3"),
+            "hydrogen, 10,000 K without), redder than the hot, blue early spectra of interacting supernovae",
+            "signals §4.6; outcomes §2.3"),
+        new("Type Ia: opacity 0.19 cm²/g, set so the default Ia rises in 18 d (observed 17–19 d) [APPROX]; Lira relation " +
+            "(Phillips et al. 1999, AJ 118, 1766; on Iax and 91bg-like events [APPROX])", "signals §4.2, §4.5"),
     };
 
     /// <summary>
@@ -126,7 +127,8 @@ public sealed class LightCurveModel : ISignalModel
     public IReadOnlyList<Source> SourcesFor(Outcome o)
     {
         if (LightCurve.Of(o) is not { } c) return Sources;
-        bool[] keep = { true, true, c.Plateau, c.HasMagnetar, true, true, c.Interacting };
+        bool thermonuclear = o.Type is SupernovaType.Ia or SupernovaType.Ia91T or SupernovaType.Ia91bg or SupernovaType.Iax;
+        bool[] keep = { true, true, c.Plateau, c.HasMagnetar, true, true, c.Interacting, thermonuclear };
         return Sources.Where((_, i) => keep[i]).ToList();
     }
 
@@ -306,7 +308,7 @@ public sealed class LightCurveModel : ISignalModel
             text += " The collision with the dense gas around the star adds light that this model does not include, so it " +
                     "is probably brighter than shown (Type IIn average about −18.6 at peak against −16.8 for II-P), and " +
                     "bluer: early interacting spectra are hot and blue, while the lab colours it like an ordinary " +
-                    "supernova's photosphere (6,000 K under a hydrogen envelope), too red.";
+                    "supernova's photosphere (6,000 K with hydrogen, 10,000 K without), too red.";
         if (c.HasMagnetar)
             text += " The magnetar's power is assumed fully trapped, so the late light is overestimated.";
         if (c.HasMagnetar && c.PeakLuminosityErgS > MagnetarModel.BrightestObservedSupernovaErgS)

@@ -228,7 +228,9 @@ public sealed partial class OutcomeViewModel : ObservableObject
     /// </summary>
     private static string? BrightPlateauNote(Outcome o, IReadOnlyList<QuantityRow> curve)
     {
-        if (o.Type != SupernovaType.IIP || o.Star is not { } star) return null;
+        // Only when the size is the reason: not for a magnetar-boosted or very energetic (hypernova) explosion.
+        if (o.Type != SupernovaType.IIP || o.Star is not { } star || o.MagnetarEnergyErg is not null ||
+            o.ExplosionEnergyErg is { Value: > 2e51 }) return null;
         double radiusRsun = star.RadiusCm.Value / PhysicalConstants.RSun;
         var peak = curve.FirstOrDefault(r => r.GlossaryKey == nameof(Glossary.PeakBrightness));
         if (peak is null || !(peak.Value < IIPMeanPeak - IIPPeakSigma) || radiusRsun < LargeStarRsun) return null;

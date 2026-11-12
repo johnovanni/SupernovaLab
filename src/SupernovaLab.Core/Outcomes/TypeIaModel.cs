@@ -107,9 +107,9 @@ public static class TypeIaModel
     {
         string ni = UnitFormat.Mass(nickel), pub = published ? " (the published value)" : "";
         return nickel >= Overluminous
-            ? (SupernovaType.Ia91T, $"With {ni} of nickel{pub} it is unusually bright and fades slowly, like SN 1991T.")
+            ? (SupernovaType.Ia91T, $"With {ni} of nickel{pub} it is unusually bright, like SN 1991T. Real events like it also fade slowly; the lab's drawn light curve does not reproduce that.")
             : nickel <= Subluminous
-                ? (SupernovaType.Ia91bg, $"With only {ni} of nickel{pub} it is faint, red and fades quickly, like SN 1991bg.")
+                ? (SupernovaType.Ia91bg, $"With only {ni} of nickel{pub} it is faint and red, like SN 1991bg. Real events like it also fade quickly; the lab's drawn light curve does not reproduce that.")
                 : (SupernovaType.Ia, $"It makes {ni} of radioactive nickel{pub}, whose decay powers its light.");
     }
 

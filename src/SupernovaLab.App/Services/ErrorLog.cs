@@ -27,6 +27,8 @@ public static class ErrorLog
         try
         {
             Directory.CreateDirectory(dir);
+            // Keep the log small: start it afresh once it passes 1 MB (final re-review N5).
+            if (File.Exists(path) && new FileInfo(path).Length > 1_000_000) File.Delete(path);
             File.AppendAllText(path, $"{DateTime.Now.ToString("u", CultureInfo.InvariantCulture)} {exception}{Environment.NewLine}");
             return path;
         }

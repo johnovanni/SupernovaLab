@@ -210,8 +210,9 @@ public static class Glossary
     public const string MagnetarTimescale = "How long the magnetar takes to lose most of its spin energy.";
     public const string PhillipsRelation =
         "For Type Ia supernovae, brighter events fade more slowly after the peak (the Phillips relation). This B-band peak is " +
-        "the engine's value from that relation, which shapes the light curve; the stated peak brightness comes from the " +
-        "drawn curve.";
+        "the engine's estimate from its peak luminosity (B-band correction about 0); it does not shape the drawn light " +
+        "curve. The stated peak brightness and the decline rate Δm15(B) are read off the drawn curve, whose shape does " +
+        "not follow the Phillips relation.";
     public const string DeclineRate = "Δm15(B): how many magnitudes a Type Ia fades in the B band during the 15 days after its peak.";
     public const string RemnantMass =
         "The remnant's mass. For a neutron star this is the gravitational mass, which is less than the mass of the matter " +
