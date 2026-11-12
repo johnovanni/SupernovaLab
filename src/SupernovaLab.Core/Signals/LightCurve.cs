@@ -174,11 +174,11 @@ internal sealed class LightCurve
 
     /// <summary>
     /// The shock-cooling colour temperature (K), continued past the formula's end, but [APPROX] never below
-    /// <see cref="PhotosphereK"/>: the cooling envelope's photosphere stops cooling where its gas recombines. NaN
-    /// without cooling.
+    /// <see cref="PhotosphereK"/>: the cooling envelope's photosphere stops cooling where its gas recombines. Before the
+    /// cooling starts, the colour at its start, the hottest [APPROX, ruling R45a]; NaN without cooling.
     /// </summary>
     private double CoolingColourK(double t)
-        => _cooling is { } c && t >= c.StartS ? Math.Max(c.FadingColourTemperatureK(t), PhotosphereK) : double.NaN;
+        => _cooling is { } c ? Math.Max(c.FadingColourTemperatureK(Math.Max(t, c.StartS)), PhotosphereK) : double.NaN;
 
     /// <summary>
     /// B−V of everything except shock cooling (§4.5). A plateau shares the cooling envelope's photosphere: the shock-

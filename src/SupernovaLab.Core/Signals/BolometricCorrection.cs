@@ -93,6 +93,7 @@ public static class BolometricCorrection
     /// </summary>
     public static double BlackbodyTemperatureForBMinusV(double bMinusV)
     {
+        if (double.IsNaN(bMinusV)) return double.NaN;
         double lo = Math.Log(MinTemperatureK), hi = Math.Log(MaxTemperatureK);
         if (bMinusV >= BlackbodyBMinusV(MinTemperatureK)) return MinTemperatureK;
         if (bMinusV <= BlackbodyBMinusV(MaxTemperatureK)) return MaxTemperatureK;

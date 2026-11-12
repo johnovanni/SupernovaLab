@@ -188,6 +188,34 @@ public class SpectrumModelTests
         Assert.All(s.RelativeFlux, f => Assert.True(f > 0));
     }
 
+    [Theory]
+    [InlineData(16)]
+    [InlineData(12)]
+    public void Early_colour_is_hot_never_a_clamped_1000_K_and_the_light_curve_is_bright(double initialMass)
+    {
+        // Ruling R45a. Before shock cooling starts (about 2.5-3 d for a red supergiant) the colour is the cooling colour at its
+        // start, the hottest, never NaN (which the inversion used to turn into 1,000 K, and the light curve into M_V -2.4).
+        var o = TestOutcomes.Star(initialMass);
+        var lc = LightCurve.Of(o)!;
+        for (double d = 1; d <= 5.0001; d += 0.5)
+        {
+            var s = Model.At(o, d * Day);
+            Assert.InRange(s.ColorTemperatureK, 5000, 50000);
+            double mv = lc.AbsoluteV(d * Day);
+            Assert.True(double.IsFinite(mv) && mv < -14, $"M_V {mv} at {d} d");
+        }
+    }
+
+    [Fact]
+    public void Colour_temperature_is_exactly_the_hot_photosphere_before_a_type_Ia_peak()
+    {
+        // Hand value: a Type Ia before maximum has B-V of a 10,000 K blackbody (LightCurve.HotPhotosphereK), so the
+        // temperature recovered from that colour is 10,000 K (bisection in log T, 80 steps: well inside 1 K).
+        var ia = TestOutcomes.TypeIa();
+        Assert.Equal(10000, Curves.ColourTemperatureK(ia, 2 * Day), 0);
+        Assert.True(double.IsNaN(BolometricCorrection.BlackbodyTemperatureForBMinusV(double.NaN)));
+    }
+
     [Fact]
     public void Colour_temperature_is_the_light_curves()
     {
