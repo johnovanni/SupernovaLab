@@ -43,8 +43,9 @@ public sealed partial class OutcomeEngine
     private static readonly Source S16Explosions =
         new("Sukhbold et al. 2016, ApJ 821, 38 (per-model Z9.6 / N20 results, doi:10.17617/1.b)", "outcomes §1.2, §1.4, §8.2 steps 4–5");
     private static readonly Source MagnetarPeakSource =
-        new("Kasen & Bildsten 2010, ApJ 717, 245 (spin-down power at the diffusion time, eq. 12 and 14, κ = 0.2 cm²/g) " +
-            "[APPROX]", "outcomes §5.3, §8.2 step 7b");
+        new("Kasen & Bildsten 2010, ApJ 717, 245 (spin-down power, eq. 14) diffused through Arnett's kernel (Inserra et al. " +
+            "2013, ApJ 770, 128, Eq. D1), κ = 0.2 cm²/g, peak of the drawn light curve without ⁵⁶Ni (ruling R32) [APPROX]",
+            "outcomes §5.3, §8.2 step 7b; signals §4.2, §4.4");
     private static readonly Source Sch21 =
         new("Schneider, Podsiadlowski & Müller 2021, A&A 645, A5 (stripped Case A/B stars)", "outcomes §3.3, §8.2 steps 4–5");
 
@@ -112,11 +113,6 @@ public sealed partial class OutcomeEngine
         public bool HasGrb { get; init; }
         public Quantity? MagnetarEnergy { get; init; }
         public Quantity? MagnetarTimescale { get; init; }
-        /// <summary>
-        /// E_SN + E_p before the displayed E_K's 9.8 B cap: the energy that sets a magnetar supernova's diffusion time
-        /// (outcomes §5.3).
-        /// </summary>
-        public double? MagnetarDiffusionEnergy { get; init; }
         public Step7 Branch { get; init; }
     }
 
@@ -157,15 +153,12 @@ public sealed partial class OutcomeEngine
     /// </summary>
     private static Quantity? PeakLuminosity(Draft d, PresupernovaStar star, Quantity? energy, Quantity? ejecta, Quantity? nickel)
     {
-        // [APPROX] The ⁵⁶Ni heating (~10⁴² erg/s) is left out next to the magnetar's heating. The diffusion time uses
-        // E_SN + E_p uncapped (§5.3), unless a preset pinned the kinetic energy, which is then the real one.
+        // Ruling R32: the one magnetar peak, with the outcome's own (displayed or pinned) kinetic energy, as the light
+        // curve uses. [APPROX] The ⁵⁶Ni heating (~10⁴² erg/s) is left out next to the magnetar's heating.
         if (d.Peak == PeakRule.Magnetar && d.MagnetarEnergy is { } ep && d.MagnetarTimescale is { } tp &&
             ejecta is { Value: > 0 } && energy is { Value: > 0 })
-        {
-            double kinetic = energy.Published ? energy.Value : d.MagnetarDiffusionEnergy ?? energy.Value;
-            return new Quantity(MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, kinetic), "erg/s",
+            return new Quantity(MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, energy.Value), "erg/s",
                 Confidence.Speculative, MagnetarPeakSource);
-        }
 
         var env = star.HydrogenEnvelopeMass;
         if (d.Peak == PeakRule.Plateau && energy is { Value: > 0 } && env.Value > 0)
@@ -571,14 +564,13 @@ public sealed partial class OutcomeEngine
         var peak = SpectralTyper.HasPlateau(baseType) ? PeakRule.Plateau : PeakRule.Arnett;
         bool peakSpeculative = x.DenseCsm || baseType == SupernovaType.IIL;
         Quantity? spinDownEnergy = null, spinDownTime = null;
-        double? diffusionEnergy = null;
         var branch = Step7.None;
         if (x.Field == CoreField.Strong && remnant.Kind == RemnantKind.NeutronStar)
         {
             // Step 7b: a strong core field makes the neutron star a magnetar.
             var mag = Magnetar(x, star, remnant, energy, ejecta, notes);
-            (remnant, energy, spinDownEnergy, spinDownTime, diffusionEnergy, branch) =
-                (mag.Remnant, mag.Energy, mag.SpinDownEnergy, mag.SpinDownTime, mag.DiffusionEnergy, Step7.Magnetar);
+            (remnant, energy, spinDownEnergy, spinDownTime, branch) =
+                (mag.Remnant, mag.Energy, mag.SpinDownEnergy, mag.SpinDownTime, Step7.Magnetar);
             if (mag.PowersLight)
             {
                 peak = PeakRule.Magnetar;
@@ -595,8 +587,7 @@ public sealed partial class OutcomeEngine
 
         return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, peak, peakSpeculative)
         {
-            MagnetarEnergy = spinDownEnergy, MagnetarTimescale = spinDownTime, MagnetarDiffusionEnergy = diffusionEnergy,
-            Branch = branch,
+            MagnetarEnergy = spinDownEnergy, MagnetarTimescale = spinDownTime, Branch = branch,
         };
     }
 

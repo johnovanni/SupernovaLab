@@ -116,32 +116,36 @@ public class OutcomeEngineExtremeTests
         // E_K = 0.88e51 + 13.889e51 = 14.77e51, capped at N17's 9.8 B.
         Assert.Equal(9.8e51, o.ExplosionEnergyErg!.Value);
 
-        // The diffusion time uses E_SN + E_p uncapped (§5.3). By hand, M_ej = 3.56677 M☉ = 7.09431e33 g,
-        // E = 1.47689e52 erg: v = √(E / 2M) = 1.02024e9 cm/s; t_d = √(3 M κ / (4π v c)) with κ = 0.2 = 3.3279e6 s;
-        // t_p = 4.1028e7 s × 0.12² / 0.8² = 9.2313e5 s; L = (E_p / t_p) / (1 + t_d / t_p)² = 1.50454e46 / 4.60504² =
-        // 7.0947e44 erg/s. (With the capped 9.8e51 it would be 6.03e44.)
-        Assert.Equal(7.0947e44, o.PeakLuminosityErgS!.Value, 0.005 * 7.0947e44);
+        // Ruling R32: the peak of the spin-down power diffused through Arnett's kernel, with the outcome's E_K (9.8e51,
+        // as the light curve uses) and κ = 0.2. By hand (an independent Python integration, 4,000 Simpson intervals):
+        // M_ej = 3.56677 M☉, v = √(10 E / 3M) = 2.14584e9 cm/s, τ_m = √(2 κ M / (13.8 c v)) = 1.78787e6 s;
+        // t_p = 4.1028e7 s × 0.12² / 0.8² = 9.2313e5 s; the diffused L_p peaks at 1.8640e45 erg/s near 19.7 d.
+        // (Task 5's L_p(t_d) with KB10's t_d and the uncapped energy gave 7.09e44.)
+        Assert.Equal(1.8640e45, o.PeakLuminosityErgS!.Value, 0.002 * 1.8640e45);
     }
 
     [Fact]
-    public void StrongField_FastRotation_HydrogenRich_BelowTheSuperluminousCut_StaysIIP()
+    public void StrongField_FastRotation_HydrogenRich16_IsAboveTheSuperluminousCut_SoSlsnII()
     {
-        // Ruling R22: SLSN-II only if the model peak is ≥ 7e43 erg/s. 16 M☉ at Z☉: M_ej 11.59828 M☉ = 2.30690e34 g,
-        // E = 1.255e51 + 3.47222e51 = 4.72722e51 erg; v = 3.20091e8 cm/s; t_d = 1.07137e7 s; t_p = 3.69252e6 s;
-        // L = (3.47222e51 / 3.69252e6) / (1 + 2.90145)² = 9.40339e44 / 15.2213 = 6.178e43 erg/s, under the cut.
+        // Ruling R22 with R32's peak: SLSN-II if the diffused spin-down power peaks at ≥ 7e43 erg/s. 16 M☉ at Z☉:
+        // M_ej 11.59828 M☉, E_K = 1.255e51 + 3.47222e51 = 4.72722e51 erg, κ = 0.2: v = √(10 E / 3M) = 8.26472e8 cm/s,
+        // τ_m = 5.19494e6 s; t_p = 3.69252e6 s. By hand (independent Python integration of Arnett's kernel), the peak is
+        // 1.5842e44 erg/s near 61.4 d, above the cut. (Task 5's L_p(t_d) gave 6.18e43 and kept it II-P; the light curve
+        // drawn by Task 9 reached 1.6e44, which ruling R32 resolves in favour of the drawn curve.)
         var o = Compute(16, rotation: Rotation.Fast, field: CoreField.Strong);
-        Assert.Equal(SupernovaType.IIP, o.Type);
+        Assert.Equal(SupernovaType.SlsnII, o.Type);
         Assert.Equal(RemnantKind.Magnetar, o.Remnant.Kind);
-        Assert.NotNull(o.MagnetarEnergyErg);
-        Assert.Equal(6.178e43, o.PeakLuminosityErgS!.Value, 0.005 * 6.178e43);
-        Assert.Contains(o.Notes, n => n.Contains("unusually luminous"));
-        Assert.Contains(o.Notes, n => n.Contains("Type II-P"));
+        Assert.Equal(4.72722e51, o.ExplosionEnergyErg!.Value, 0.001e51);
+        Assert.Equal(1.5842e44, o.PeakLuminosityErgS!.Value, 0.002 * 1.5842e44);
+        Assert.Contains(o.Notes, n => n.Contains("superluminous supernova with hydrogen lines"));
+        Assert.DoesNotContain(o.Notes, n => n.Contains("Type II-P"));
     }
 
     [Fact]
     public void StrongField_FastRotation_HydrogenRich_AboveTheSuperluminousCut_IsSlsnII()
     {
-        // 12 M☉ at Z☉ has a lighter envelope (M_ej 9.37 M☉), so its peak, 7.43e43 erg/s, passes the 7e43 cut.
+        // 12 M☉ at Z☉ has a lighter envelope (M_ej 9.37 M☉), so its peak passes the 7e43 cut (Task 5's L_p(t_d) gave
+        // 7.43e43; ruling R32's diffused peak is higher still).
         var o = Compute(12, rotation: Rotation.Fast, field: CoreField.Strong);
         Assert.Equal(SupernovaType.SlsnII, o.Type);
         Assert.True(o.PeakLuminosityErgS!.Value >= 7e43);

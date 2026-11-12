@@ -10,7 +10,10 @@ namespace SupernovaLab.Core.Outcomes;
 /// </summary>
 public static class MagnetarModel
 {
-    /// <summary>KB10's opacity for the diffusion time, κ ≈ 0.2 cm² g⁻¹ (outcomes §5.3).</summary>
+    /// <summary>
+    /// KB10's opacity, κ ≈ 0.2 cm² g⁻¹ (outcomes §5.3): the Arnett diffusion time of every magnetar-powered light curve
+    /// (ruling R32), in the outcome engine and the light-curve model alike.
+    /// </summary>
     public const double Opacity = 0.2;
 
     private static readonly Source Kb10 =
@@ -30,23 +33,28 @@ public static class MagnetarModel
         => energyErg / timescaleS / Math.Pow(1 + timeS / timescaleS, 2);
 
     /// <summary>
-    /// Diffusion time t_d = [3 M_ej κ / (4π v c)]^(1/2) with v = [E / (2 M_ej)]^(1/2), where E = E_p + E_SN is the
-    /// total kinetic energy (KB10 eq. 12).
+    /// Ruling R32: the spin-down power diffusing out of the ejecta, erg/s, at time t (s): Arnett's kernel (signals §4.2,
+    /// Inserra et al. 2013 Eq. D1, as signals §4.4 prescribes) over L_p, with τ_m = (2κM/(βcv))^(1/2), v = √(10E/3M),
+    /// κ = <see cref="Opacity"/> and E the ejecta's kinetic energy. Full trapping is assumed. The light-curve model draws
+    /// exactly this as its magnetar part.
     /// </summary>
-    public static double DiffusionTimeS(double ejectaMsun, double kineticEnergyErg, double opacity = Opacity)
-    {
-        double m = ejectaMsun * PhysicalConstants.MSun;
-        double v = Math.Sqrt(kineticEnergyErg / (2 * m));
-        return Math.Sqrt(3 * m * opacity / (4 * Math.PI * v * PhysicalConstants.C));
-    }
+    public static double DiffusedLuminosityErgS(double timeS, double energyErg, double timescaleS, double ejectaMsun,
+        double kineticEnergyErg)
+        => ArnettDiffusion.LuminosityErgS(t => LuminosityErgS(t, energyErg, timescaleS),
+            ArnettDiffusion.DiffusionTimeS(Opacity, ejectaMsun, kineticEnergyErg), timeS);
 
     /// <summary>
-    /// [APPROX] Peak luminosity of a magnetar-powered light curve: the spin-down power at the diffusion time, L_p(t_d).
-    /// This is Arnett's rule (peak luminosity = heating rate at peak) applied to magnetar heating; for t_p ≪ t_d it
-    /// reduces to KB10's L_peak ≈ E_p t_p / t_d² (outcomes §5.3).
+    /// Ruling R32: THE peak luminosity of a magnetar-powered supernova, erg/s: the maximum of
+    /// <see cref="DiffusedLuminosityErgS"/>, searched over 0.01–20 τ_m. The outcome engine's SLSN-II cut (ruling R22) and
+    /// stated peak use it, and the light curve draws the same function, so the label matches the drawn light.
+    /// [APPROX] the ⁵⁶Ni heating (~10⁴² erg/s) is not included.
     /// </summary>
     public static double PeakLuminosityErgS(double energyErg, double timescaleS, double ejectaMsun, double kineticEnergyErg)
-        => LuminosityErgS(DiffusionTimeS(ejectaMsun, kineticEnergyErg), energyErg, timescaleS);
+    {
+        double tau = ArnettDiffusion.DiffusionTimeS(Opacity, ejectaMsun, kineticEnergyErg);
+        return ArnettDiffusion.Maximize(t => DiffusedLuminosityErgS(t, energyErg, timescaleS, ejectaMsun, kineticEnergyErg),
+            0.01 * tau, 20 * tau).Value;
+    }
 
     /// <summary>
     /// Step 7b: the magnetar a strong core field makes of this neutron star. Spin period: extreme rotation 1.2 ms (1–2 ms,

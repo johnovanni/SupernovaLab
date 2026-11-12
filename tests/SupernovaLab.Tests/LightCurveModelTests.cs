@@ -207,6 +207,70 @@ public class LightCurveModelTests
         Assert.True(Lbol(MagnetarSlsn, tPeak) > 1e44);
     }
 
+    [Fact]
+    public void MagnetarStar16_FastAndStrongField_DrawsTheSuperluminousPeakItsLabelSays()
+    {
+        // Ruling R32: the 16 M☉ fast-spinning, strong-field star. Its engine peak (1.5842e44 erg/s by hand, see
+        // OutcomeEngineExtremeTests) is the light curve's magnetar part; the drawn peak adds only the diffused ⁵⁶Ni and
+        // the faint plateau, and it is labeled SLSN-II.
+        var o = TestOutcomes.Engine.Compute(LabInputs.Default with
+        {
+            InitialMass = 16, Rotation = Rotation.Fast, Field = CoreField.Strong,
+        });
+        Assert.Equal(SupernovaType.SlsnII, o.Type);
+        double drawn = DrawnPeak(o);
+        Assert.InRange(drawn / o.PeakLuminosityErgS!.Value, 1, 1.05);
+        Assert.True(drawn >= 7e43);
+    }
+
+    [Fact]
+    public void SuperluminousLabel_AgreesWithTheDrawnPeak()
+    {
+        // Ruling R32: for every magnetar-powered outcome, the label is SLSN-I/II exactly when the drawn bolometric peak
+        // is ≥ 7e43 erg/s (R22's cut), and the engine's stated peak is the drawn magnetar part: the drawn peak is at
+        // least it and at most 5% more (⁵⁶Ni, plateau and cooling add the rest). Outcomes without a magnetar are never
+        // labeled superluminous. Not covered by R22: a magnetorotational hypernova (7e51 erg) in a red supergiant, e.g.
+        // 30 M☉ at Z☉ with fast rotation and a strong field, keeps its II-P label although its first days of shock
+        // cooling top 7e43 (1.06e44 at 1.5 d, below the cut after ~3 d); see the task report.
+        var cases = new List<Outcome> { TestOutcomes.TypeIa() };
+        foreach (var field in new[] { CoreField.Normal, CoreField.Strong })
+        foreach (var rotation in new[] { Rotation.Fast, Rotation.Extreme })
+        foreach (var stripping in new[] { Stripping.None, Stripping.Partial, Stripping.Full })
+        foreach (double z in new[] { 0.1, 1.0 })
+        foreach (double mass in new[] { 9.5, 12, 16, 20, 30, 40 })
+            cases.Add(TestOutcomes.Engine.Compute(LabInputs.Default with
+            {
+                InitialMass = mass, Metallicity = z, Rotation = rotation, Stripping = stripping, Field = field,
+            }));
+        int magnetars = 0;
+        foreach (var o in cases.Where(Model.Applies).Where(o => !double.IsNaN(Model.ValidRange(o).EndS)))
+        {
+            double drawn = DrawnPeak(o);
+            if (double.IsNaN(drawn)) continue;
+            bool superluminous = o.Type is SupernovaType.SlsnI or SupernovaType.SlsnII;
+            string what = $"{o.Inputs.InitialMass} M☉, Z {o.Inputs.Metallicity}, {o.Inputs.Rotation}, {o.Inputs.Stripping}, " +
+                          $"{o.Inputs.Field}: {o.Type}, drawn peak {drawn:E3}";
+            if (o.MagnetarEnergyErg is null)
+            {
+                Assert.False(superluminous, what);
+                continue;
+            }
+            magnetars++;
+            Assert.True(superluminous == drawn >= 7e43, what);
+            Assert.InRange(drawn / o.PeakLuminosityErgS!.Value, 1 - 1e-6, 1.05);
+        }
+        Assert.True(magnetars >= 20, $"only {magnetars} magnetar outcomes");
+    }
+
+    /// <summary>The drawn bolometric peak, erg/s: the largest lbol on a 0.5%-step grid from 1 to 500 d; NaN if none.</summary>
+    private static double DrawnPeak(Outcome o)
+    {
+        double best = double.NaN;
+        for (double t = Day; t <= 500 * Day; t *= 1.005)
+            if (Lbol(o, t) is var l && !double.IsNaN(l) && !(l <= best)) best = l;
+        return best;
+    }
+
     // ---------------------------------------------------------------- channels and markers
 
     [Fact]

@@ -164,11 +164,10 @@ public sealed partial class OutcomeEngine
 
     /// <summary>
     /// What step 7b makes of a newborn neutron star: the magnetar remnant, the kinetic energy, the spin-down energy and
-    /// time when they change the light (<see cref="PowersLight"/>, with <see cref="DiffusionEnergy"/> = E_SN + E_p
-    /// uncapped for the diffusion time), and the superluminous class when they power one.
+    /// time when they change the light (<see cref="PowersLight"/>), and the superluminous class when they power one.
     /// </summary>
     private sealed record MagnetarOutcome(Remnant Remnant, Quantity Energy, Quantity? SpinDownEnergy, Quantity? SpinDownTime,
-        double? DiffusionEnergy, SupernovaType? Superluminous)
+        SupernovaType? Superluminous)
     {
         public bool PowersLight => SpinDownEnergy is not null;
     }
@@ -187,7 +186,7 @@ public sealed partial class OutcomeEngine
             // Step 7b: slow rotation gives a normal supernova with a magnetar remnant and no light-curve effect.
             notes.Add($"The strong magnetic field makes the neutron star a magnetar. It {spin}, so its spin-down energy " +
                       $"(about {UnitFormat.Energy(ep.Value)}) is too small to change the light curve.");
-            return new MagnetarOutcome(remnant, energy, null, null, null, null);
+            return new MagnetarOutcome(remnant, energy, null, null, null);
         }
 
         string born = $"With {(x.Rotation == Rotation.Extreme ? "extreme" : "fast")} rotation and a strong magnetic field " +
@@ -196,10 +195,11 @@ public sealed partial class OutcomeEngine
         if (!superluminous)
         {
             notes.Add($"{born}; its spin-down adds about {UnitFormat.Energy(ep.Value)} over about {UnitFormat.Time(tp.Value)}.");
-            return new MagnetarOutcome(remnant, energy, ep, tp, energy.Value + ep.Value, null);
+            return new MagnetarOutcome(remnant, energy, ep, tp, null);
         }
 
-        // Step 7b: E_K ≈ E_SN + E_p, capped at N17's 9.8 B for display; the diffusion time takes the uncapped sum (§5.3).
+        // Step 7b: E_K ≈ E_SN + E_p, capped at N17's 9.8 B. Ruling R32: the diffusion time uses this E_K, as the light
+        // curve does.
         double total = energy.Value + ep.Value;
         var kinetic = Q(Math.Min(total, SlsnMaxEnergy), "erg", Confidence.Speculative,
             new Source($"E_K ≈ E_SN + E_p, capped at 9.8 B (Nicholl, Guillochon & Berger 2017, ApJ 850, 55); E_SN from " +
@@ -211,20 +211,21 @@ public sealed partial class OutcomeEngine
         {
             notes.Add($"{pours} That makes a superluminous supernova without hydrogen (Type I). The step from the star to " +
                       "its spin and field is speculative.");
-            return new MagnetarOutcome(remnant, kinetic, ep, tp, total, SupernovaType.SlsnI);
+            return new MagnetarOutcome(remnant, kinetic, ep, tp, SupernovaType.SlsnI);
         }
 
-        // Ruling R22 [APPROX]: hydrogen-rich events count as SLSN-II only above the usual superluminous cut.
-        double peak = MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, total);
+        // Ruling R22 [APPROX]: hydrogen-rich events count as SLSN-II only above the usual superluminous cut, judged on the
+        // one magnetar peak (ruling R32) that the light curve also draws.
+        double peak = MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, kinetic.Value);
         if (peak >= SlsnIIMinPeak)
         {
             notes.Add($"{pours} That makes a superluminous supernova with hydrogen lines (Type II); how such " +
                       "hydrogen-rich events arise is speculative.");
-            return new MagnetarOutcome(remnant, kinetic, ep, tp, total, SupernovaType.SlsnII);
+            return new MagnetarOutcome(remnant, kinetic, ep, tp, SupernovaType.SlsnII);
         }
         notes.Add($"{pours} Its hydrogen envelope holds the light back, so it is not superluminous; it stays a " +
                   "hydrogen-rich supernova, made unusually luminous by the magnetar (speculative).");
-        return new MagnetarOutcome(remnant, kinetic, ep, tp, total, null);
+        return new MagnetarOutcome(remnant, kinetic, ep, tp, null);
     }
 
     private static string FieldText(double gauss)

@@ -53,9 +53,6 @@ public sealed class LightCurveModel : ISignalModel
     /// </summary>
     private const double TrappingC = 0.05, KappaGamma = 0.03;
 
-    /// <summary>Arnett's β = 13.8 (§4.2).</summary>
-    private const double ArnettBeta = 13.8;
-
     /// <summary>
     /// [APPROX] The Arnett opacity for thermonuclear (Type Ia, Iax) ejecta, cm²/g. The research gives κ only for
     /// stripped-envelope supernovae (0.05–0.1, the lab's slider); with it, a 1.38 M☉, 1.35e51 erg Ia peaks 11–14 days
@@ -66,8 +63,9 @@ public sealed class LightCurveModel : ISignalModel
     public const double ThermonuclearOpacity = 0.19;
 
     /// <summary>
-    /// [APPROX] A magnetar-powered outcome uses Kasen &amp; Bildsten 2010's κ = 0.2 cm²/g (outcomes §5.3), the opacity of the
-    /// outcome engine's magnetar peak and of the SLSN-II cut (ruling R22), instead of the slider.
+    /// [APPROX] A magnetar-powered outcome uses Kasen &amp; Bildsten 2010's κ = 0.2 cm²/g (outcomes §5.3) instead of the
+    /// slider: ruling R32's one magnetar peak (<see cref="MagnetarModel.PeakLuminosityErgS"/>) uses it, and so must the
+    /// ⁵⁶Ni diffusing out of the same ejecta.
     /// </summary>
     private const double MagnetarOpacity = MagnetarModel.Opacity;
 
@@ -99,12 +97,6 @@ public sealed class LightCurveModel : ISignalModel
 
     /// <summary>[APPROX] ... to about 1–3 years (the ⁵⁶Co tail; late positrons and ⁵⁷Co ignored).</summary>
     public const double EndS = 3 * PhysicalConstants.Year;
-
-    /// <summary>Simpson intervals for Arnett's kernel.</summary>
-    private const int KernelIntervals = 200;
-
-    /// <summary>The kernel's weight exp((t'² − t²)/τ²) is cut below e^−40.</summary>
-    private const double KernelCutoff = 40;
 
     /// <summary>The detectors whose limiting magnitude this model compares against; the first three have channels.</summary>
     public static IReadOnlyList<string> DetectorIds { get; } = new[] { "eye", "ztf", "rubin", "spectrograph" };
@@ -261,31 +253,14 @@ public sealed class LightCurveModel : ISignalModel
 
     /// <summary>§4.2: Arnett's diffusion time τ_m = (2κM / (β c v))^(1/2), v = √(10E / 3M), β = 13.8; s.</summary>
     public static double ArnettDiffusionTimeS(double opacity, double ejectaMsun, double energyErg)
-    {
-        double m = ejectaMsun * MSun;
-        double v = Math.Sqrt(10 * energyErg / (3 * m));
-        return Math.Sqrt(2 * opacity * m / (ArnettBeta * C * v));
-    }
+        => ArnettDiffusion.DiffusionTimeS(opacity, ejectaMsun, energyErg);
 
     /// <summary>
     /// §4.2 (Inserra et al. 2013, Eq. D1): the luminosity of any heating source P (erg/s) diffusing out of the ejecta,
-    /// L(t) = ∫₀ᵗ P(t') (2t'/τ_m²) exp((t'² − t²)/τ_m²) dt', written so the exponent never overflows. Simpson's rule over
-    /// t' where the weight exceeds e^−40.
+    /// L(t) = ∫₀ᵗ P(t') (2t'/τ_m²) exp((t'² − t²)/τ_m²) dt' (<see cref="ArnettDiffusion.LuminosityErgS"/>).
     /// </summary>
     public static double ArnettLuminosityErgS(Func<double, double> heatingErgS, double diffusionTimeS, double timeS)
-    {
-        if (!(timeS > 0)) return 0;
-        double tau2 = diffusionTimeS * diffusionTimeS, t2 = timeS * timeS;
-        double lo = Math.Sqrt(Math.Max(0, t2 - KernelCutoff * tau2));
-        double h = (timeS - lo) / KernelIntervals, sum = 0;
-        for (int i = 0; i <= KernelIntervals; i++)
-        {
-            double tp = lo + i * h;
-            double w = i == 0 || i == KernelIntervals ? 1 : i % 2 == 1 ? 4 : 2;
-            sum += w * heatingErgS(tp) * 2 * tp / tau2 * Math.Exp((tp * tp - t2) / tau2);
-        }
-        return sum * h / 3;
-    }
+        => ArnettDiffusion.LuminosityErgS(heatingErgS, diffusionTimeS, timeS);
 
     /// <summary>
     /// Goldberg, Bildsten &amp; Paxton 2019 (§4.3): log10(L50 / erg s⁻¹) = 42.16 − 0.40 log M10 + 0.74 log E51 +
@@ -325,13 +300,13 @@ public sealed class LightCurveModel : ISignalModel
         public bool Plateau { get; private init; }
         public bool Interacting { get; private init; }
         public bool PairInstability { get; private init; }
-        public bool HasMagnetar => _magEnergy > 0;
+        public bool HasMagnetar => _magEnergy > 0 && _magTimeS > 0;
         public BcSample BcSample { get; private init; }
         public double StartS { get; private init; }
         public double DiffusionTimeS { get; private init; }
         public double PlateauEndS { get; private init; }
 
-        private double _nickel, _trappingS, _magEnergy, _magTimeS, _l50;
+        private double _nickel, _trappingS, _magEnergy, _magTimeS, _l50, _ejecta, _energy;
         private ShockBreakoutModel.CoolingPhase? _cooling;
 
         // Derived once, on first use; Lazy keeps concurrent first uses safe.
@@ -341,7 +316,8 @@ public sealed class LightCurveModel : ISignalModel
 
         private Curve()
         {
-            _mainPeakS = new(() => Maximize(Main, Math.Max(StartS, 0.05 * DiffusionTimeS), Math.Min(EndS, 10 * DiffusionTimeS)).TimeS);
+            _mainPeakS = new(() => ArnettDiffusion.Maximize(Main, Math.Max(StartS, 0.05 * DiffusionTimeS),
+                Math.Min(EndS, 10 * DiffusionTimeS)).TimeS);
             _peak = new(FindPeak);
             _visiblePlateau = new(() => Plateau && _l50 > Diffused(PlateauEndS));
         }
@@ -382,6 +358,8 @@ public sealed class LightCurveModel : ISignalModel
                 _trappingS = GammaRayTrappingTimeS(m, e),
                 _magEnergy = o.MagnetarEnergyErg?.Value ?? 0,
                 _magTimeS = o.MagnetarTimescaleS?.Value ?? 0,
+                _ejecta = m,
+                _energy = e,
                 _l50 = plateau ? PlateauLuminosityErgS(e, m, r) : 0,
                 _cooling = cooling,
             };
@@ -389,12 +367,17 @@ public sealed class LightCurveModel : ISignalModel
 
         // ------------------------------------------------ luminosity
 
-        /// <summary>The heating deposited in the ejecta, erg/s: ⁵⁶Ni/⁵⁶Co with trapping, plus the magnetar's spin-down.</summary>
-        private double Heating(double t)
-            => DepositedNickelHeatingErgS(_nickel, t, _trappingS)
-               + (_magEnergy > 0 && _magTimeS > 0 ? MagnetarModel.LuminosityErgS(t, _magEnergy, _magTimeS) : 0);
+        /// <summary>The ⁵⁶Ni/⁵⁶Co heating deposited in the ejecta, erg/s, with gamma-ray trapping.</summary>
+        private double NickelHeating(double t) => DepositedNickelHeatingErgS(_nickel, t, _trappingS);
 
-        private double Diffused(double t) => ArnettLuminosityErgS(Heating, DiffusionTimeS, t);
+        /// <summary>
+        /// The diffused heating, erg/s. The kernel is linear, so it is the diffused ⁵⁶Ni plus the magnetar's
+        /// <see cref="MagnetarModel.DiffusedLuminosityErgS"/> — the very function the outcome engine's peak and SLSN-II
+        /// cut use (ruling R32; both with κ = 0.2 and the outcome's E_K and M_ej, hence the same τ_m).
+        /// </summary>
+        private double Diffused(double t)
+            => ArnettLuminosityErgS(NickelHeating, DiffusionTimeS, t)
+               + (HasMagnetar ? MagnetarModel.DiffusedLuminosityErgS(t, _magEnergy, _magTimeS, _ejecta, _energy) : 0);
 
         /// <summary>
         /// The plateau L50 held until t_p, then a Fermi-Dirac step, 1 / (1 + e^((t − t_p)/w)), onto the deposited ⁵⁶Ni
@@ -479,7 +462,8 @@ public sealed class LightCurveModel : ISignalModel
 
         private (double TimeS, double AbsV) FindPeak()
         {
-            var (t, negV) = Maximize(t => AbsoluteV(t) is var v && !double.IsNaN(v) ? -v : double.NegativeInfinity, StartS, EndS);
+            var (t, negV) = ArnettDiffusion.Maximize(
+                t => AbsoluteV(t) is var v && !double.IsNaN(v) ? -v : double.NegativeInfinity, StartS, EndS);
             return double.IsFinite(negV) ? (t, -negV) : (double.NaN, double.NaN);
         }
 
@@ -488,34 +472,6 @@ public sealed class LightCurveModel : ISignalModel
         /// supergiant, whose ⁵⁶Ni dome outshines its faint plateau).
         /// </summary>
         public bool HasVisiblePlateau => _visiblePlateau.Value;
-
-        /// <summary>
-        /// The maximum of f over [lo, hi] (s): the best of 240 log-spaced samples, refined by golden-section search in
-        /// log t between its neighbours.
-        /// </summary>
-        private static (double TimeS, double Value) Maximize(Func<double, double> f, double lo, double hi)
-        {
-            const int n = 240;
-            double a = Math.Log(lo), step = (Math.Log(hi) - a) / (n - 1);
-            int best = 0;
-            double bestValue = double.NegativeInfinity;
-            for (int i = 0; i < n; i++)
-            {
-                double v = f(Math.Exp(a + i * step));
-                if (v > bestValue) (best, bestValue) = (i, v);
-            }
-            if (!double.IsFinite(bestValue)) return (double.NaN, bestValue);
-            double x0 = a + Math.Max(best - 1, 0) * step, x1 = a + Math.Min(best + 1, n - 1) * step;
-            double g = (Math.Sqrt(5) - 1) / 2;
-            double c = x1 - g * (x1 - x0), d = x0 + g * (x1 - x0), fc = f(Math.Exp(c)), fd = f(Math.Exp(d));
-            for (int i = 0; i < 40; i++)
-            {
-                if (fc > fd) { x1 = d; d = c; fd = fc; c = x1 - g * (x1 - x0); fc = f(Math.Exp(c)); }
-                else { x0 = c; c = d; fc = fd; d = x0 + g * (x1 - x0); fd = f(Math.Exp(d)); }
-            }
-            double tBest = Math.Exp(0.5 * (x0 + x1)), vBest = f(tBest);
-            return vBest >= bestValue ? (tBest, vBest) : (Math.Exp(a + best * step), bestValue);
-        }
     }
 
     // ---------------------------------------------------------------- helpers
