@@ -136,7 +136,7 @@ public class OutcomeEngineExtremeTests
         var o = Compute(16, rotation: Rotation.Fast, field: CoreField.Strong);
         Assert.Equal(SupernovaType.SlsnII, o.Type);
         Assert.Equal(RemnantKind.Magnetar, o.Remnant.Kind);
-        Assert.Equal(4.72722e51, o.ExplosionEnergyErg!.Value, 0.001e51);
+        Assert.Equal(4.72759e51, o.ExplosionEnergyErg!.Value, 0.00001e51);
         Assert.Equal(1.3370e44, o.PeakLuminosityErgS!.Value, 0.002 * 1.3370e44);
         Assert.Contains(o.Notes, n => n.Contains("superluminous supernova with hydrogen lines"));
         Assert.DoesNotContain(o.Notes, n => n.Contains("Type II-P"));

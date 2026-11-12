@@ -142,9 +142,32 @@ public sealed partial class OutcomeEngine
             magB = TypeIaModel.PeakAbsoluteMagB(peak);
             dm15 = TypeIaModel.DeclineRateDm15B(magB, notes);
         }
+        // Ruling R35: ⁴⁴Ti for core-collapse supernovae with ⁵⁶Ni only (Type Ia yields are not in the research).
+        Quantity? ti44 = null;
+        if (x.Kind == StarKind.MassiveStar && d.Fate == Fate.Supernova && nickel is { Value: > 0 } ejectedNickel)
+        {
+            if (pins?.Ti44Mass is double t)
+            {
+                published = true;
+                ti44 = new Quantity(t, MSun, Confidence.ModelDependent, pins.Source, Published: true);
+            }
+            else ti44 = new Quantity(Ti44PerNickel * ejectedNickel.Value, MSun, Confidence.Speculative, Ti44Source);
+        }
         return new Outcome(x, d.Fate, d.Type, d.HasGrb, d.Remnant, star, energy, ejecta, nickel, peak,
-            d.MagnetarEnergy, d.MagnetarTimescale, notes, published, magB, dm15);
+            d.MagnetarEnergy, d.MagnetarTimescale, notes, published, magB, dm15, ti44);
     }
+
+    /// <summary>
+    /// Ruling R35 [APPROX]: M(⁴⁴Ti) = 2×10⁻³ M(⁵⁶Ni). The research gives no ⁴⁴Ti yield rule, only two observed core-collapse
+    /// cases (signals §5.3), whose ratios are both about 2×10⁻³: SN 1987A ≈ 1.5e-4 / 0.07 = 2.1e-3 and Cas A ≈ 1.25e-4 /
+    /// ≈ 0.06 = 2.1e-3.
+    /// </summary>
+    public const double Ti44PerNickel = 2e-3;
+
+    private static readonly Source Ti44Source = new(
+        "M(⁴⁴Ti) ≈ 2×10⁻³ M(⁵⁶Ni) [APPROX], the ratio of the two observed cases: SN 1987A ≈ 1.5e-4 M☉ ⁴⁴Ti (Boggs et al. " +
+        "2015, Science 348, 670; the research marks it \"verify\") for 0.07 M☉ ⁵⁶Ni, and Cas A ≈ 1.25e-4 M☉ (Grefenstette " +
+        "et al. 2014, Nature 506, 339) for ≈ 0.06 M☉. Not a yield model", "signals §5.3; ruling R35");
 
     /// <summary>
     /// Step 6 light-curve output. II-P / II-L with at least 1 M☉ of hydrogen envelope: the day-50 plateau luminosity of

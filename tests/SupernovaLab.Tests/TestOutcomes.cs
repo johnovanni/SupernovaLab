@@ -20,6 +20,15 @@ public static class TestOutcomes
     /// <summary>The default Type Ia: a near-Chandrasekhar white dwarf.</summary>
     public static Outcome TypeIa() => Engine.Compute(LabInputs.Default with { Kind = StarKind.WhiteDwarf });
 
+    /// <summary>
+    /// A collapsar: 40 M☉, Z = 0.1 Z☉, fully stripped, extreme rotation (outcomes §8.2 step 7a): Ic-BL with a long GRB,
+    /// Cano 2017's average GRB-SN (E 2.5e52 erg, M_ej 6, M_Ni 0.4), a black hole at t_BH = 1 s, a Wolf-Rayet wind.
+    /// </summary>
+    public static Outcome Collapsar() => Engine.Compute(LabInputs.Default with
+    {
+        InitialMass = 40, Metallicity = 0.1, Stripping = Stripping.Full, Rotation = Rotation.Extreme,
+    });
+
     /// <summary>A quantity with the test source.</summary>
     public static Quantity Q(double value, string unit) => new(value, unit, Confidence.ModelDependent, TestSource);
 

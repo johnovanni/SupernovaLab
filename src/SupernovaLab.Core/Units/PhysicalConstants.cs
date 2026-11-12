@@ -21,6 +21,10 @@ public static class PhysicalConstants
     public const double Year = 3.156e7;
     /// <summary>MeV in erg.</summary>
     public const double MeV = 1.602177e-6;
+    /// <summary>keV in erg.</summary>
+    public const double KeV = 1.602177e-9;
+    /// <summary>Atomic mass unit m_u, g.</summary>
+    public const double AtomicMassUnit = 1.6605e-24;
     /// <summary>Solar luminosity, erg/s (IAU 2015 B3).</summary>
     public const double LSun = 3.828e33;
     /// <summary>M_bol zero-point luminosity, erg/s (IAU 2015 B2); M_bol = -2.5 log10(L / this).</summary>

@@ -93,7 +93,7 @@ public sealed class ShockBreakoutModel : ISignalModel
     /// power-law approximation of Morrison &amp; McCammon 1983 (solar abundances), not in the research. The column is
     /// N_H = 2.2e21 A_V (<see cref="Extinction.NhFromAv"/>).
     /// </summary>
-    private const double PhotoCrossSection1KeV = 2.4e-22, PhotoCrossSectionSlope = -8.0 / 3;
+    internal const double PhotoCrossSection1KeV = 2.4e-22, PhotoCrossSectionSlope = -8.0 / 3;
 
     /// <summary>
     /// [APPROX] Ruling R29: the X-ray detectors' registry exposures, t_reg. Swift XRT's 1e-13 erg cm⁻² s⁻¹ is a ~10 ks

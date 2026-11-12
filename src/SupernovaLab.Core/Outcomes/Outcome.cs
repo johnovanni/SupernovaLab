@@ -22,9 +22,11 @@ public enum Fate
 
 /// <summary>
 /// Published values that a preset puts in place of the model's own (spec §2.3): explosion energy in erg, ejecta and
-/// ⁵⁶Ni masses in M☉ and progenitor radius in cm. A null value keeps the model's value.
+/// ⁵⁶Ni masses in M☉ and progenitor radius in cm, and the initial ⁴⁴Ti mass in M☉ (ruling R35; a core-collapse
+/// supernova only). A null value keeps the model's value.
 /// </summary>
-public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source);
+public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
+    double? Ti44Mass = null);
 
 /// <summary>
 /// The lab's result (spec §3). <see cref="Inputs"/> are the inputs as used, held inside their slider ranges.
@@ -32,9 +34,11 @@ public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, 
 /// <see cref="UsesPublishedValues"/> is true when preset pins replaced any model value.
 /// <see cref="PeakAbsoluteMagB"/> (mag) and <see cref="DeclineRateDm15B"/> (Δm15(B), mag) are the outcomes §8.2 step 9
 /// Phillips outputs, set for Type Ia (including Iax) only (ruling R21).
+/// <see cref="Ti44Mass"/> is the initial ⁴⁴Ti mass (M☉) of a core-collapse supernova with ⁵⁶Ni (ruling R35): a preset's
+/// pin, else 2×10⁻³ × the ⁵⁶Ni mass [APPROX, Speculative]; null for every other outcome, Type Ia included.
 /// </summary>
 public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bool HasGrb, Remnant Remnant,
     PresupernovaStar? Star, Quantity? ExplosionEnergyErg, Quantity? EjectaMass, Quantity? NickelMass,
     Quantity? PeakLuminosityErgS, Quantity? MagnetarEnergyErg, Quantity? MagnetarTimescaleS,
     IReadOnlyList<string> Notes, bool UsesPublishedValues,
-    Quantity? PeakAbsoluteMagB = null, Quantity? DeclineRateDm15B = null);
+    Quantity? PeakAbsoluteMagB = null, Quantity? DeclineRateDm15B = null, Quantity? Ti44Mass = null);
