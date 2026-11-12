@@ -8,7 +8,7 @@
       "id": "sn1987a",
       "name": "SN 1987A",
       "summary": "The closest supernova seen since the telescope was invented, in the Large Magellanic Cloud in 1987. Its star was a compact blue supergiant, not the usual red one, so it brightened slowly to a dome peaking about three months later instead of holding a plateau. The lab classes it II-P; astronomers call it a peculiar Type II (II-pec). The lab reaches a blue supergiant only at low metal content, so this preset uses 0.1 of the Sun's (the LMC itself has about half); the real star was more likely made blue by a merger with a companion.",
-      "whatWasSeen": "About three hours before the first light, Kamiokande-II caught 11 neutrinos in 13 seconds and IMB caught 8: still the only neutrinos ever seen from a supernova. The light peaked near magnitude 3 after about 85 days, and gamma-ray lines from radioactive cobalt and, decades later, titanium showed the radioactive heating directly. From about 1995 the blast began hitting a ring of gas the star had shed thousands of years earlier, lighting it up in X-rays. In 2024 JWST found signs of a hidden neutron star.",
+      "whatWasSeen": "About three hours before the first light, Kamiokande-II caught 11 neutrinos in 13 seconds, IMB 8 and Baksan 5: 24 in all, still the only neutrinos ever seen from a supernova. The light peaked near magnitude 3 after about 85 days, and gamma-ray lines from radioactive cobalt and, decades later, titanium showed the radioactive heating directly. From about 1995 the blast began hitting a ring of gas the star had shed thousands of years earlier, lighting it up in X-rays. In 2024 JWST found signs of a hidden neutron star.",
       "inputs": { "kind": "MassiveStar", "initialMass": 19, "metallicity": 0.1, "opacity": 0.10 },
       "observer": {
         "distancePc": 51400, "av": 0.47,
@@ -17,7 +17,7 @@
       "pins": {
         "explosionEnergyErg": 1.1e51, "ejectaMass": 14.7, "nickelMass": 0.078, "radiusCm": 3.3741e12,
         "ti44Mass": 1.5e-4, "equatorialRing": true, "nsGravitationalMass": 1.444,
-        "source": { "citation": "Blinnikov et al. 2000, ApJ 532, 1132 (model 14E1: E = 1.1 × 10⁵¹ erg, M_ej = 14.7 M☉, M_Ni = 0.078 M☉, R0 = 48.5 R☉; mass cut 1.6 M☉, as a neutron star of 1.444 M☉ gravitational by Lattimer & Yahil 1989 [DERIVED]); ⁴⁴Ti 1.5 × 10⁻⁴ M☉ from Boggs et al. 2015, Science 348, 670; the equatorial ring's X-rays from Chandra (signals §6.3)", "researchRef": "presets §1; signals §5.3, §6.3; presets-verification" }
+        "source": { "citation": "Blinnikov et al. 2000, ApJ 532, 1132 (the paper's best-estimate energy E = 1.1 ± 0.3 × 10⁵¹ erg with model 14E1's M_ej = 14.7 M☉, M_Ni = 0.078 M☉, R0 = 48.5 R☉ and mass cut 1.6 M☉, as a neutron star of 1.444 M☉ gravitational by Lattimer & Yahil 1989 [DERIVED]); ⁴⁴Ti 1.5 × 10⁻⁴ M☉ from Boggs et al. 2015, Science 348, 670; the equatorial ring's X-rays from Chandra (signals §6.3)", "researchRef": "presets §1; signals §5.3, §6.3; presets-verification" }
       },
       "facts": [
         { "messenger": "Neutrinos", "channelId": "cumulative@kamiokande-ii", "sourceTimeS": 12.439, "value": 11, "unit": "events",
@@ -26,11 +26,14 @@
         { "messenger": "Neutrinos", "channelId": "cumulative@imb", "sourceTimeS": 5.582, "value": 8, "unit": "events",
           "description": "IMB recorded 8 neutrino events within 5.6 s.",
           "source": { "citation": "Bionta et al. 1987, PRL 58, 1494 (as compiled by Vissani 2015, J. Phys. G 42, 013001)", "researchRef": "signals §1.5" } },
+        { "messenger": "Neutrinos", "channelId": "cumulative@baksan", "sourceTimeS": 9.099, "value": 5, "unit": "events",
+          "description": "Baksan recorded 5 neutrino events within 9.1 s.",
+          "source": { "citation": "Alekseev et al. 1987, JETP Lett. 45, 589 (as compiled by Vissani 2015, J. Phys. G 42, 013001)", "researchRef": "signals §1.5" } },
         { "messenger": "VisibleLight", "channelId": "appV", "sourceTimeS": 7300800, "value": 2.975, "unit": "mag",
           "description": "Peak brightness V = 2.975 on day 84.5.",
           "source": { "citation": "Hamuy & Suntzeff 1990, AJ 99, 1146 (as quoted by Suntzeff 1997, arXiv:astro-ph/9707324)", "researchRef": "presets §1; presets-verification" } },
         { "messenger": "GammaRays", "channelId": "line847", "sourceTimeS": 17668800, "value": 1.0e-3, "unit": "photons cm⁻² s⁻¹",
-          "description": "The Solar Maximum Mission saw the 847 keV cobalt line at about 1.0 × 10⁻³ photons cm⁻² s⁻¹, averaged over 1 August to 31 October 1987 (days 159–250).",
+          "description": "The Solar Maximum Mission saw the 847 keV cobalt line at about 1.0 × 10⁻³ photons cm⁻² s⁻¹, averaged over 1 August to 31 October 1987 (days 159–250). The lab's line averages about 22 times less over those days, because it keeps the radioactive cobalt deep inside the ejecta: the real explosion mixed some of it outward, where its gamma rays escaped early, and the lab has no such mixing.",
           "source": { "citation": "Matz et al. 1988, Nature 331, 416", "researchRef": "signals §5.3" } },
         { "messenger": "GammaRays", "channelId": "Ti44Mass", "sourceTimeS": null, "value": 1.5e-4, "unit": "M☉",
           "description": "NuSTAR's titanium-44 lines imply about 1.5 × 10⁻⁴ M☉ of ⁴⁴Ti was made.",
@@ -159,10 +162,10 @@
       },
       "facts": [
         { "messenger": "GammaRays", "channelId": "prompt", "sourceTimeS": null, "value": 3.0e-7, "unit": "erg cm⁻² s⁻¹",
-          "description": "The burst's peak gamma-ray flux, 3.0 ± 0.3 × 10⁻⁷ erg cm⁻² s⁻¹.",
+          "description": "The burst's peak gamma-ray flux, 3.0 ± 0.3 × 10⁻⁷ erg cm⁻² s⁻¹, measured in the instruments' own band (Galama's fluence is quoted for 24–1,820 keV); the panel's channel covers 1–10,000 keV, so the marker is a lower bound on it.",
           "source": { "citation": "Galama et al. 1998, Nature 395, 670", "researchRef": "signals §9.4" } },
         { "messenger": "Radio", "channelId": "radio5", "sourceTimeS": 1036800, "value": 45, "unit": "mJy",
-          "description": "The radio flux peaked on day 12 at about 45 mJy at 4.8 GHz (49 mJy at 8.6 GHz).",
+          "description": "The radio flux peaked on day 12 at about 45 mJy at 4.8 GHz (49 mJy at 8.6 GHz). The lab's radio is 9 to 12 times fainter, because its shock formulas are Newtonian (capped below the speed of light), while this shock moved at close to the speed of light.",
           "source": { "citation": "Kulkarni et al. 1998, Nature 395, 663", "researchRef": "presets §7; presets-verification" } },
         { "messenger": "VisibleLight", "channelId": "appV", "sourceTimeS": null, "value": 13.62, "unit": "mag",
           "description": "Peak brightness V = 13.62.",
@@ -172,7 +175,7 @@
     {
       "id": "sn2008d",
       "name": "SN 2008D",
-      "summary": "A Type Ib supernova in NGC 2770, the first caught at the moment its shock broke out of the star, by chance, while Swift was watching another supernova in the same galaxy.",
+      "summary": "A Type Ib supernova in NGC 2770, the first caught at the moment its shock broke out of the star, by chance, while Swift was watching another supernova in the same galaxy. The lab misses that flash: its breakout from the bare star lasts about 2 seconds and carries about 100 times less energy than the observed one, which most likely broke out through a dense stellar wind the lab does not model, so the lab's Swift does not catch it.",
       "whatWasSeen": "Swift's X-ray telescope recorded a flash lasting about 400 seconds, peaking near 6 × 10⁴³ erg/s. The supernova itself brightened over the following weeks; its spectrum looked broad-lined at first and then showed helium.",
       "inputs": { "kind": "MassiveStar", "initialMass": 30, "stripping": "Full" },
       "observer": {
@@ -181,11 +184,11 @@
       },
       "pins": {
         "explosionEnergyErg": 6e51, "ejectaMass": 7, "nickelMass": 0.09, "radiusCm": 7e10,
-        "source": { "citation": "Mazzali et al. 2008, Science 321, 1185 (E ≈ 6 × 10⁵¹ erg, M_ej ≈ 7 M☉, ⁵⁶Ni ≈ 0.09 M☉); progenitor radius ≈ 7 × 10¹⁰ cm from the X-ray flash (Soderberg et al. 2008, Nature 453, 469)", "researchRef": "presets §8; presets-verification" }
+        "source": { "citation": "Mazzali et al. 2008, Science 321, 1185 (E ≈ 6 × 10⁵¹ erg, M_ej ≈ 7 M☉, ⁵⁶Ni ≈ 0.09 M☉); progenitor radius R* ≈ 7 × 10¹⁰ cm from the early UV/optical cooling-envelope emission (Soderberg et al. 2008, Nature 453, 469; the X-rays give a breakout radius of at least 7 × 10¹¹ cm, in the wind). Two papers' values, accepted under ruling R47c", "researchRef": "presets §8; presets-verification" }
       },
       "facts": [
         { "messenger": "XRaysUv", "channelId": "flux@swift-xrt", "sourceTimeS": null, "value": 6.9e-10, "unit": "erg cm⁻² s⁻¹",
-          "description": "Peak X-ray flux 6.9 × 10⁻¹⁰ erg cm⁻² s⁻¹ in 0.3–10 keV, corrected for absorption: L_X ≈ 6.1 × 10⁴³ erg/s, about 2 × 10⁴⁶ erg over about 400 s.",
+          "description": "Peak X-ray flux 6.9 × 10⁻¹⁰ erg cm⁻² s⁻¹ in 0.3–10 keV, unabsorbed (corrected for the gas in the way): L_X ≈ 6.1 × 10⁴³ erg/s, about 2 × 10⁴⁶ erg over about 400 s. The panel's channel is the flux after the gas, so compare it with the gas removed.",
           "source": { "citation": "Soderberg et al. 2008, Nature 453, 469", "researchRef": "presets §8; signals §3.2; presets-verification" } }
       ]
     },

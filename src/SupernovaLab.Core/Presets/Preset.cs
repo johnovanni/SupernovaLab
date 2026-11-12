@@ -7,10 +7,17 @@ using SupernovaLab.Core.Units;
 namespace SupernovaLab.Core.Presets;
 
 /// <summary>
-/// Something that was actually measured for a real supernova, for a panel to mark (spec §2.3). <see cref="ChannelId"/> is
-/// the model channel the measurement compares with (e.g. "appV", "line847", "periodS"), with a detector suffix where the
-/// detector has no channel of its own (e.g. "cumulative@kamiokande-ii"); for a property of the outcome rather than a
-/// signal it is the <see cref="Outcome"/> member's name (e.g. "Ti44Mass"). <see cref="SourceTimeS"/> is the time after
+/// Something that was actually measured for a real supernova, for a panel to mark (spec §2.3). <see cref="ChannelId"/>
+/// takes one of three forms, which a panel must tell apart (review M7; tested in PresetValidationTests):
+/// <list type="number">
+/// <item>a channel of some <see cref="ISignalModel"/> (e.g. "appV", "line847", "periodS", "ringLx"); the fact's
+/// <see cref="Messenger"/> is the panel it belongs on, which can differ from the model's own (the circumstellar model is
+/// a Radio model, but its "lx" and "ringLx" go on the X-ray panel);</item>
+/// <item>a detector that has no channel, as "cumulative@&lt;detector&gt;": only "cumulative@kamiokande-ii",
+/// "cumulative@imb" and "cumulative@baksan" (the SN 1987A neutrino counts);</item>
+/// <item>the name of an <see cref="Outcome"/> member, for a property of the outcome rather than a signal (e.g.
+/// "Ti44Mass").</item>
+/// </list> <see cref="SourceTimeS"/> is the time after
 /// core bounce (or ignition) in the source frame, null when the measurement has no single time or its time is not
 /// verified. <see cref="Value"/> is in <see cref="Unit"/>. Only values checked against the paper are given
 /// (docs/research/presets-verification.md).

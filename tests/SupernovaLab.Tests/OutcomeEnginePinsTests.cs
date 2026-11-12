@@ -46,11 +46,30 @@ public class OutcomeEnginePinsTests
         var o = Engine.Compute(LabInputs.Default with { InitialMass = 15, Stripping = Stripping.Full }, Pins(ej: 1.0, ni: 0.8));
         Assert.Equal(0.8, o.NickelMass!.Value);
         Assert.Equal(1.0, o.EjectaMass!.Value);
-        Assert.Contains(o.Notes, n => n.Contains("more than half the ejecta mass", StringComparison.Ordinal));
+        Assert.Contains(o.Notes, n => n.Contains("published ⁵⁶Ni mass", StringComparison.Ordinal) &&
+                                      n.Contains("more than half the published ejecta mass", StringComparison.Ordinal));
 
         // A set that keeps to the cap gets no such note.
         var fine = Engine.Compute(LabInputs.Default with { InitialMass = 15, Stripping = Stripping.Full }, Pins(ej: 2.0, ni: 0.1));
         Assert.DoesNotContain(fine.Notes, n => n.Contains("ejecta mass", StringComparison.Ordinal) && n.Contains("published", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PinnedEjectaAlone_CapsTheModelsNickel_WithoutCallingItPublished()
+    {
+        // Review M3: R15 caps the MODEL's ⁵⁶Ni at half the ejecta, so under a pinned M_ej of 0.06 M☉ the 15 M☉ Full star's
+        // model 0.059 M☉ becomes 0.03 M☉. No note calls a model value "published".
+        var o = Engine.Compute(LabInputs.Default with { InitialMass = 15, Stripping = Stripping.Full }, Pins(ej: 0.06));
+        Assert.Equal(0.059, Engine.Compute(LabInputs.Default with { InitialMass = 15, Stripping = Stripping.Full }).NickelMass!.Value);
+        Assert.Equal(0.03, o.NickelMass!.Value, 1e-12);
+        Assert.False(o.NickelMass.Published);
+        Assert.DoesNotContain(o.Notes, n => n.Contains("published ⁵⁶Ni", StringComparison.Ordinal));
+
+        // A Type Ia keeps its published yield (R17); a pinned ejecta below it gets a note naming the model's ⁵⁶Ni.
+        var ia = Engine.Compute(LabInputs.Default with { Kind = StarKind.WhiteDwarf }, Pins(ej: 0.5));
+        Assert.Equal(0.6, ia.NickelMass!.Value);
+        Assert.Contains(ia.Notes, n => n.Contains("model's ⁵⁶Ni", StringComparison.Ordinal) &&
+                                       n.Contains("published ejecta", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -60,7 +79,8 @@ public class OutcomeEnginePinsTests
         var ia = LabInputs.Default with { Kind = StarKind.WhiteDwarf };
         var o = Engine.Compute(ia, Pins(ni: 1.5));
         Assert.Equal(1.5, o.NickelMass!.Value);
-        Assert.Contains(o.Notes, n => n.Contains("more than the ejecta mass", StringComparison.Ordinal));
+        Assert.Contains(o.Notes, n => n.Contains("published ⁵⁶Ni mass", StringComparison.Ordinal) &&
+                                       n.Contains("more than the model's ejecta mass", StringComparison.Ordinal));
         Assert.DoesNotContain(Engine.Compute(ia, Pins(ni: 0.6)).Notes, n => n.Contains("published ⁵⁶Ni", StringComparison.Ordinal));
     }
 

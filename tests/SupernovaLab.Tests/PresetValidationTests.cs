@@ -85,6 +85,11 @@ public class PresetValidationTests
 
     // ---------------------------------------------------------------- Review Focus 5: editing an input clears the pins
 
+    /// <summary>
+    /// Review Focus 5 (kept as the plan words it; ruling R47e). With no pins the engine cannot set UsesPublishedValues, so the
+    /// second assertion cannot fail; the real check, that editing an input in the UI drops the pins and shows a status
+    /// message, belongs to Task 14's view-model test.
+    /// </summary>
     [Fact]
     public void PinnedPresets_UsePublishedValues_AndEditingAnInputReturnsToTheModel()
     {
@@ -144,7 +149,8 @@ public class PresetValidationTests
     public void Sn1987A_PeakV_IsWithinHalfAMagnitudeOf2Point975()
     {
         // Spec §8: peak V of about +2.9 within 0.5 mag. Verified: V = 2.975 at day 84.5 (Hamuy & Suntzeff 1990). The
-        // preset's observer is at 51.4 kpc with A_V = 0.47.
+        // preset's observer is at 51.4 kpc with A_V = 0.47. The peak-day check (±20 d) depends on the preset's opacity,
+        // κ = 0.10: a free choice (the slider's top), not a published value (presets-verification.md).
         var lc = new LightCurveModel();
         var o = Of("sn1987a");
         double tPeak = lc.PeakTimeS(o);
@@ -172,9 +178,11 @@ public class PresetValidationTests
     [Fact]
     public void Crab_PeriodIs33Ms_AndItsSpinDownAgeIsWithin50PercentOfItsTrueAge()
     {
-        // Spec §8: P = 33 ms and a characteristic age within 50% of the true age. The preset pins the birth period
-        // P0 = √(P² − 2PṖt) = 16.845 ms and B = 3.2e19 √(PṖ) = 3.794e12 G from ATNF's P = 33.3924 ms, Ṗ = 4.20972e-13 at
-        // MJD 48442.5, 937 yr after 1054 July 4, so the model's period there is 33.39 ms.
+        // Spec §8: P = 33 ms and a characteristic age within 50% of the true age. A CONSISTENCY CHECK, not independent
+        // agreement (ruling R47d): the preset pins the birth period P0 = √(P² − 2PṖt) = 16.845 ms and B = 3.2e19 √(PṖ) =
+        // 3.794e12 G, derived from ATNF's P = 33.3924 ms, Ṗ = 4.20972e-13 at MJD 48442.5, 937 yr after 1054 July 4 (R41
+        // addendum). The n = 3 model gives that P and Ṗ back at that epoch by construction, and its τ_c carries the
+        // measured one forward; the test checks that the spin-down law inverts correctly.
         var o = Of("sn1054");
         var pulsar = new PulsarModel();
         var obs = ObserverOf("sn1054");
@@ -197,6 +205,9 @@ public class PresetValidationTests
     {
         // Spec §8 / Soderberg et al. 2008: L_X,p ≈ 6.1e43 erg/s in 0.3–10 keV. The model's 0.3–10 keV luminosity is the
         // swift-xrt flux without dust × 4πD² at the preset's 27 Mpc (z = 0), 1 s after breakout (inside the flash).
+        // Ruling R47c: this TESTS THE R28 0.3c CAP AT SODERBERG'S R* (7e10 cm), not breakout physics. The uncapped breakout
+        // velocity is about 0.65c, outside the Waxman & Katz formulas, so L_X does not depend on E or M_ej here (probe:
+        // 4.28e43 for Mazzali's and Soderberg's sets alike). The real flash, a breakout in a dense wind, lasted ~400 s.
         var o = Of("sn2008d");
         var breakout = new ShockBreakoutModel();
         var obs = ObserverOf("sn2008d") with { Av = 0 };
@@ -224,5 +235,59 @@ public class PresetValidationTests
         // Ruling R41: the preset's ring gives the X-ray ring channel; Chandra's plateau is 2.53e36 erg/s (signals §6.3).
         double l = new CsmInteractionModel().Sample(Of("sn1987a"), ObserverOf("sn1987a"), 9500 * Day, "ringLx");
         Assert.InRange(l, 2.4e36, 2.53e36);
+    }
+
+    [Fact]
+    public void Sn1987A_ChandraSeesTheRing()
+    {
+        // Ruling R47a: Chandra has imaged the ring since 1999. At day 9,500 the ring gives about 7.7e-12 erg cm⁻² s⁻¹ in
+        // 0.5–2 keV as observed, thousands of times Chandra's 1e-15, so the verdict counts it.
+        var d = new CsmInteractionModel().Detect(Of("sn1987a"), ObserverOf("sn1987a"), 9500 * Day, Detectors.Get("chandra"));
+        Assert.Equal(DetectionStatus.Detected, d.Status);
+        Assert.Contains("ring", d.Reason);
+    }
+
+    /// <summary>The detector-only ids a fact may use where no model has a channel (documented on ObservedFact).</summary>
+    private static readonly string[] DetectorOnlyIds = { "cumulative@kamiokande-ii", "cumulative@imb", "cumulative@baksan" };
+
+    [Fact]
+    public void EveryFactChannel_ResolvesToAModelChannel_AnOutcomeMember_OrADocumentedDetectorId()
+    {
+        var channels = typeof(ISignalModel).Assembly.GetTypes()
+            .Where(t => typeof(ISignalModel).IsAssignableFrom(t) && !t.IsInterface)
+            .SelectMany(t => ((ISignalModel)Activator.CreateInstance(t)!).Channels.Select(c => c.Id))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var p in PresetCatalog.LoadEmbedded())
+        foreach (var f in p.Facts)
+        {
+            bool resolves = channels.Contains(f.ChannelId) || typeof(Outcome).GetProperty(f.ChannelId) is not null ||
+                            DetectorOnlyIds.Contains(f.ChannelId);
+            Assert.True(resolves, $"{p.Id}: fact channel '{f.ChannelId}' resolves to nothing");
+        }
+    }
+
+    [Fact]
+    public void Sn1987A_Facts_CountThe24NeutrinosOfThreeDetectors()
+    {
+        // Spec §2.3's example, "the 24 neutrino events of SN 1987A": Kamiokande-II 11, IMB 8, Baksan 5 (signals §1.5).
+        var facts = PresetCatalog.Get("sn1987a").Facts.Where(f => f.Messenger == Messenger.Neutrinos).ToList();
+        Assert.Equal(11, facts.Single(f => f.ChannelId == "cumulative@kamiokande-ii").Value);
+        Assert.Equal(8, facts.Single(f => f.ChannelId == "cumulative@imb").Value);
+        Assert.Equal(5, facts.Single(f => f.ChannelId == "cumulative@baksan").Value);
+        Assert.Equal(24, facts.Sum(f => f.Value));
+        Assert.Contains("Baksan", PresetCatalog.Get("sn1987a").WhatWasSeen);
+    }
+
+    [Fact]
+    public void KnownMisses_AreDisclosedWhereTheUserReadsThem()
+    {
+        // Ruling R47b: each visible miss is said plainly, with its reason.
+        Assert.Contains("Swift", PresetCatalog.Get("sn2008d").Summary);
+        Assert.Contains("wind", PresetCatalog.Get("sn2008d").Summary);
+        Assert.Contains("Newtonian", PresetCatalog.Get("sn1998bw").Facts.Single(f => f.ChannelId == "radio5").Description);
+        var line = PresetCatalog.Get("sn1987a").Facts.Single(f => f.ChannelId == "line847").Description;
+        Assert.Contains("22", line);
+        Assert.Contains("mixing", line);
+        Assert.Contains("unabsorbed", PresetCatalog.Get("sn2008d").Facts.Single().Description);
     }
 }

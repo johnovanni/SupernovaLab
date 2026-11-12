@@ -44,7 +44,8 @@ namespace SupernovaLab.Core.Signals;
 /// early low-frequency radio is overestimated). The SN 1987A ring (§6.3) is drawn only for an outcome a preset gives it
 /// (<see cref="Outcome.HasEquatorialRing"/>, ruling R41): channel <c>ringLx</c> is <see cref="RingXrayLuminosityErgS"/>,
 /// the 0.5–2 keV luminosity as observed, already absorbed by the gas toward the LMC, so no absorption is applied to it; it
-/// is NaN for every other outcome. Source time throughout.
+/// is NaN for every other outcome. The X-ray verdict adds the ring's flux to the shock's (ruling R47a). Source time
+/// throughout.
 /// Speculative (rulings R24/R27): the microphysics, shock speeds and spectral shapes are [APPROX].
 /// </summary>
 public sealed class CsmInteractionModel : ISignalModel
@@ -239,14 +240,19 @@ public sealed class CsmInteractionModel : ISignalModel
         }
 
         double lx = XrayLuminosity(outcome, shock, sourceTimeS);
-        double absorbed = XrayFlux(lx, observer, absorbed: true), clear = XrayFlux(lx, observer, absorbed: false);
+        // Ruling R47a: SN 1987A's ring counts in the verdict. Its 0.5–2 keV flux is as observed (already absorbed, so not
+        // absorbed again) and a lower bound on its 0.3–10 keV flux.
         double ringLx = outcome.HasEquatorialRing ? RingXrayLuminosityErgS(sourceTimeS) : 0;
-        if (ringLx > 0)
-            caveat += $" The equatorial ring adds about {FormatFlux(ringLx / (4 * Math.PI * Math.Pow(observer.LuminosityDistanceCm, 2)))} " +
-                      "erg cm⁻² s⁻¹ in 0.5–2 keV as Chandra measured it (already absorbed), not included in the verdict above.";
-        string flux = $"{detector.Name} would receive {FormatFlux(absorbed)} erg cm⁻² s⁻¹ in 0.3–10 keV (from " +
-                      $"{FormatFlux(lx)} erg/s) against the {FormatFlux(detector.Threshold)} it reaches in " +
-                      $"{XrayExposure(detector.Id)}";
+        double ring = ringLx / (4 * Math.PI * Math.Pow(observer.LuminosityDistanceCm, 2));
+        double absorbed = XrayFlux(lx, observer, absorbed: true) + ring, clear = XrayFlux(lx, observer, absorbed: false) + ring;
+        string flux = ring > 0
+            ? $"{detector.Name} would receive {FormatFlux(absorbed)} erg cm⁻² s⁻¹: the shock in the wind gives " +
+              $"{FormatFlux(absorbed - ring)} in 0.3–10 keV (from {FormatFlux(lx)} erg/s), and the equatorial ring " +
+              $"{FormatFlux(ring)} in 0.5–2 keV as Chandra measured it (already absorbed; at least that much in 0.3–10 keV). " +
+              $"Its limit is {FormatFlux(detector.Threshold)} in {XrayExposure(detector.Id)}"
+            : $"{detector.Name} would receive {FormatFlux(absorbed)} erg cm⁻² s⁻¹ in 0.3–10 keV (from " +
+              $"{FormatFlux(lx)} erg/s) against the {FormatFlux(detector.Threshold)} it reaches in " +
+              $"{XrayExposure(detector.Id)}";
         if (absorbed >= detector.Threshold)
             return new Detection(DetectionStatus.Detected, $"{flux}: detected.{caveat}");
         if (clear >= detector.Threshold)

@@ -33,6 +33,7 @@ public static class PresetCatalog
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
         Converters = { new JsonStringEnumConverter() },
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
     private static IReadOnlyList<Preset> Load()
@@ -40,10 +41,69 @@ public static class PresetCatalog
         var assembly = Assembly.GetExecutingAssembly();
         string name = assembly.GetManifestResourceNames().Single(n => n.EndsWith(ResourceSuffix, StringComparison.Ordinal));
         using var stream = assembly.GetManifestResourceStream(name)!;
-        var file = JsonSerializer.Deserialize<FileDto>(stream, Options)
-                   ?? throw new InvalidDataException("presets.json is empty.");
-        var presets = (file.Presets ?? throw new InvalidDataException("presets.json has no \"presets\" list."))
-            .Select(ToPreset).ToList();
+        return Parse(stream);
+    }
+
+    /// <summary>
+    /// The presets in a presets.json stream (the seam the tests use). Ruling R47f: an unknown key (a misspelt pin would
+    /// otherwise vanish silently), a value of the wrong kind or malformed JSON throws <see cref="InvalidDataException"/>,
+    /// naming the preset where it can.
+    /// </summary>
+    internal static IReadOnlyList<Preset> Parse(Stream stream)
+    {
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(stream,
+                new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        }
+        catch (JsonException e)
+        {
+            throw new InvalidDataException($"presets.json is not valid JSON: {e.Message}", e);
+        }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("presets.json must be an object with a \"presets\" list.");
+            JsonElement list = default;
+            foreach (var property in root.EnumerateObject())
+            {
+                if (!property.NameEquals("presets"))
+                    throw new InvalidDataException($"presets.json has an unknown key '{property.Name}'.");
+                list = property.Value;
+            }
+            if (list.ValueKind != JsonValueKind.Array)
+                throw new InvalidDataException("presets.json has no \"presets\" list.");
+
+            var presets = new List<Preset>();
+            int index = 0;
+            foreach (var element in list.EnumerateArray())
+            {
+                index++;
+                string label = element.ValueKind == JsonValueKind.Object && element.TryGetProperty("id", out var id) &&
+                               id.ValueKind == JsonValueKind.String
+                    ? id.GetString()!
+                    : $"#{index}";
+                PresetDto dto;
+                try
+                {
+                    dto = element.Deserialize<PresetDto>(Options)
+                          ?? throw new InvalidDataException($"Preset '{label}' in presets.json is empty.");
+                }
+                catch (JsonException e)
+                {
+                    throw new InvalidDataException($"Preset '{label}' in presets.json: {e.Message}", e);
+                }
+                presets.Add(ToPreset(dto));
+            }
+            return Validated(presets);
+        }
+    }
+
+    private static IReadOnlyList<Preset> Validated(List<Preset> presets)
+    {
         var duplicate = presets.GroupBy(p => p.Id).FirstOrDefault(g => g.Count() > 1);
         if (duplicate is not null) throw new InvalidDataException($"presets.json lists '{duplicate.Key}' twice.");
         return presets;
@@ -87,11 +147,6 @@ public static class PresetCatalog
         => new(Required(s?.Citation, $"{what} citation", id), Required(s?.ResearchRef, $"{what} research reference", id));
 
     // ---------------------------------------------------------------- the file's shape
-
-    private sealed class FileDto
-    {
-        public List<PresetDto>? Presets { get; set; }
-    }
 
     private sealed class PresetDto
     {

@@ -81,8 +81,9 @@ public sealed partial class OutcomeEngine
                 {
                     if (neutronStar)
                     {
-                        published |= pins.NsSpinPeriodS is not null || pins.NsFieldG is not null ||
-                                     pins.NsGravitationalMass is not null;
+                        // Review M2: observed on the remnant, not assumed from the pins.
+                        published |= d.Remnant.SpinPeriodS?.Published == true || d.Remnant.MagneticFieldG?.Published == true ||
+                                     d.Remnant.Mass?.Published == true;
                         if (pins.PulsarRadioLumMjyKpc2 is double l) pulsarRadio = Pin(l, "mJy kpc²");
                     }
                     else notes.Add("The published neutron-star values are not used: in the lab this explosion leaves no " +
@@ -93,6 +94,10 @@ public sealed partial class OutcomeEngine
                     ring = true;
                     published = true;
                 }
+                // Review M3: R15 still caps the MODEL's ⁵⁶Ni (core collapse and pair instability, R17) under a pinned M_ej.
+                if (pins.EjectaMass is not null && pins.NickelMass is null && x.Kind == StarKind.MassiveStar &&
+                    nickel is not null && ejecta is { Value: > 0 })
+                    nickel = CapNickel(nickel, ejecta.Value);
                 NoteNickelCapBroken(x, pins, ejecta, nickel, notes);
             }
         }
@@ -115,7 +120,8 @@ public sealed partial class OutcomeEngine
     /// <summary>
     /// Ruling R44: pinned values are trusted, so the model's cap (⁵⁶Ni ≤ 0.5 M_ej for core-collapse and pair-instability
     /// outcomes, ruling R15; ⁵⁶Ni &lt; M_ej for thermonuclear ones, ruling R17) is not applied to them, but a pin set that
-    /// breaks it is pointed out.
+    /// breaks it is pointed out, naming which of the two values is published and which is the model's (review M3). A
+    /// model ⁵⁶Ni under a pinned core-collapse M_ej has already been capped, so only a thermonuclear one can break it.
     /// </summary>
     private static void NoteNickelCapBroken(LabInputs x, PresetPins pins, Quantity? ejecta, Quantity? nickel, List<string> notes)
     {
@@ -124,8 +130,10 @@ public sealed partial class OutcomeEngine
         bool thermonuclear = x.Kind == StarKind.WhiteDwarf;
         bool broken = thermonuclear ? ni.Value >= ej.Value : ni.Value > NickelMaxEjectaFraction * ej.Value;
         if (!broken) return;
-        notes.Add($"The published ⁵⁶Ni mass ({UnitFormat.Mass(ni.Value)}) is more than {(thermonuclear ? "the" : "half the")} " +
-                  $"ejecta mass ({UnitFormat.Mass(ej.Value)}), which the lab's own model never makes; the published values " +
+        string nickelWho = pins.NickelMass is not null ? "published" : "model's";
+        string ejectaWho = pins.EjectaMass is not null ? "published" : "model's";
+        notes.Add($"The {nickelWho} ⁵⁶Ni mass ({UnitFormat.Mass(ni.Value)}) is more than {(thermonuclear ? "the" : "half the")} " +
+                  $"{ejectaWho} ejecta mass ({UnitFormat.Mass(ej.Value)}), which the lab's own model never makes; the values " +
                   "are kept as they are.");
     }
 
