@@ -36,6 +36,14 @@ public static class TestOutcomes
     public static Remnant NeutronStar(double mass, double radiusKm = 12)
         => new(RemnantKind.NeutronStar, Q(mass, "M☉"), Q(radiusKm, "km"), Q(0.1, "s"), Q(3e12, "G"), Q(350, "km/s"), null);
 
+    /// <summary>A 1.4 M☉, 12 km neutron star (or magnetar) born with this spin period (s) and dipole field (G).</summary>
+    public static Remnant Pulsar(double periodS, double fieldG, RemnantKind kind = RemnantKind.NeutronStar)
+        => new(kind, Q(1.4, "M☉"), Q(12, "km"), Q(periodS, "s"), Q(fieldG, "G"), Q(350, "km/s"), null);
+
+    /// <summary>This outcome with the progenitor's wind replaced: mass-loss rate in M☉/yr and wind speed in km/s.</summary>
+    public static Outcome WithWind(Outcome o, double massLossMsunPerYr, double windKmS)
+        => o with { Star = o.Star! with { MassLossRateMsunPerYr = Q(massLossMsunPerYr, "M☉/yr"), WindSpeedKmS = Q(windKmS, "km/s") } };
+
     /// <summary>A black hole of this mass (M☉) that forms <paramref name="formationTimeS"/> after bounce.</summary>
     public static Remnant BlackHole(double mass, double formationTimeS)
         => new(RemnantKind.BlackHole, Q(mass, "M☉"), null, null, null, Q(0, "km/s"), Q(formationTimeS, "s"));

@@ -4,7 +4,8 @@ namespace SupernovaLab.Core.Signals;
 
 /// <summary>
 /// Every instrument in spec §5's panel table, with its sensitivity from signals §11 and the section it details
-/// (§1.4, §2.3, §3, §4.7, §5.4, §6, §8, §9). Later tasks use these Ids and add none.
+/// (§1.4, §2.3, §3, §4.7, §5.4, §6, §8, §9). Later tasks use these Ids; the only additions are Task 11's pulsar-search
+/// entries "parkes" and "meerkat-psr" (ruling R40).
 /// Values marked [APPROX] are the research file's own placeholders, or a choice explained in the comment; their
 /// <see cref="Detector.ThresholdConfidence"/> is Speculative (ruling R24).
 /// </summary>
@@ -113,6 +114,15 @@ public static class Detectors
         new("ska", "SKA", Messenger.Radio, 0.01, "mJy",
             new Source("\"Large telescopes reach about 10 µJy\" as given in the research file, applied to the SKA [APPROX]",
                 "signals §8.3, §11"), Speculative),
+        // Ruling R40: pulsar searches, which fold the signal at the spin period, have their own entries. Parkes and
+        // MeerKAT take the pulsar-timing row's "threshold about 0.1 mJy" (§8.3's typical survey threshold 0.1–0.2 mJy at
+        // 1.4 GHz, e.g. the Parkes Multibeam survey; Manchester et al. 2001); FAST keeps its 10 µJy above.
+        new("parkes", "Parkes (Murriyang)", Messenger.Radio, 0.1, "mJy (1.4 GHz pulsar search)",
+            new Source("Typical pulsar survey threshold about 0.1–0.2 mJy at 1.4 GHz, e.g. the Parkes Multibeam survey " +
+                       "(Manchester et al. 2001, MNRAS 328, 17); the low end [APPROX]", "signals §8.3, §11"), Speculative),
+        new("meerkat-psr", "MeerKAT (pulsar search)", Messenger.Radio, 0.1, "mJy (1.4 GHz pulsar search)",
+            new Source("The pulsar-timing row's threshold of about 0.1 mJy, applied to MeerKAT [APPROX]", "signals §8.3, §11"),
+            Speculative),
     };
 
     private static readonly Dictionary<string, Detector> ById = All.ToDictionary(d => d.Id, StringComparer.Ordinal);

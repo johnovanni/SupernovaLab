@@ -269,6 +269,11 @@ public class GrbModelTests
         string? late = Model.AfterglowNotModeledReason(Collapsar, obs, t0 + 60 * Day);
         Assert.NotNull(late);
         Assert.Contains("self-absorbed", late);
+        // Task 10 carry-over: the plain-language reason and the trigger's tail both state the ~7-week end (50.3 d above),
+        // inside the 180-day outer range.
+        Assert.Contains("7 weeks", late);
+        Assert.Contains("7 weeks", Model.Detect(Collapsar, obs, t0 + 10 * Day, Detectors.Get("gbm")).Reason);
+        Assert.Equal(180 * Day, GrbModel.AfterglowEndS);
     }
 
     [Fact]

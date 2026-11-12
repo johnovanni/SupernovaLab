@@ -27,9 +27,10 @@ namespace SupernovaLab.Core.Signals;
 /// 0.01–0.1], p = 2.5 (Sari, Piran &amp; Narayan 1998); slow- or fast-cooling spectrum, self-absorbed below ν_A
 /// (F ∝ ν²) [APPROX]. The jet break (§9.2 inverted, with the formula's own η_γ = 0.2, n = 0.1 cm⁻³ [APPROX: an ISM
 /// formula]) steepens the decline to t^(−p) above ν_m (Sari, Piran &amp; Halpern 1999), here through their post-break
-/// scalings F_max ∝ t⁻¹, ν_m ∝ t⁻², ν_c constant, ν_A ∝ t^(−1/5). Valid from the end of the prompt (about a minute) to
-/// 180 days [APPROX, §11: "minutes to months"; later the blast wave is no longer relativistic], and only while ν_A &lt; ν_m
-/// and never for a pinned low-luminosity burst (E_iso &lt; 1e49 erg): ruling R39, <see cref="AfterglowNotModeledReason"/>.</item>
+/// scalings F_max ∝ t⁻¹, ν_m ∝ t⁻², ν_c constant, ν_A ∝ t^(−1/5). The outer range is the end of the prompt (about a
+/// minute) to 180 days [APPROX, §11: "minutes to months"; later the blast wave is no longer relativistic], but the curve
+/// is drawn only while ν_A &lt; ν_m, which for the classical burst ends after about 50 days (7 weeks), and never for a
+/// pinned low-luminosity burst (E_iso &lt; 1e49 erg): ruling R39, <see cref="AfterglowNotModeledReason"/>.</item>
 /// </list>
 /// Source time throughout, from core bounce. Speculative (rulings R24/R27): the energetics, pulse shape, jet angle,
 /// microphysics and both trigger thresholds are [APPROX].
@@ -84,10 +85,14 @@ public sealed class GrbModel : ISignalModel
         "around the star).";
 
     private const string SelfAbsorbedReason =
-        "the afterglow's self-absorption frequency has passed its peak frequency ν_m (the radio spectrum is self-absorbed " +
-        "above ν_m), outside the range of the relativistic forward-shock formulas used here, so it is not modeled.";
+        "the afterglow curve ends here because its formulas stop applying: the glowing gas has become thick enough to " +
+        "absorb (self-absorbed) its own radio waves up to the frequency where most of its electrons shine, a case these " +
+        "formulas do not cover. For a typical burst this happens about 7 weeks after the burst.";
 
-    /// <summary>[APPROX] The afterglow formulas hold to "months" (§11).</summary>
+    /// <summary>
+    /// [APPROX] The afterglow's outer limit: the formulas hold to "months" (§11). The drawn curve usually stops sooner,
+    /// when ν_A passes ν_m (ruling R39): about 50 days (7 weeks) for the classical burst.
+    /// </summary>
     public const double AfterglowEndS = 180 * Day;
 
     /// <summary>Afterglow bands: radio 5 GHz [APPROX, the radio panel's middle band]; V at 550 nm (AB); X-rays 0.3–10 keV.</summary>
@@ -205,7 +210,11 @@ public sealed class GrbModel : ISignalModel
               $"about {detector.Threshold.ToString("0.#e0", inv)}";
         string when = since < peakSince ? "so far" : "at its peak";
         string tail = since > PromptEndT90s * burst.T90S
-            ? $" The burst lasted about {UnitFormat.Time(burst.T90S * z1)}; its afterglow fades over the following months."
+            ? $" The burst lasted about {UnitFormat.Time(burst.T90S * z1)}; its afterglow fades over the following weeks to " +
+              (IsLowLuminosity(burst)
+                  ? "months."
+                  : "months, but the drawn afterglow curve ends sooner, where its formulas stop applying (about 7 weeks " +
+                    "for a typical burst).")
             : $" It lasts about {UnitFormat.Time(burst.T90S * z1)} (T90).";
         string kind = burst.Pinned
             ? $"This burst uses published values: {UnitFormat.Energy(burst.IsotropicEnergyErg)} (isotropic equivalent) " +

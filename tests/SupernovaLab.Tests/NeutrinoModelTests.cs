@@ -242,7 +242,7 @@ public class NeutrinoModelTests
         {
             "superk", "hyperk", "icecube", "juno", "dune", "aligo", "et", "ce", "gbm", "bat", "spi", "cosi", "nustar",
             "swift-xrt", "einstein-probe", "ultrasat", "chandra", "xmm", "eye", "ztf", "rubin", "spectrograph",
-            "vla", "meerkat", "fast", "ska",
+            "vla", "meerkat", "fast", "ska", "parkes", "meerkat-psr",
         };
         Assert.Equal(ids, Detectors.All.Select(d => d.Id));
         foreach (var d in Detectors.All)
