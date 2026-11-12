@@ -9,6 +9,7 @@ using SupernovaLab.App.ViewModels;
 using SupernovaLab.App.Windows;
 using SupernovaLab.Core.Timeline;
 using SupernovaLab.Core.Presets;
+using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.App.Services;
 
@@ -33,10 +34,17 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 /// render at their own default size, and again scrolled to the end when they scroll. <c>--bench &lt;seconds&gt;</c> then
 /// plays the whole timeline once over that many seconds with the Instruments window open, counts rendered frames and
 /// writes the frame rate to bench.log (the redraw-rate check of spec §8, measured in-app: no screen capture).
+/// <c>--sweep &lt;steps&gt;</c> loads every preset in the catalog and steps the timeline through that many log-spaced times
+/// from 1 ms to 1,000 yr (the last step is exactly 1,000 yr), with the Instruments window open, logging any exception, any
+/// panel's "Model error" and any 3D-view failure to sweep.log (Task 17's run-through).
 /// </summary>
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
-    IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null)
+    IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
+    int? SweepSteps = null)
 {
+    /// <summary>The most steps per preset that <c>--sweep</c> accepts.</summary>
+    public const int MaxSweepSteps = 2000;
+
     /// <summary>The first preset, or null for the lab's defaults.</summary>
     public string? PresetId => PresetIds.Count > 0 ? PresetIds[0] : null;
 
@@ -54,6 +62,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         var sizes = new List<SnapshotSize>();
         var windows = new List<SnapshotWindow>();
         double? bench = null;
+        int? sweep = null;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -88,13 +97,18 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                         throw new ArgumentException($"--bench needs a number of seconds between 0 and 600, not '{value}'.");
                     bench = b;
                     break;
+                case "--sweep":
+                    if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int steps) || steps < 2 || steps > MaxSweepSteps)
+                        throw new ArgumentException($"--sweep needs a number of steps between 2 and {MaxSweepSteps}, not '{value}'.");
+                    sweep = steps;
+                    break;
                 default:
                     throw new ArgumentException($"Unknown option '{option}'.");
             }
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep);
     }
 
     /// <summary>A preset entry, "id" or "id@seconds" (its own time, overriding --time for that preset).</summary>
@@ -180,6 +194,7 @@ public static class SnapshotRenderer
                 string suffix = SnapshotRequest.FileSuffix(entry);
                 await Capture(request, main, windows, suffix, log);
             }
+            if (await RunSweep(request, main, vm, windows, log) > 0) exitCode = 1;
             await RunBench(request, main, vm, windows, log);
         }
         catch (Exception e)
@@ -357,6 +372,90 @@ public static class SnapshotRenderer
     }
 
     /// <summary>
+    /// <c>--sweep</c>: for every preset, steps the observer time through log-spaced values from 1 ms to 1,000 yr with the main
+    /// and Instruments windows open, giving the 3D view and the panels a frame at each step. Counts exceptions (also
+    /// dispatcher exceptions that nothing handled), panels showing "Model error", and a failed 3D view. Writes sweep.log
+    /// and returns the number of problems.
+    /// </summary>
+    private static async Task<int> RunSweep(SnapshotRequest request, Window main, MainViewModel vm, WindowService windows, List<string> log)
+    {
+        if (request.SweepSteps is not int steps) return 0;
+        windows.ShowInstruments();
+        if (windows.Instruments is { } w) PlaceOffScreen(w);
+        main.Width = request.Sizes[0].Width;
+        main.Height = request.Sizes[0].Height;
+        await NextFrame(main);
+
+        var inv = CultureInfo.InvariantCulture;
+        var lines = new List<string>
+        {
+            $"SupernovaLab sweep {DateTime.Now:O}",
+            $"{PresetCatalog.LoadEmbedded().Count} presets, {steps} log-spaced times each from {TimeAxis.MinS.ToString("0.###E+0", inv)} s to " +
+            $"{TimeAxis.MaxS.ToString("0.###E+0", inv)} s (1,000 yr); main and Instruments windows open, a frame per step",
+        };
+        int problems = 0;
+        var unhandled = new List<string>();
+        void OnUnhandled(object s, DispatcherUnhandledExceptionEventArgs e)
+        {
+            unhandled.Add(e.Exception.ToString());
+            e.Handled = true;
+        }
+        Application.Current.DispatcherUnhandledException += OnUnhandled;
+        var scene = (main as MainWindow)?.Scene;
+        double logMin = Math.Log(TimeAxis.MinS), logMax = Math.Log(TimeAxis.MaxS);
+        try
+        {
+            foreach (var preset in PresetCatalog.LoadEmbedded())
+            {
+                int before = problems;
+                var seen = new SortedSet<string>();
+                try
+                {
+                    vm.Lab.SelectedPreset = preset;
+                    for (int k = 0; k < steps; k++)
+                    {
+                        double t = k == steps - 1 ? TimeAxis.MaxS : Math.Exp(logMin + (logMax - logMin) * k / (steps - 1));
+                        vm.Timeline.ObserverTimeS = t;
+                        await NextFrame(main);
+                        foreach (var p in vm.Panels)
+                            if (p.ErrorText is { } err && seen.Add($"{p.Title}: {err}"))
+                            {
+                                problems++;
+                                lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: panel error: {p.Title}: {err}");
+                            }
+                        if (scene is { IsFailed: true } && seen.Add("scene"))
+                        {
+                            problems++;
+                            lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: 3D view failed: {scene.FailureMessage}");
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    problems++;
+                    lines.Add($"  {preset.Id}: exception: {e}");
+                }
+                foreach (string u in unhandled)
+                {
+                    problems++;
+                    lines.Add($"  {preset.Id}: unhandled dispatcher exception: {u}");
+                }
+                unhandled.Clear();
+                lines.Add($"{preset.Id}: {(problems == before ? "ok" : "PROBLEMS")}; outcome {vm.CurrentOutcome.Type}, fate {vm.CurrentOutcome.Fate}; " +
+                          $"ended at {UnitFormat.Time(vm.Timeline.ObserverTimeS)}");
+            }
+        }
+        finally
+        {
+            Application.Current.DispatcherUnhandledException -= OnUnhandled;
+        }
+        lines.Add($"sweep problems: {problems}");
+        File.WriteAllLines(Path.Combine(request.OutDirectory, "sweep.log"), lines);
+        log.AddRange(lines);
+        return problems;
+    }
+
+    /// <summary>
     /// Plays the whole timeline once over the requested seconds with the main and Instruments windows open, and counts
     /// CompositionTarget.Rendering frames (the redraw-rate check; spec §8, target ≥ 30 fps). Writes bench.log.
     /// </summary>
@@ -412,6 +511,7 @@ public static class SnapshotRenderer
             $"playing the whole timeline ({decades.ToString("0.0", inv)} decades) at {vm.Timeline.DecadesPerSecond.ToString("0.###", inv)} decades/s",
             $"frames {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps",
             $"frame interval p95 {p95.ToString("0.0", inv)} ms, worst {worst.ToString("0.0", inv)} ms",
+            scene is null ? "3D view GPU: none" : $"3D view GPU: {(scene.GlInfo.Length > 0 ? scene.GlInfo : "not reported")}",
             scene is null ? "3D view: none" : scene.IsFailed ? $"3D view: failed ({scene.FailureMessage})" :
                 $"3D view frames drawn {sceneFrames} in {elapsed.ToString("0.00", inv)} s: " +
                 $"{(sceneFrames / elapsed).ToString("0.0", inv)} fps (GL draws counted by the scene controller)",

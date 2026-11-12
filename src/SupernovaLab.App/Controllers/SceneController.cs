@@ -218,8 +218,12 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         ScaleBarWidth = bar?.LengthPx ?? 0;
     }
 
+    /// <summary>"vendor | renderer | version" as the GL driver reports them (the GPU name for the performance notes); empty before the first frame.</summary>
+    public string GlInfo { get; private set; } = "";
+
     private void OnContextReady(string glInfo)
     {
+        GlInfo = glInfo;
         string version = glInfo.Split('|').ElementAtOrDefault(2)?.Trim() ?? "";
         if (!IsSupported(version))
             throw new NotSupportedException($"this computer's OpenGL is {(version.Length > 0 ? version : "unknown")}");
@@ -306,13 +310,22 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             host.ContextReady -= OnContextReady;
             host.Draw -= OnDraw;
             host.FrameFailed -= OnFrameFailed;
-            GlReleased = host.Shutdown(() =>
+            // Task 16 re-review N2: this runs inside the window's Closing, so a GL error must never stop the window closing.
+            try
             {
-                _remnant?.Dispose();
-                _jets?.Dispose();
-                _ejecta?.Dispose();
-                _star?.Dispose();
-            });
+                GlReleased = host.Shutdown(() =>
+                {
+                    _remnant?.Dispose();
+                    _jets?.Dispose();
+                    _ejecta?.Dispose();
+                    _star?.Dispose();
+                });
+            }
+            catch (Exception e)
+            {
+                GlReleased = false;
+                Debug.WriteLine($"SceneController: releasing the GL objects failed: {e}");
+            }
         }
         _remnant = null;
         _jets = null;

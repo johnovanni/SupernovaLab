@@ -376,10 +376,16 @@ public sealed class CsmInteractionModel : ISignalModel
 
     /// <summary>
     /// The progenitor's wind density parameter A_* = (Ṁ / 1e-5 M☉/yr) / (v_w / 1,000 km/s) (signals §0.4); NaN when there
-    /// is no star or no wind.
+    /// is no star, no wind, or a wind speed of zero (never Infinity: Task 16 re-review N3).
     /// </summary>
     public static double WindAStar(Outcome o)
-        => o.Star is { } star ? star.MassLossRateMsunPerYr.Value / 1e-5 / (star.WindSpeedKmS.Value / 1000) : double.NaN;
+    {
+        if (o.Star is not { } star) return double.NaN;
+        double speedKmS = star.WindSpeedKmS.Value;
+        if (!(speedKmS > 0)) return double.NaN;
+        double a = star.MassLossRateMsunPerYr.Value / 1e-5 / (speedKmS / 1000);
+        return double.IsFinite(a) ? a : double.NaN;
+    }
 
     /// <summary>One outcome's shock: R/t (cm/s), the wind's A_*, and whether the ejecta are hydrogen-rich.</summary>
     private readonly record struct Shock(double SpeedCmS, double AStar, bool HydrogenRich)

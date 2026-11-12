@@ -102,6 +102,10 @@ public sealed class ExplosionScene
         "Radius: the edge of a uniform ball of debris with this energy and mass (the spec's simple model); the fastest " +
         "outer layers, and the line speeds in the spectrum, are faster";
 
+    /// <summary>Task 16 re-review N1: the 3 to 10 yr hand-off from the uniform ball to the remnant model's blast wave.</summary>
+    public const string BlendNote =
+        "Radius: a smooth blend (3 to 10 years) from the uniform ball of debris to the remnant model's blast wave";
+
     private static readonly LightCurveModel LightCurve = new();
     private static readonly PulsarModel Pulsar = new();
     private static readonly GrbModel Grb = new();
@@ -185,6 +189,7 @@ public sealed class ExplosionScene
         string label = t >= RemnantEvolutionModel.StartS ? "Blast-wave radius"
             : t > EjectaKinematics.BlendStartS ? "Outer radius" : "Ejecta radius";
         if (t >= RemnantEvolutionModel.StartS) notes.Add("Radius from the remnant model's blast wave");
+        else if (t > EjectaKinematics.BlendStartS) notes.Add(BlendNote);
         else notes.Add(UniformSphereNote);
         if (t > _lightCurveEndS) notes.Add("Past the light-curve model (3 yr): debris drawn dimly");
         notes.Add(SchematicNote);

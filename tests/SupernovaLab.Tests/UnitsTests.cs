@@ -54,6 +54,16 @@ public class UnitsTests
         => Assert.Equal("1 year", UnitFormat.Time(3.16e7));
 
     [Fact]
+    public void Time_ExactlyOneYear_ReadsOneYear_NotDays()
+    {
+        // Task 17: exactly 1 yr is 3.156e7 s = 365.28 days, which used to round to "365 days".
+        Assert.Equal("1 year", UnitFormat.Time(PhysicalConstants.Year));
+        Assert.Equal("1 year", UnitFormat.Time(3.156e7));
+        Assert.Equal("364 days", UnitFormat.Time(364 * 86400));   // clearly under a year stays in days
+        Assert.Equal("1.5 years", UnitFormat.Time(1.5 * 3.156e7));
+    }
+
+    [Fact]
     public void Time_RoundingUpToOneDay_IsSingular() => Assert.Equal("1 day", UnitFormat.Time(86399.9));
 
     [Fact]

@@ -88,6 +88,25 @@ public class SnapshotRequestTests
         => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", value }));
 
     [Fact]
+    public void Sweep_IsReadAsAStepCount()
+    {
+        Assert.Equal(54, SnapshotRequest.Parse(new[] { "--snapshot", "out", "--sweep", "54", "--bench", "10" })!.SweepSteps);
+        Assert.Null(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.SweepSteps);
+        Assert.Equal(SnapshotRequest.MaxSweepSteps,
+            SnapshotRequest.Parse(new[] { "--snapshot", "out", "--sweep", SnapshotRequest.MaxSweepSteps.ToString() })!.SweepSteps);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("2.5")]
+    [InlineData("many")]
+    [InlineData("2001")]
+    public void Sweep_NeedsAStepCountFromTwoToTheMaximum(string value)
+        => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--sweep", value }));
+
+    [Fact]
     public void APreset_MayCarryItsOwnTime()
     {
         var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1987a,sn1054@2.9e10", "--time", "1e7" })!;

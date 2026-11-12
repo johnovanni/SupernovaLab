@@ -19,6 +19,7 @@ public class SceneControllerTests
     private sealed class FakeHost : IRenderHost
     {
         public Exception? StartFailure { get; init; }
+        public Exception? ShutdownFailure { get; init; }
         public int Renders { get; private set; }
         public bool ShutDown { get; private set; }
         public bool Animating { get; set; }
@@ -27,7 +28,12 @@ public class SceneControllerTests
         public event Action<Exception>? FrameFailed;
         public void Start() { if (StartFailure is not null) throw StartFailure; }
         public void RequestRender() => Renders++;
-        public bool Shutdown(Action release) { ShutDown = true; return false; }
+        public bool Shutdown(Action release)
+        {
+            ShutDown = true;
+            if (ShutdownFailure is not null) throw ShutdownFailure;
+            return false;
+        }
         public void Fail(Exception e) => FrameFailed?.Invoke(e);
 
         /// <summary>A first frame as GlHost runs it: ContextReady inside the frame's try, a throw becomes FrameFailed.</summary>
@@ -168,6 +174,34 @@ public class SceneControllerTests
         int renders = host.Renders;
         vm.Timeline.ObserverTimeS = PhysicalConstants.Day;
         Assert.Equal(renders, host.Renders);
+    }
+
+    [Fact]
+    public void GlInfo_IsKeptSoTheGpuCanBeLogged()
+    {
+        var host = new FakeHost();
+        var scene = new SceneController(NewViewModel(), () => host);
+        Assert.Equal("", scene.GlInfo);
+        scene.Start();
+        host.FirstFrame("Test Vendor | Test GPU | 3.3.0 Test");   // below 4.1: fails, but the info is recorded first
+        Assert.Equal("Test Vendor | Test GPU | 3.3.0 Test", scene.GlInfo);
+    }
+
+    [Fact]
+    public void Dispose_SurvivesAGlErrorWhileReleasing()
+    {
+        // Task 16 re-review N2: Dispose runs in the window's Closing; an exception there would stop the window closing.
+        var vm = NewViewModel();
+        var host = new FakeHost { ShutdownFailure = new InvalidOperationException("GL_INVALID_OPERATION") };
+        var scene = new SceneController(vm, () => host);
+        scene.Start();
+
+        scene.Dispose();
+
+        Assert.True(host.ShutDown);
+        Assert.False(scene.GlReleased);
+        Assert.Equal(0, OutcomeListeners(vm, scene));
+        scene.Dispose();   // idempotent
     }
 
     private static int OutcomeListeners(MainViewModel vm, object target)

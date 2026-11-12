@@ -36,7 +36,10 @@ public static class UnitFormat
         for (int i = 0; i < units.Length; i++)
         {
             double r = Round3(v / units[i].Div);
-            if (i == units.Length - 1 || r < units[i].Upper) return Count(Sig(r), units[i].Name);
+            // A value that already reads as 1 of the next unit is shown in it, so exactly 1 year (3.156e7 s = 365.28 days,
+            // which rounds to "365 days") is "1 year", not "365 days".
+            if (i == units.Length - 1 || (r < units[i].Upper && Round3(v / units[i + 1].Div) < 1))
+                return Count(Sig(r), units[i].Name);
             if (Round3(v / units[i + 1].Div) < 1 && r >= units[i].Upper)
                 return Count("1", units[i + 1].Name);
         }

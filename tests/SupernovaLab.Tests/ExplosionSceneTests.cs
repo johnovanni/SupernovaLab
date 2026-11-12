@@ -150,6 +150,18 @@ public class ExplosionSceneTests
     }
 
     [Fact]
+    public void ZeroWindSpeed_GivesNaNAStar_NotInfinity_AndNoGasShell()
+    {
+        // Task 16 re-review N3: mass loss with a still wind is A_* = Ṁ/0; it must be NaN, and the shell must not show.
+        var plain = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 3, 0.07, 3e13);
+        var still = TestOutcomes.WithWind(plain, 1e-4, 0);
+        Assert.True(double.IsNaN(CsmInteractionModel.WindAStar(still)));
+        Assert.False(new ExplosionScene(still).At(1e-3).ShowGas);
+        Assert.True(double.IsNaN(CsmInteractionModel.WindAStar(TestOutcomes.WithWind(plain, 1e-4, double.NaN))));
+        Assert.Equal(1000, CsmInteractionModel.WindAStar(TestOutcomes.WithWind(plain, 1e-4, 10)), 6);
+    }
+
+    [Fact]
     public void GasAroundTheStar_IsHiddenOnceTheEjectaPassIt()
     {
         var o = DenseCsm();
@@ -173,6 +185,23 @@ public class ExplosionSceneTests
         Assert.Equal("Ejecta radius", s.RadiusLabel);
         Assert.Contains(s.Notes, n => n.Contains("uniform ball", StringComparison.Ordinal) && n.Contains("spectrum", StringComparison.Ordinal));
         Assert.DoesNotContain(new ExplosionScene(Exploding()).At(100 * Year).Notes, n => n.Contains("uniform ball", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BlendToTheBlastWave_IsNotCalledAUniformBall()
+    {
+        // Task 16 re-review N1: between 3 and 10 yr the radius is a blend, so the uniform-ball note must not show.
+        var scene = new ExplosionScene(Exploding());
+        foreach (double years in new[] { 3.5, 6, 9.9 })
+        {
+            var s = scene.At(years * Year);
+            Assert.Equal("Outer radius", s.RadiusLabel);
+            Assert.DoesNotContain(ExplosionScene.UniformSphereNote, s.Notes);
+            Assert.Contains(ExplosionScene.BlendNote, s.Notes);
+        }
+        Assert.Contains(ExplosionScene.UniformSphereNote, scene.At(2.9 * Year).Notes);
+        Assert.DoesNotContain(ExplosionScene.BlendNote, scene.At(2.9 * Year).Notes);
+        Assert.DoesNotContain(ExplosionScene.BlendNote, scene.At(10.1 * Year).Notes);
     }
 
     [Fact]

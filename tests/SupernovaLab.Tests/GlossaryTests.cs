@@ -48,6 +48,18 @@ public class GlossaryTests
     }
 
     [Fact]
+    public void SceneView_ExplainsTheOverlay()
+    {
+        // Task 17 gap: the overlay's text ignores the mouse, so the view's own tooltip explains the radius, the bar and
+        // the schematic parts. (A tooltip cannot be captured by --snapshot's RenderTargetBitmap, so it is tested here.)
+        string text = Glossary.SceneView;
+        Assert.Contains("radius", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("blast wave", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("scale", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("schematic", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void UnknownKey_Throws() => Assert.Throws<KeyNotFoundException>(() => Glossary.Get("NoSuchTerm"));
 
     /// <summary>Keys that view models hand to the UI (markers, outcome types and fates) exist too.</summary>
