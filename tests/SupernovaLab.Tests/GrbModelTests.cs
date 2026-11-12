@@ -296,4 +296,28 @@ public class GrbModelTests
         foreach (string c in new[] { "prompt", "afterglowX", "afterglowOpt", "afterglowRadio", "detect@gbm" })
             Assert.True(double.IsNaN(Model.Sample(Collapsar, At38Mpc(beamed: false), t, c)), c);
     }
+
+    /// <summary>
+    /// Ruling R50: the instruments whose limits the afterglow views draw are judged on the drawn afterglow. SN 1998bw's
+    /// burst is low-luminosity (8.5e47 erg, ruling R39), so its afterglow is not drawn and Swift XRT's verdict says why;
+    /// and the burst trigger instruments are unchanged.
+    /// </summary>
+    [Fact]
+    public void Afterglow_IsJudged_OnlyWhereItIsDrawn()
+    {
+        var p = SupernovaLab.Core.Presets.PresetCatalog.Get("sn1998bw");
+        var o = TestOutcomes.Engine.Compute(p.Inputs, p.Pins);
+        var grb = new GrbModel();
+        double t = 3 * 86400;
+        Assert.True(double.IsNaN(grb.Sample(o, p.Observer, t, "afterglowX")));
+        var d = grb.Detect(o, p.Observer, t, Detectors.Get("swift-xrt"));
+        Assert.Equal(DetectionStatus.NotModeled, d.Status);
+        Assert.Contains("low-luminosity", d.Reason);
+
+        // Jets away: no afterglow toward Earth.
+        Assert.Equal(DetectionStatus.NotPointedAtUs,
+            grb.Detect(o, p.Observer with { BeamTowardEarth = false }, t, Detectors.Get("vla")).Status);
+        // A detector that judges neither the burst nor its drawn afterglow.
+        Assert.Equal(DetectionStatus.NotModeled, grb.Detect(o, p.Observer, t, Detectors.Get("superk")).Status);
+    }
 }

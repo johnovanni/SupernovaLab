@@ -7,7 +7,7 @@
     {
       "id": "sn1987a",
       "name": "SN 1987A",
-      "summary": "The closest supernova seen since the telescope was invented, in the Large Magellanic Cloud in 1987. Its star was a compact blue supergiant, not the usual red one, so it brightened slowly to a dome peaking about three months later instead of holding a plateau. The lab classes it II-P; astronomers call it a peculiar Type II (II-pec). The lab reaches a blue supergiant only at low metal content, so this preset uses 0.1 of the Sun's (the LMC itself has about half); the real star was more likely made blue by a merger with a companion.",
+      "summary": "The closest supernova seen since the telescope was invented, in the Large Magellanic Cloud in 1987. Its star was a compact blue supergiant, not the usual red one, so it brightened slowly to a dome peaking about three months later instead of holding a plateau. The lab classes it II-P; astronomers call it a peculiar Type II (II-pec). The lab reaches a blue supergiant only at low metal content, so this preset uses 0.1 of the Sun's (the LMC itself has about half); the real star was more likely made blue by a merger with a companion. The lab's radio from the shock in the gas around the star is too bright and too slow: about 350 mJy at 1.4 GHz peaking near day 18 and still about 90 mJy on day 100, while the real radio peaked at about 130 mJy at 0.84 GHz within days of the explosion and could no longer be detected after September 1987. The research has no wind for a blue supergiant, so the lab gives this star a Wolf–Rayet-like wind and the shock speed of a red supergiant's explosion.",
       "whatWasSeen": "About three hours before the first light, Kamiokande-II caught 11 neutrinos in 13 seconds, IMB 8 and Baksan 5: 24 in all, still the only neutrinos ever seen from a supernova. The light peaked near magnitude 3 after about 85 days, and gamma-ray lines from radioactive cobalt and, decades later, titanium showed the radioactive heating directly. From about 1995 the blast began hitting a ring of gas the star had shed thousands of years earlier, lighting it up in X-rays. In 2024 JWST found signs of a hidden neutron star.",
       "inputs": { "kind": "MassiveStar", "initialMass": 19, "metallicity": 0.1, "opacity": 0.10 },
       "observer": {
@@ -46,7 +46,7 @@
     {
       "id": "sn1054",
       "name": "SN 1054 (Crab Nebula)",
-      "summary": "A supernova recorded by Chinese astronomers in 1054, bright enough to see in daylight for 23 days. Its remnant is the Crab Nebula, powered by a young pulsar. It was probably a weak explosion of a star of about 8–10 M☉, perhaps an electron-capture supernova, which is what this preset makes.",
+      "summary": "A supernova recorded by Chinese astronomers in 1054, bright enough to see in daylight for 23 days. Its remnant is the Crab Nebula, powered by a young pulsar. It was probably a weak explosion of a star of about 8–10 M☉, perhaps an electron-capture supernova, which is what this preset makes. The lab's weak electron-capture explosion peaks only near V −2 behind the dust in the way (A_V 1.6), visible to the naked eye but not in daylight; the historical records imply a peak of roughly −4 to −7 (uncertain).",
       "whatWasSeen": "Only historical records of the 1054 'guest star' survive. Today the Crab pulsar spins about 30 times a second and slows steadily, and its wind lights the nebula from radio to the highest-energy gamma rays.",
       "inputs": { "kind": "MassiveStar", "initialMass": 9.1 },
       "observer": {
@@ -148,7 +148,7 @@
     {
       "id": "sn1998bw",
       "name": "SN 1998bw / GRB 980425",
-      "summary": "The first supernova linked to a gamma-ray burst. A broad-lined Type Ic, about ten times as energetic as a normal supernova, from the stripped core of a massive star; its burst was about ten thousand times weaker than a typical one.",
+      "summary": "The first supernova linked to a gamma-ray burst. A broad-lined Type Ic, about ten times as energetic as a normal supernova, from the stripped core of a massive star; its burst was about ten thousand times weaker than a typical one. The lab's light curve peaks about a week late and half a magnitude faint (V 14.1 on day 23, against the observed 13.62 near day 16): its one-zone light curve spreads the radioactive heat through all 10.9 M☉ of ejecta.",
       "whatWasSeen": "BeppoSAX and BATSE recorded a 23-second gamma-ray burst; the supernova appeared in the same patch of sky the next day and peaked near magnitude 13.6. Its radio emission was unusually bright and early, showing a shock moving at close to the speed of light.",
       "inputs": { "kind": "MassiveStar", "initialMass": 40, "metallicity": 0.3, "stripping": "Full", "rotation": "Extreme" },
       "observer": {

@@ -255,4 +255,32 @@ public class CsmInteractionModelTests
         var d = Model.Detect(withRing, new ObserverSetup(51_400, 0.47, true), 9500 * Day, Detectors.Get("chandra"));
         Assert.Contains("equatorial ring", d.Reason);
     }
+
+    /// <summary>
+    /// Ruling R51a: no interaction with the wind before the shock leaves the star. The default 16 M☉ red supergiant breaks
+    /// out about 1.28 d after collapse (Kistler et al. 2013's delay, ShockBreakoutModel), later than the model's 1-day floor,
+    /// so at 1.1 d nothing is drawn and the verdict is NotYet; just after breakout the glow is drawn.
+    /// </summary>
+    [Fact]
+    public void TheWindInteraction_StartsAtBreakout_ForARedSupergiant()
+    {
+        const double day = 86400;
+        var o = TestOutcomes.Star(16);
+        var csm = new CsmInteractionModel();
+        double breakout = new ShockBreakoutModel().BreakoutTimeS(o);
+        Assert.InRange(breakout / day, 1.2, 1.4);
+        Assert.Equal(breakout, csm.StartTimeS(o));
+        Assert.Equal(breakout, csm.ValidRange(o).StartS);
+
+        var obs = ObserverSetup.Default with { DistancePc = 1e7 };
+        Assert.True(double.IsNaN(csm.Sample(o, obs, 1.1 * day, "lx")));
+        Assert.True(double.IsNaN(csm.Sample(o, obs, 1.1 * day, "radio5")));
+        var d = csm.Detect(o, obs, 1.1 * day, Detectors.Get("swift-xrt"));
+        Assert.Equal(DetectionStatus.NotYet, d.Status);
+        Assert.Contains("broken out", d.Reason);
+        Assert.True(csm.Sample(o, obs, breakout * 1.01, "lx") > 0);
+
+        // A compact star breaks out within seconds: the 1-day floor stands (§11).
+        Assert.Equal(CsmInteractionModel.StartS, csm.StartTimeS(TestOutcomes.Collapsar()));
+    }
 }

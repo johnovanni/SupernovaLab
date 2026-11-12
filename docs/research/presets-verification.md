@@ -109,6 +109,9 @@ in `PresetValidationTests` (review M4).
 | SN 2008D | X-ray flash ~400 s, ~2e46 erg; Swift caught it | bare-star flash ~2 s, ~100× less energy; the lab's Swift does not catch it | the real breakout was most likely through a dense wind (R30), not modelled |
 | SN 1998bw | 45 mJy at 4.8 GHz on day 12 (Kulkarni 1998) | 3.7 mJy at 5 GHz on day 12 (9–12× fainter) | the lab's CSM shock formulas are Newtonian, capped at Γβ = 1 |
 | SN 1987A | 847 keV 1.0e-3 ph cm⁻² s⁻¹ over days 159–250 (SMM) | 4.56e-5 averaged over the same days (~22× fainter) | no outward ⁵⁶Co mixing in the lab |
+| SN 1987A | radio peaked at ~130 mJy at 843 MHz within days (first detected 1987 Feb 25.23, two days after the neutrinos) and was undetectable after 1987 September (Ball et al. 2001, ApJ 549, 599, arXiv:astro-ph/0011033, Sec. 1, citing Turtle et al. 1987, Nature 327, 38) | ~350 mJy at 1.4 GHz near day 18 (5 GHz ~350 mJy near day 5), ~90 mJy at 1.4 GHz on day 100 | the research has no blue-supergiant wind: the lab borrows a Wolf–Rayet-like wind (A_* ≈ 0.25) and the hydrogen-rich (red-supergiant) shock speed (ruling R51b; no single paper giving both the wind density and the early shock speed could be verified, so nothing is pinned) |
+| SN 1998bw | peak V 13.62 (Galama 1998) near day 16 (presets §7, rise ~15–17 d) | V 14.12 on day 23.3 | one-zone (Arnett) light curve over all 10.9 M☉ of ejecta (ruling R51c; not tuned) |
+| SN 1054 | peak roughly −4 to −7, visible in daylight for 23 days (Collins et al. 1999; presets §2) | V −1.98 on day 5.9 behind A_V 1.61 | the lab's weak electron-capture explosion (ruling R51c; not tuned) |
 
 ## Other values the presets show (facts)
 

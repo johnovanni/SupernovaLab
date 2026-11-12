@@ -54,8 +54,21 @@ public sealed class CsmInteractionModel : ISignalModel
 
     private const double Day = PhysicalConstants.Day, Year = PhysicalConstants.Year;
 
-    /// <summary>§11: about 1 day.</summary>
+    /// <summary>§11: about 1 day; the earliest start (see <see cref="StartTimeS"/>).</summary>
     public const double StartS = Day;
+
+    private static readonly ShockBreakoutModel BreakoutModel = new();
+
+    /// <summary>
+    /// Ruling R51a: when the model starts for this outcome, source time: the later of 1 day (§11) and the shock breakout
+    /// (ShockBreakoutModel's own breakout time, so the two agree): there is no interaction with the wind before the shock
+    /// has left the star. A red supergiant's shock breaks out after about 1.3 d (16 M☉) to 2.4 d (Betelgeuse).
+    /// </summary>
+    public double StartTimeS(Outcome outcome)
+    {
+        double breakout = BreakoutModel.BreakoutTimeS(outcome);
+        return double.IsFinite(breakout) ? Math.Max(StartS, breakout) : StartS;
+    }
 
     /// <summary>§11: "about 10–30 yr (then remnant phase)" for radio, about 30 yr for X-rays; the upper end.</summary>
     public const double EndS = 30 * Year;
@@ -168,13 +181,13 @@ public sealed class CsmInteractionModel : ISignalModel
 
     public bool Applies(Outcome outcome) => AppliesTo(outcome);
 
-    public (double StartS, double EndS) ValidRange(Outcome outcome) => AppliesTo(outcome) ? (StartS, EndS) : (0, 0);
+    public (double StartS, double EndS) ValidRange(Outcome outcome) => AppliesTo(outcome) ? (StartTimeS(outcome), EndS) : (0, 0);
 
     public double Sample(Outcome outcome, ObserverSetup observer, double sourceTimeS, string channelId)
     {
         if (channelId is not ("nuPeakGHz" or "lx" or "fluxX" or "ringLx") && RadioBands.All(b => b.Channel != channelId))
             throw new ArgumentException($"The circumstellar-interaction model has no channel '{channelId}'.", nameof(channelId));
-        if (!AppliesTo(outcome) || DenseCsm(outcome) || !(sourceTimeS >= StartS && sourceTimeS <= EndS)) return double.NaN;
+        if (!AppliesTo(outcome) || DenseCsm(outcome) || !(sourceTimeS >= StartTimeS(outcome) && sourceTimeS <= EndS)) return double.NaN;
         // Ruling R41: the ring's luminosity is as observed (absorbed once already), so it is returned as it is.
         if (channelId == "ringLx") return outcome.HasEquatorialRing ? RingXrayLuminosityErgS(sourceTimeS) : double.NaN;
 
@@ -204,9 +217,12 @@ public sealed class CsmInteractionModel : ISignalModel
                 "radio and X-ray supernovae (Type IIn average about 3×10²⁶ erg/s/Hz at radio peak, over ten times a normal " +
                 "Type II), but the dense gas is not modeled here.");
         double z1 = observer.TimeDilation;
-        if (!(sourceTimeS >= StartS))
-            return new Detection(DetectionStatus.NotYet,
-                $"The shock's radio and X-ray glow is modeled from {UnitFormat.Time(StartS * z1)} after the explosion.");
+        double start = StartTimeS(outcome);
+        if (!(sourceTimeS >= start))
+            return new Detection(DetectionStatus.NotYet, start > StartS
+                ? $"The shock has not yet broken out of the star (it does so {UnitFormat.Time(start * z1)} after core collapse); " +
+                  "its radio and X-ray glow in the gas around the star starts then."
+                : $"The shock's radio and X-ray glow is modeled from {UnitFormat.Time(StartS * z1)} after the explosion.");
         if (sourceTimeS > EndS)
             return new Detection(DetectionStatus.NotModeled,
                 $"The model ends {UnitFormat.Time(EndS * z1)} after the explosion; the remnant view takes over.");

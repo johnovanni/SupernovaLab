@@ -106,6 +106,21 @@ public sealed class GrbModel : ISignalModel
     /// <summary>The detectors with a trigger channel.</summary>
     public static IReadOnlyList<string> DetectorIds { get; } = new[] { "gbm", "bat" };
 
+    /// <summary>
+    /// Ruling R50: the instruments that judge the drawn afterglow, each on the channel and limit its panel draws: X-rays
+    /// (afterglowX, 0.3–10 keV after the gas, against the instrument's flux limit), visible light (afterglowOpt, AB at
+    /// 550 nm with dust, against the instrument's V limit) and radio (afterglowRadio at 5 GHz, against the instrument's
+    /// mJy limit). All [APPROX]: the limits are the registry's (signals §11), and the optical one compares an AB 550 nm
+    /// magnitude with V limits.
+    /// </summary>
+    public static IReadOnlyList<string> AfterglowXrayDetectorIds { get; } = new[] { "swift-xrt", "chandra", "xmm" };
+
+    /// <inheritdoc cref="AfterglowXrayDetectorIds"/>
+    public static IReadOnlyList<string> AfterglowOpticalDetectorIds { get; } = new[] { "eye", "ztf", "rubin", "spectrograph" };
+
+    /// <inheritdoc cref="AfterglowXrayDetectorIds"/>
+    public static IReadOnlyList<string> AfterglowRadioDetectorIds { get; } = new[] { "vla", "meerkat", "ska" };
+
     // ---------------------------------------------------------------- ISignalModel
 
     public string Id => "grb";
@@ -179,6 +194,7 @@ public sealed class GrbModel : ISignalModel
     public Detection Detect(Outcome outcome, ObserverSetup observer, double sourceTimeS, Detector detector)
     {
         if (!Applies(outcome)) return new Detection(DetectionStatus.NotProduced, NotProducedReason(outcome));
+        if (AfterglowChannel(detector.Id) is { } afterglow) return DetectAfterglow(outcome, observer, sourceTimeS, detector, afterglow);
         if (!DetectorIds.Contains(detector.Id))
             return new Detection(DetectionStatus.NotModeled, $"{detector.Name} does not watch for gamma-ray bursts.");
         var burst = Burst.Of(outcome);
@@ -239,6 +255,88 @@ public sealed class GrbModel : ISignalModel
         if (!(since >= burst.T90S && since <= AfterglowEndS)) return null;
         return AfterglowLimit(burst, Afterglow(outcome, burst, observer, since));
     }
+
+    /// <summary>The afterglow channel an instrument is judged on (ruling R50), or null for a burst trigger or none.</summary>
+    private static string? AfterglowChannel(string detectorId)
+        => AfterglowXrayDetectorIds.Contains(detectorId) ? "afterglowX"
+            : AfterglowOpticalDetectorIds.Contains(detectorId) ? "afterglowOpt"
+            : AfterglowRadioDetectorIds.Contains(detectorId) ? "afterglowRadio"
+            : null;
+
+    /// <summary>
+    /// Ruling R50: the drawn afterglow against the instrument's limit at this time, on the very channel the panel draws.
+    /// Not modeled where the curve is not drawn (ruling R39), not yet during the prompt burst.
+    /// </summary>
+    private Detection DetectAfterglow(Outcome outcome, ObserverSetup observer, double sourceTimeS, Detector detector, string channel)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        if (!observer.BeamTowardEarth)
+            return new Detection(DetectionStatus.NotPointedAtUs,
+                "The jets point away from Earth, so no afterglow is seen; a late \"orphan\" afterglow, as the jets slow and " +
+                "spread, is not modeled.");
+        var burst = Burst.Of(outcome);
+        double z1 = observer.TimeDilation, since = sourceTimeS - OnsetS(outcome);
+        if (!(since >= burst.T90S))
+            return new Detection(DetectionStatus.NotYet,
+                $"The afterglow is drawn once the prompt burst is over, about {UnitFormat.Time((OnsetS(outcome) + burst.T90S) * z1)} " +
+                "after core collapse.");
+        if (since > AfterglowEndS)
+            return new Detection(DetectionStatus.NotModeled,
+                $"The afterglow model ends {UnitFormat.Time(AfterglowEndS * z1)} after the burst.");
+        if (AfterglowNotModeledReason(outcome, observer, sourceTimeS) is { } reason)
+            return new Detection(DetectionStatus.NotModeled, $"The afterglow is not drawn now: {reason}");
+
+        double value = Sample(outcome, observer, sourceTimeS, channel);
+        if (!double.IsFinite(value))
+            return new Detection(DetectionStatus.NotModeled, "The afterglow is not drawn at this time.");
+        double limit = detector.Threshold;
+        switch (channel)
+        {
+            case "afterglowX":
+            {
+                double clear = Sample(outcome, observer with { Av = 0 }, sourceTimeS, channel);
+                var status = value >= limit ? DetectionStatus.Detected
+                    : clear >= limit ? DetectionStatus.BlockedByDust
+                    : DetectionStatus.TooFaint;
+                return new Detection(status,
+                    $"{detector.Name} would receive {FormatNumber(value)} erg cm⁻² s⁻¹ (0.3–10 keV, after the gas) from the " +
+                    $"afterglow, against its limit of about {FormatNumber(limit)} in {CsmInteractionModel.XrayExposure(detector.Id)} " +
+                    $"(approximate): {Verdict(status)}." +
+                    (status == DetectionStatus.BlockedByDust ? $" Without the gas it would receive {FormatNumber(clear)}." : ""));
+            }
+            case "afterglowOpt":
+            {
+                double bare = value - Extinction.A(Band.V, observer.Av);
+                var status = value <= limit ? DetectionStatus.Detected
+                    : bare <= limit ? DetectionStatus.BlockedByDust
+                    : DetectionStatus.TooFaint;
+                return new Detection(status,
+                    $"The optical afterglow is at about magnitude {value.ToString("0.0", inv)} (AB at 550 nm, with dust) against " +
+                    $"{detector.Name}'s limit of about V {limit.ToString("0.#", inv)} (an AB magnitude compared with a V limit; " +
+                    $"approximate): {Verdict(status)}.");
+            }
+            default:
+            {
+                var status = value >= limit ? DetectionStatus.Detected : DetectionStatus.TooFaint;
+                return new Detection(status,
+                    $"{detector.Name} receives about {FormatNumber(value)} mJy at 5 GHz from the afterglow against its limit of " +
+                    $"about {FormatNumber(limit)} mJy (approximate): {Verdict(status)}.");
+            }
+        }
+    }
+
+    private static string Verdict(DetectionStatus s) => s switch
+    {
+        DetectionStatus.Detected => "detected",
+        DetectionStatus.BlockedByDust => "too faint behind the dust and gas, though bright enough without them",
+        _ => "too faint",
+    };
+
+    /// <summary>
+    /// When the prompt emission is over, s after bounce (source time): the drawn prompt curve ends three T90 after onset.
+    /// NaN when the outcome has no GRB. The burst's trigger verdict after this time is a past event (ruling R50).
+    /// </summary>
+    public double PromptEndS(Outcome o) => Applies(o) ? OnsetS(o) + PromptEndT90s * Burst.Of(o).T90S : double.NaN;
 
     // ---------------------------------------------------------------- markers
 
