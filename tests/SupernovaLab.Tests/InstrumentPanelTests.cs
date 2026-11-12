@@ -645,6 +645,34 @@ public class InstrumentPanelTests
         Assert.Contains("The burst is over", gamma.CurrentDetection.Reason);
     }
 
+    /// <summary>
+    /// R52 review I2 and M1: SN 2011fe's INTEGRAL limit is drawn as an upper limit spanning days 45–88, labelled "Upper
+    /// limit: &lt; 1.39 × 10⁻⁴", and the dashed SPI limit is the broad-line one the badge uses (3e-5 × 3.69271 = 1.10781e-4).
+    /// </summary>
+    [Fact]
+    public void Sn2011fe_GammaPanel_DrawsTheUpperLimitAndTheBroadLineLimit()
+    {
+        var vm = WithPreset("sn2011fe");
+        var gamma = Panel<GammaPanelViewModel>(vm);
+        Assert.Equal(GammaPanelViewModel.LinesTab, gamma.SelectedSubTab);
+        Assert.Equal("spi", gamma.SelectedInstrument.Id);
+
+        var marker = Assert.Single(gamma.FactMarkers);
+        Assert.True(marker.Fact.IsUpperLimit);
+        Assert.StartsWith("Upper limit: < 1.39 × 10⁻⁴", marker.Label); // the panels' number format
+        Assert.Equal(45 * Day, marker.ObserverTimeS);   // 6.43 Mpc: z = 0
+        Assert.Equal(88 * Day, marker.ObserverTimeEndS);
+
+        var limit = Assert.Single(gamma.ReferenceLines, l => !l.IsTime && l.Label.Contains("limit"));
+        Assert.Equal(1.10781e-4, limit.Value, 0.0005 * 1.10781e-4);
+        Assert.Contains("broad", limit.Label);
+
+        var row = Assert.Single(vm.Lab.PresetFactRows, r => r.Value.Contains("photons"));
+        Assert.Contains("< 1.39", row.Value);
+        Assert.Contains("over days 45–88", row.Value);
+        Assert.DoesNotContain("66.5", row.Value);
+    }
+
     /// <summary>Task 15 re-review N2: restating a verdict never indexes into an empty reason.</summary>
     [Fact]
     public void LowerFirst_HandlesAnEmptyReason()

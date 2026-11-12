@@ -23,8 +23,11 @@ public sealed record PlotBand(string Label, double[] ObserverTimesS, double[] Lo
 /// <summary>A labelled straight line: a level (an instrument's limit, an untimed observation) or, when <see cref="IsTime"/>, a time.</summary>
 public sealed record ReferenceLine(string Label, double Value, bool IsTime);
 
-/// <summary>A preset's measurement drawn as a marker on the curve of its channel, at its observer time.</summary>
-public sealed record FactMarker(ObservedFact Fact, double? ObserverTimeS, string Label);
+/// <summary>
+/// A preset's measurement drawn as a marker on the curve of its channel, at its observer time. An upper limit over a span
+/// of time (<see cref="ObservedFact.IsUpperLimit"/>) runs from <see cref="ObserverTimeS"/> to <see cref="ObserverTimeEndS"/>.
+/// </summary>
+public sealed record FactMarker(ObservedFact Fact, double? ObserverTimeS, string Label, double? ObserverTimeEndS = null);
 
 /// <summary>A text row under a panel's plot: a preset's measurement (marked or not) with its source.</summary>
 public sealed record FactNote(string Text, string SourceText);

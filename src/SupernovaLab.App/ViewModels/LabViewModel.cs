@@ -221,17 +221,26 @@ public sealed partial class LabViewModel : ObservableObject
 
     /// <summary>What was measured for the selected preset, with citations, for the Preset info window.</summary>
     public IReadOnlyList<InfoRow> PresetFactRows => _selectedPreset is { } p
-        ? p.Facts.Select(f => new InfoRow(f.Description, FactValue(f.Value, f.Unit) + FactTime(f),
+        ? p.Facts.Select(f => new InfoRow(f.Description, (f.IsUpperLimit ? "< " : "") + FactValue(f.Value, f.Unit) + FactTime(f),
             f.Source.Citation, f.Source.ResearchRef)).ToList()
         : Array.Empty<InfoRow>();
 
     /// <summary>
-    /// When a fact was measured: a count accumulates "in the first 12.4 s"; a value averaged over a window has no single
-    /// time (its description gives the window); otherwise "at 84.5 days after the explosion".
+    /// When a fact was measured: a count accumulates "in the first 12.4 s"; a value with a span covers "over days 45–88
+    /// after the explosion"; a value averaged over a window has no single time (its description gives the window);
+    /// otherwise "at 84.5 days after the explosion".
     /// </summary>
     internal static string FactTime(ObservedFact f)
     {
         if (f.SourceTimeS is not double t) return "";
+        if (f.SourceTimeEndS is double end)
+        {
+            const double day = PhysicalConstants.Day;
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            return t >= day && end < 1000 * day
+                ? $" over days {(t / day).ToString("0.#", inv)}–{(end / day).ToString("0.#", inv)} after the explosion"
+                : $" from {UnitFormat.Time(t)} to {UnitFormat.Time(end)} after the explosion";
+        }
         if (f.ChannelId.StartsWith("cumulative", StringComparison.Ordinal)) return $" in the first {UnitFormat.Time(t)}";
         if (f.Description.Contains("averag", StringComparison.OrdinalIgnoreCase)) return "";
         return $" at {UnitFormat.Time(t)} after the explosion";

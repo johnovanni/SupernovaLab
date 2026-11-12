@@ -20,10 +20,12 @@ namespace SupernovaLab.Core.Presets;
 /// </list> <see cref="SourceTimeS"/> is the time after
 /// core bounce (or ignition) in the source frame, null when the measurement has no single time or its time is not
 /// verified. <see cref="Value"/> is in <see cref="Unit"/>. Only values checked against the paper are given
-/// (docs/research/presets-verification.md).
+/// (docs/research/presets-verification.md). <see cref="IsUpperLimit"/> marks a non-detection: <see cref="Value"/> is the
+/// published upper limit, not a measurement. <see cref="SourceTimeEndS"/>, when given, ends the span of source time that
+/// a value covers (an average or a limit over days 45–88), which then starts at <see cref="SourceTimeS"/>.
 /// </summary>
 public sealed record ObservedFact(Messenger Messenger, string ChannelId, double? SourceTimeS, double Value, string Unit,
-    string Description, Source Source);
+    string Description, Source Source, bool IsUpperLimit = false, double? SourceTimeEndS = null);
 
 /// <summary>
 /// A real supernova (spec §2.3): the lab inputs that best match it, where and how dimmed it is seen

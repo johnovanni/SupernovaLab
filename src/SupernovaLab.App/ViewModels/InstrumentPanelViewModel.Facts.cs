@@ -45,14 +45,15 @@ public abstract partial class InstrumentPanelViewModel
             if (_factsMeasuredHere && series is not null)
             {
                 string value = FormatValue(f.Value, f.Unit);
+                string label = f.IsUpperLimit ? $"Upper limit: < {value}" : $"Observed: {value}";
                 if (f.SourceTimeS is double t)
                 {
-                    markers.Add(new FactMarker(f, t * _observer.TimeDilation, $"Observed: {value}"));
+                    markers.Add(new FactMarker(f, t * _observer.TimeDilation, label, f.SourceTimeEndS * _observer.TimeDilation));
                     marked = true;
                 }
                 else if (ys.Count > 0 && Y(f.Value) >= ys.Min() - slack && Y(f.Value) <= ys.Max() + slack)
                 {
-                    levels.Add(new ReferenceLine($"Observed: {value}", f.Value, IsTime: false));
+                    levels.Add(new ReferenceLine(label, f.Value, IsTime: false));
                     marked = true;
                 }
                 else farNote = " (Not drawn: it lies far outside the lab's curve.)";
@@ -75,6 +76,15 @@ public abstract partial class InstrumentPanelViewModel
         {
             var channel = model.Channels.First(c => c.Id == f.ChannelId);
             if (f.SourceTimeS is not double t) return "";
+            if (f.SourceTimeEndS is double end)
+            {
+                // A span: the lab's mean over it (17 evenly spaced samples, trapezoid rule).
+                var vs = Enumerable.Range(0, 17).Select(i => SampleOne(model, f.ChannelId, t + (end - t) * i / 16.0)).ToList();
+                double mean = (vs.Sum() - 0.5 * (vs[0] + vs[^1])) / 16;
+                return double.IsFinite(mean) && channel.Unit == f.Unit
+                    ? $" The lab averages {FormatValue(mean, channel.Unit)} over that time."
+                    : "";
+            }
             double v = SampleOne(model, f.ChannelId, t);
             return double.IsFinite(v) && channel.Unit == f.Unit
                 ? $" The lab gives {FormatValue(v, channel.Unit)} then."

@@ -140,6 +140,12 @@ public class GammaLineModelTests
         // Type Ia: 9,655.5 km/s (R52). Core collapse: v_ej = √(10E / 3M) (signals §0.4); the default 16 M☉ star,
         // E 1.25537e51 erg and M_ej 11.59828 M☉: 4,259.03 km/s.
         Assert.Equal(9655.5, GammaLineModel.LineFwhmKmS(TestOutcomes.TypeIa()), 6);
+        // Review M2: Type Iax, the R45c velocity 5,000 km/s taken as the FWHM (as for core collapse); SPI factor at 847 keV
+        // √(846.77 × 5,000 / 299,792.458 / 2) = 2.65731.
+        var iax = TestOutcomes.Engine.Compute(LabInputs.Default with { Kind = StarKind.WhiteDwarf, IaChannel = TypeIaChannel.Iax });
+        Assert.Equal(SupernovaType.Iax, iax.Type);
+        Assert.Equal(5000, GammaLineModel.LineFwhmKmS(iax));
+        Assert.Equal(2.65731, GammaLineModel.LineWidthFactor("spi", 846.77, 5000), 4);
         Assert.Equal(4259.03, GammaLineModel.LineFwhmKmS(TestOutcomes.Star(16)), 0.01);
     }
 
@@ -152,12 +158,15 @@ public class GammaLineModelTests
     [Fact]
     public void Sn2014J_StaysDetectedBySpi_WithItsBroadLines()
     {
-        // Churazov et al. 2014 detected the 847 keV line (about 3σ). Preset: 0.6 M☉ Ni at 3.53 Mpc. At day 75 the SPI
-        // pointing (days 63.4–75) averages ≈3.2e-4 against 3e-5 × 3.69 = 1.11e-4.
+        // Churazov et al. 2014 detected the 847 keV line (about 3σ). Preset: 0.6 M☉ Ni at 3.53 Mpc, the engine's Ia
+        // ejecta (1.38 M☉, 1.35e51 erg), so T0_line(847) = 50.7456 d (R37). By hand (independent Python, Simpson with
+        // 20,000 intervals): the 10⁶ s SPI pointing ending at day 75 (days 63.43–75) averages 3.03576e-4 against
+        // 3e-5 × 3.69271 = 1.10781e-4, a ratio of 2.74032 (before R52, against 3e-5: 10.1).
         var (o, obs) = FromPreset("sn2014j");
         var d = Model.Detect(o, obs, 75 * Day, Detectors.Get("spi"));
         Assert.Equal(DetectionStatus.Detected, d.Status);
         Assert.Contains("broad", d.Reason);
+        Assert.Equal(2.74032, Model.Sample(o, obs, 75 * Day, "detect@spi"), 0.002 * 2.74032);
     }
 
     [Fact]
@@ -165,7 +174,10 @@ public class GammaLineModelTests
     {
         // INTEGRAL/SPI saw none of SN 2011fe's lines (Isern et al. 2013, A&A 552, A97; days 45–88: 830–875 keV
         // < 1.39e-4 photons cm⁻² s⁻¹, 2σ, ATel 3822), which its authors put down to the lines' 20–40 keV width. Preset:
-        // 0.53 M☉ Ni at 6.43 Mpc. Before R52 the lab "detected" the 847 keV line at 6.8e-5 against the narrow-line 3e-5.
+        // 0.53 M☉ Ni at 6.43 Mpc. Before R52 the lab "detected" it: its best SPI ratio over days 5–400 was 2.81 against the
+        // narrow-line 3e-5 (the app's snapshot showed one moment of it, 6.8e-5 against 3e-5). Now the best is 0.76.
+        // The margin is thin and rests on two [APPROX]/pinned inputs: SPI's resolution (2 keV here; at the ATel's ~3 keV
+        // the ratio would be ≈0.93) and Pereira et al.'s 0.53 M☉ of Ni (≈0.70 M☉ would reach 1).
         var (o, obs) = FromPreset("sn2011fe");
         var spi = Detectors.Get("spi");
         for (double day = 5; day <= 400; day += 1)
@@ -176,6 +188,39 @@ public class GammaLineModelTests
         var fact = PresetCatalog.Get("sn2011fe").Facts.Single(f => f.ChannelId == "line847");
         Assert.Equal(1.39e-4, fact.Value);
         Assert.Contains("upper limit", fact.Description);
+    }
+
+    [Fact]
+    public void Sn2011fe_LineFact_IsAPreliminaryUpperLimitOverDays45To88()
+    {
+        // Review I1/I2: ATel 3822 gives "preliminary" 95% (2σ) upper limits for days 45–88.
+        var fact = PresetCatalog.Get("sn2011fe").Facts.Single(f => f.ChannelId == "line847");
+        Assert.True(fact.IsUpperLimit);
+        Assert.Equal(45 * Day, fact.SourceTimeS);
+        Assert.Equal(88 * Day, fact.SourceTimeEndS);
+        Assert.Contains("preliminary", fact.Description);
+        Assert.Contains("preliminary", fact.Source.Citation);
+        Assert.Contains("ATel 3822", fact.Source.Citation);
+        // Every other fact is a measurement at one time (or none).
+        foreach (var p in PresetCatalog.LoadEmbedded())
+        foreach (var f in p.Facts.Where(f => !ReferenceEquals(f, fact)))
+        {
+            Assert.False(f.IsUpperLimit, $"{p.Id}/{f.ChannelId}");
+            Assert.Null(f.SourceTimeEndS);
+        }
+    }
+
+    [Fact]
+    public void DrawnLimit_IsTheBroadLineLimitOfTheDefaultWindow()
+    {
+        // Review M1: the limit a panel draws is the one the badge uses once the window is full. Type Ia, 847 keV:
+        // SPI 3e-5 (10⁶ s window = reference) × 3.69271 = 1.10781e-4; COSI 3e-6 × √(2 yr / 100 d) = 3e-6 × 2.70288,
+        // × 1.89941 = 1.54016e-5; NuSTAR's ⁴⁴Ti line stays narrow: 2e-6.
+        var ia = PinnedIa(0.6);
+        Assert.Equal(1.10781e-4, GammaLineModel.DrawnLimit(ia, "spi", "line847"), 0.0005 * 1.10781e-4);
+        Assert.Equal(1.54016e-5, GammaLineModel.DrawnLimit(ia, "cosi", "line847"), 0.0005 * 1.54016e-5);
+        Assert.Equal(2e-6, GammaLineModel.DrawnLimit(TestOutcomes.Star(16), "nustar", "ti44_68"), 1e-15);
+        Assert.True(double.IsNaN(GammaLineModel.DrawnLimit(ia, "nustar", "line847"))); // NuSTAR does not see it
     }
 
     [Fact]

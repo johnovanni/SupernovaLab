@@ -142,7 +142,9 @@ public sealed class GammaLineModel : ISignalModel
             "pins it; not modeled for Type Ia/Iax or pair-instability supernovae (not in the research)",
             "signals §5.3; ruling R35"),
         new("Line width (ruling R52 [APPROX]): the narrow-line limits are raised by √max(1, ΔE_line / ΔE_instr), the line's " +
-            "FWHM from SN 2014J's ≈4,100 km/s rms for Type Ia (× 2.355) or the ejecta velocity √(10E/3M) otherwise, against " +
+            "FWHM from SN 2014J's ≈4,100 km/s rms for Type Ia (× 2.355, a Gaussian), or a velocity scale taken directly as " +
+            "the FWHM: 5,000 km/s for Type Iax (R45c), the ejecta velocity √(10E/3M) otherwise (a uniform sphere's FWHM " +
+            "would be ~1.4× that edge speed, but ⁵⁶Co lies inside it); against " +
             "SPI's ≈2 keV and COSI's 6–9 keV resolution; NuSTAR's ⁴⁴Ti lines are taken as narrow. INTEGRAL saw none of " +
             "SN 2011fe's lines (Isern et al. 2013; 830–875 keV < 1.39e-4, 2σ, days 45–88, ATel 3822), which its authors " +
             "put down to the lines' 20–40 keV width", "signals §5.3, §5.4; ruling R52"),
@@ -223,11 +225,15 @@ public sealed class GammaLineModel : ISignalModel
     public const double ThermonuclearLineFwhmKmS = 4100 * 2.355;
 
     /// <summary>
-    /// Ruling R52 [APPROX]: the γ-ray line FWHM, km/s. Type Ia/Iax: <see cref="ThermonuclearLineFwhmKmS"/>. Otherwise the
-    /// outcome's ejecta velocity scale v_ej = √(10 E / 3 M_ej) (signals §0.4), taken as the FWHM. NaN without ejecta.
+    /// Ruling R52 [APPROX]: the γ-ray line FWHM, km/s. Type Ia: <see cref="ThermonuclearLineFwhmKmS"/>, a measured rms
+    /// (Gaussian σ) × 2.355. Type Iax: the R45c velocity scale 5,000 km/s (<see cref="SpectrumModel.IaxKmS"/>). Otherwise
+    /// the ejecta velocity scale v_ej = √(10 E / 3 M_ej) (signals §0.4). The two velocity scales are taken directly as the
+    /// FWHM: for a uniform sphere, whose edge is v_ej, the true FWHM is about 1.4 v_ej, but the ⁵⁶Co lies inside the edge,
+    /// so the error runs both ways. NaN without ejecta.
     /// </summary>
     public static double LineFwhmKmS(Outcome o)
     {
+        if (o.Type == SupernovaType.Iax) return SpectrumModel.IaxKmS;
         if (Thermonuclear(o)) return ThermonuclearLineFwhmKmS;
         if (o.EjectaMass is not { Value: > 0 } m || o.ExplosionEnergyErg is not { Value: > 0 } e) return double.NaN;
         return Math.Sqrt(10 * e.Value / (3 * m.Value * PhysicalConstants.MSun)) / 1e5;
@@ -244,6 +250,26 @@ public sealed class GammaLineModel : ISignalModel
         "cosi" => 6.0 + 3.0 * Math.Clamp((lineKeV - 511) / (1157 - 511), 0, 1),
         _ => double.NaN,
     };
+
+    /// <summary>A line channel's energy, keV (§5.1). Throws <see cref="ArgumentException"/> for another channel.</summary>
+    public static double LineKeV(string lineChannel)
+        => LineById.TryGetValue(lineChannel, out var l) ? l.KeV : throw new ArgumentException($"No line '{lineChannel}'.", nameof(lineChannel));
+
+    /// <summary>
+    /// The limit to draw against a line's curve (review M1): the instrument's 3σ narrow-line sensitivity scaled to its
+    /// default observing window, S_ref (T_ref / T_window)^(1/2), and raised for the line's width (ruling R52): the limit
+    /// the badge compares the window-averaged flux with, once the supernova is older than the window. NaN when the
+    /// instrument does not see the line or the outcome does not make it.
+    /// </summary>
+    public static double DrawnLimit(Outcome outcome, string detectorId, string lineChannel)
+    {
+        if (!AppliesTo(outcome) || !LineById.TryGetValue(lineChannel, out var line) || !DetectorIds.Contains(detectorId))
+            return double.NaN;
+        if (!LinesSeenBy(detectorId).Contains(line) || !Modeled(outcome, line)) return double.NaN;
+        double window = ObservingWindowS(detectorId, line.Isotope == Isotope.Ti44);
+        return Detectors.Get(detectorId).Threshold * Math.Sqrt(ReferenceExposureS(detectorId) / window)
+               * LineWidthFactor(detectorId, line.KeV, LineFwhmKmS(outcome));
+    }
 
     /// <summary>
     /// Ruling R52 [APPROX, Speculative]: the factor by which a broad line raises the narrow-line, background-limited

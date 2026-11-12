@@ -151,10 +151,35 @@ public static class PanelPlot
         {
             if (f.ObserverTimeS is not double t) continue;
             double y = Y(f.Fact.Value);
+            if (f.Fact.IsUpperLimit)
+            {
+                // An upper limit (R52 review I2): a bar over the span it covers, a downward triangle at its middle, and
+                // its "Upper limit: < …" label.
+                double x0 = Math.Log10(t), x1 = f.ObserverTimeEndS is double end ? Math.Log10(end) : x0;
+                if (x1 > x0)
+                {
+                    var bar = plot.Add.Line(x0, y, x1, y);
+                    bar.Color = Color.FromHex(FactColor);
+                    bar.LineWidth = 2;
+                    Extend(f.ObserverTimeEndS!.Value, y);
+                }
+                double xm = 0.5 * (x0 + x1);
+                plot.Add.Markers(new[] { xm }, new[] { y }, MarkerShape.FilledTriangleDown, 10, Color.FromHex(FactColor));
+                var text = plot.Add.Text(f.Label, xm, y);
+                text.LabelFontSize = 9.5f;
+                text.LabelFontColor = Color.FromHex(FactColor);
+                text.LabelAlignment = Alignment.LowerCenter;
+                text.OffsetY = -8;
+                Extend(t, y);
+                continue;
+            }
             plot.Add.Markers(new[] { Math.Log10(t) }, new[] { y }, MarkerShape.FilledDiamond, 9, Color.FromHex(FactColor));
             Extend(t, y);
         }
-        if (vm.FactMarkers.Count > 0) legend.Add(new LegendEntry("Observed (preset)", Brush(FactColor), false, true));
+        if (vm.FactMarkers.Any(f => !f.Fact.IsUpperLimit))
+            legend.Add(new LegendEntry("Observed (preset)", Brush(FactColor), false, true));
+        if (vm.FactMarkers.Any(f => f.Fact.IsUpperLimit))
+            legend.Add(new LegendEntry("Upper limit (preset): not detected", Brush(FactColor), false, true));
 
         bool hasData = double.IsFinite(xMin);
         // A time line (a black hole forming) belongs in view even where the curves have stopped.

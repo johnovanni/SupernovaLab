@@ -134,7 +134,7 @@ public static class PresetCatalog
             Required(f.ChannelId, "fact channelId", id), f.SourceTimeS,
             f.Value ?? throw new InvalidDataException($"A fact of preset '{id}' has no value."),
             Required(f.Unit, "fact unit", id), Required(f.Description, "fact description", id),
-            ToSource(f.Source, id, "fact"))).ToList();
+            ToSource(f.Source, id, "fact"), f.IsUpperLimit ?? false, SpanEnd(f, id))).ToList();
 
         return new Preset(id, Required(d.Name, "name", id), Required(d.Summary, "summary", id),
             Required(d.WhatWasSeen, "whatWasSeen", id), inputs, observer, pins, facts, ToSource(o.Source, id, "observer"));
@@ -202,11 +202,22 @@ public static class PresetCatalog
         public SourceDto? Source { get; set; }
     }
 
+    /// <summary>A fact's span end: after its start, and only with a start.</summary>
+    private static double? SpanEnd(FactDto f, string id)
+    {
+        if (f.SourceTimeEndS is not double end) return null;
+        if (f.SourceTimeS is not double start || !(end > start))
+            throw new InvalidDataException($"A fact of preset '{id}' has a sourceTimeEndS without an earlier sourceTimeS.");
+        return end;
+    }
+
     private sealed class FactDto
     {
         public Messenger? Messenger { get; set; }
         public string? ChannelId { get; set; }
         public double? SourceTimeS { get; set; }
+        public double? SourceTimeEndS { get; set; }
+        public bool? IsUpperLimit { get; set; }
         public double? Value { get; set; }
         public string? Unit { get; set; }
         public string? Description { get; set; }

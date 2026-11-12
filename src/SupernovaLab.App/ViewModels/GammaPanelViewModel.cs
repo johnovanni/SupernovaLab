@@ -57,14 +57,15 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
                 return new PanelContent
                 {
                     Series = new[] { "line158", "line812", "line847", "line1238" }.SelectMany(c => SampleChannel(_lines, c)).ToList(),
-                    Lines = LineLimit(instrument, ti44: false), LogY = true, YLabel = "Line flux (photons cm⁻² s⁻¹)",
+                    Lines = LineLimit(instrument, "line847"), LogY = true, YLabel = "Line flux (photons cm⁻² s⁻¹)",
                     Note = LimitNote(instrument, ti44: false),
                 };
             default:
                 return new PanelContent
                 {
                     Series = new[] { "ti44_68", "ti44_78", "ti44_1157" }.SelectMany(c => SampleChannel(_lines, c)).ToList(),
-                    Lines = LineLimit(instrument, ti44: true), LogY = true, YLabel = "Line flux (photons cm⁻² s⁻¹)",
+                    Lines = LineLimit(instrument, instrument.Id == "nustar" ? "ti44_68" : "ti44_1157"), LogY = true,
+                    YLabel = "Line flux (photons cm⁻² s⁻¹)",
                     Note = LimitNote(instrument, ti44: true),
                 };
         }
@@ -106,9 +107,12 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
         return base.Badge(model, d);
     }
 
-    /// <summary>The trigger verdict at the end of the drawn prompt burst (Task 15 re-review N1).</summary>
+    /// <summary>
+    /// The trigger verdict at the burst's peak (Task 15 re-review N1; R52 review M7: the restated text says "At its peak",
+    /// so it is judged there, whatever the model does later).
+    /// </summary>
     private Detection TriggerAtPromptEnd(ISignalModel model, Detector instrument)
-        => base.VerdictNow(model, instrument, _grb.PromptEndS(Outcome));
+        => base.VerdictNow(model, instrument, _grb.PeakTimeS(Outcome));
 
     private bool BurstIsOver(double sourceTimeS) => _grb.PromptEndS(Outcome) is var end && double.IsFinite(end) && sourceTimeS > end;
 
@@ -120,28 +124,31 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
     };
 
     /// <summary>
-    /// The line instrument's 3σ narrow-line limit for its reference exposure (same unit as the curves). NuSTAR sees only
-    /// the ⁴⁴Ti hard X-ray lines; SPI and COSI see both families.
+    /// The line instrument's 3σ limit for this view's main line, as the badge uses it once the observing window is full:
+    /// scaled to the default window and raised for the line's width (ruling R52; R52 review M1), so a curve above the
+    /// line is one the badge can call detected. Nothing when the instrument does not see that line.
     /// </summary>
-    private static IReadOnlyList<ReferenceLine> LineLimit(Detector d, bool ti44)
-        => GammaLineModel.DetectorIds.Contains(d.Id) && (ti44 || d.Id != "nustar")
-            ? new[] { LimitLine(d, d.Threshold, $"limit ({Parenthetical(d.ThresholdUnit)})") }
-            : Array.Empty<ReferenceLine>();
+    private IReadOnlyList<ReferenceLine> LineLimit(Detector d, string lineChannel)
+    {
+        double limit = GammaLineModel.DrawnLimit(Outcome, d.Id, lineChannel);
+        if (!double.IsFinite(limit)) return Array.Empty<ReferenceLine>();
+        string line = _lines.Channels.First(c => c.Id == lineChannel).Label.Replace(" line flux", "");
+        string window = Core.Units.UnitFormat.Time(GammaLineModel.ObservingWindowS(d.Id, lineChannel.StartsWith("ti44")));
+        double width = GammaLineModel.LineWidthFactor(d.Id, GammaLineModel.LineKeV(lineChannel), GammaLineModel.LineFwhmKmS(Outcome));
+        string broad = width > 1
+            ? $", raised {width.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}× for the broad line"
+            : "";
+        return new[] { LimitLine(d, limit, $"limit for {line} ({window} average{broad})") };
+    }
 
     private static string? LimitNote(Detector d, bool ti44)
     {
         if (!GammaLineModel.DetectorIds.Contains(d.Id))
             return $"{d.Name} watches for bursts, not lines; pick INTEGRAL/SPI, COSI or NuSTAR to see a line limit.";
         if (d.Id == "nustar" && !ti44) return "NuSTAR sees only the ⁴⁴Ti lines at 68 and 78 keV.";
-        return "The dashed limit is for a narrow line averaged over a long observation. A supernova's lines are broadened by " +
-               "its expanding ejecta, which raises the real limit (several-fold for INTEGRAL/SPI); the badge compares the " +
-               "line's average over that time with the raised limit.";
-    }
-
-    private static string Parenthetical(string unit)
-    {
-        int open = unit.IndexOf('('), close = unit.LastIndexOf(')');
-        return open >= 0 && close > open ? unit[(open + 1)..close] : unit;
+        return "The dashed limit is for the main line averaged over the instrument's observing window, raised for the line's " +
+               "width: a supernova's expanding ejecta broaden its lines, so they stand on more background (several-fold " +
+               "for INTEGRAL/SPI). The badge compares the line's average over that window with this limit.";
     }
 
     /// <summary>Extra samples through the prompt burst: onset plus 1 ms to 300 s, log-spaced.</summary>
