@@ -12,7 +12,10 @@ public class PulsarModelTests
 
     private static Outcome WithRemnant(Remnant r) => TestOutcomes.Custom(SupernovaType.IIP, 1e51, 10, 0.03, 3.5e13, r);
 
-    /// <summary>The Crab pulsar's period and field (presets §2: P ≈ 33 ms, B ≈ 3.8e12 G).</summary>
+    /// <summary>
+    /// A Crab-like pulsar: P = 33 ms (the brief's value; presets §2 gives 33.5 ms, signals §8.2 33.4 ms) and
+    /// B = 3.8e12 G (presets §2, signals §8.2).
+    /// </summary>
     private static Outcome CrabLike() => WithRemnant(TestOutcomes.Pulsar(0.033, 3.8e12));
 
     [Fact]
@@ -91,16 +94,24 @@ public class PulsarModelTests
     [Fact]
     public void PulseTimes_AreOnePeriodApart()
     {
-        // A typical neutron star (P0 = 0.1 s, B = 3e12 G): in a 1 s window at 20 yr, about 10 pulses, each one period after
-        // the last.
+        // A typical neutron star (P0 = 0.1 s, B = 3e12 G): Ṗ0 = 9e24 / 1.024e39 / 0.1 = 8.78906e-14, τ0 = 0.1 / (2Ṗ0) =
+        // 5.68889e11 s; at 20 yr, x = 6.312e8 / 5.68889e11 = 1.10953e-3, P = 0.1 √(1 + x) = 0.10005546 s. The phase
+        // φ = (2τ0/P0)(√(1 + x) − 1) is 6310250130.32 at 20 yr and 6310250140.31 one second later: exactly 10 pulses.
         var o = WithRemnant(TestOutcomes.Pulsar(0.1, 3e12));
-        double start = 20 * Year, p = Model.Sample(o, ObserverSetup.Default, start, "periodS");
+        double start = 20 * Year;
         var pulses = Model.PulseTimes(o, start, 1.0);
-        Assert.InRange(pulses.Count, 9, 11);
+        Assert.Equal(10, pulses.Count);
         Assert.All(pulses, t => Assert.InRange(t, start, start + 1.0));
         // Times near 6.3e8 s carry about 1e-7 s of double-precision rounding, so the spacing is checked to 1 µs.
-        for (int i = 1; i < pulses.Count; i++) Assert.Equal(p, pulses[i] - pulses[i - 1], 1e-6);
-        Assert.Empty(Model.PulseTimes(o, 5 * Year, 1.0)); // before the ejecta clear
+        for (int i = 1; i < pulses.Count; i++) Assert.Equal(0.10005546, pulses[i] - pulses[i - 1], 1e-6);
+        Assert.Empty(Model.PulseTimes(o, 5 * Year, 1.0)); // wholly before the ejecta clear
+        // Review M6: a window straddling the start (or end) is clipped to the valid part. Phases 3155562411.29 →
+        // 3155562416.29 over [10 yr, 10 yr + 0.5 s]: 5 pulses; 311340259683.96 → 311340259688.83 over [1000 yr − 0.5 s,
+        // 1000 yr]: 5 pulses.
+        var clipped = Model.PulseTimes(o, 10 * Year - 0.5, 1.0);
+        Assert.Equal(5, clipped.Count);
+        Assert.All(clipped, t => Assert.InRange(t, 10 * Year, 10 * Year + 0.5));
+        Assert.Equal(5, Model.PulseTimes(o, 1000 * Year - 0.5, 1.0).Count);
     }
 
     [Fact]
@@ -110,6 +121,9 @@ public class PulsarModelTests
         // B = 1e14 G gives t_p = 1.3 yr × 0.2² = 0.052 yr = 1.64112e6 s; at 100 yr P = 0.002 √(1 + 100/0.052) = 0.0877286 s.
         var o = WithRemnant(TestOutcomes.Pulsar(0.002, 1e14, RemnantKind.Magnetar));
         Assert.Equal(0.0877286, Model.Sample(o, ObserverSetup.Default, 100 * Year, "periodS"), 6);
+        // Review M7 [APPROX]: most known magnetars are radio-quiet, and the luminosity function is fitted to ordinary pulsars.
+        Assert.Contains("radio-quiet", Model.Detect(o, ObserverSetup.Default, 100 * Year, Detectors.Get("fast")).Reason);
+        Assert.DoesNotContain("radio-quiet", Model.Detect(CrabLike(), ObserverSetup.Default, 100 * Year, Detectors.Get("fast")).Reason);
     }
 
     [Fact]

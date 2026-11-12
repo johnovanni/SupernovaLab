@@ -74,7 +74,8 @@ public sealed class NeutronStarCoolingModel : ISignalModel
     {
         CoolingSource,
         new("Blackbody at T_s^∞ with R^∞ = R/√(1 − r_g/R), 0.3–10 keV [APPROX], absorbed by N_H = 2.2e21 A_V (Güver & " +
-            "Özel 2009 [APPROX]); Chandra and XMM-Newton about 1e-15 erg cm⁻² s⁻¹ in ~100 ks [APPROX]", "signals §6.2, §8.4, §11"),
+            "Özel 2009 [APPROX]); Chandra and XMM-Newton about 1e-15 erg cm⁻² s⁻¹ in ~100 ks [APPROX]. g14 = 2.4 is the " +
+            "research's canonical 1.4 M☉ / 10 km value, kept as written (ruling R41)", "signals §6.2, §8.4, §11"),
         new("Not modeled: fast (direct Urca) cooling, below 3e5 K by 1e4 yr; magnetar heating", "signals §8.4"),
     };
 
@@ -110,8 +111,8 @@ public sealed class NeutronStarCoolingModel : ISignalModel
         var inv = CultureInfo.InvariantCulture;
         string what = $"The neutron star's surface is about {(s.TemperatureInfK / 1e6).ToString("0.0", inv)} million K as seen " +
                       $"from afar, glowing at {FormatFlux(s.LuminosityInf)} erg/s";
-        string flux = $"{detector.Name} would receive {FormatFlux(absorbed)} erg cm⁻² s⁻¹ in 0.3–10 keV against about " +
-                      $"{FormatFlux(detector.Threshold)} in a long exposure";
+        string flux = $"{detector.Name} would receive {FormatFlux(absorbed)} erg cm⁻² s⁻¹ in 0.3–10 keV against the " +
+                      $"{FormatFlux(detector.Threshold)} it reaches in {CsmInteractionModel.XrayExposure(detector.Id)}";
         string band = sourceTimeS < RelaxedS
             ? " Before about 100 years the surface still depends on the young crust, so the temperature is a range."
             : "";
@@ -185,15 +186,13 @@ public sealed class NeutronStarCoolingModel : ISignalModel
     private static double BandFlux(Surface s, ObserverSetup obs, bool absorbed)
     {
         double kT = PhysicalConstants.BoltzmannEv * s.TemperatureInfK / 1000 / obs.TimeDilation; // keV, observed
-        double a = Math.Log(BandLowKeV), h = (Math.Log(BandHighKeV) - a) / BandIntervals, sum = 0;
-        for (int i = 0; i <= BandIntervals; i++)
+        double PerLnE(double e)
         {
-            double e = Math.Exp(a + i * h), x = e / kT;
-            double w = i == 0 || i == BandIntervals ? 1 : i % 2 == 1 ? 4 : 2;
+            double x = e / kT;
             double planck = x < 700 ? Math.Pow(x, 4) / (Math.Exp(x) - 1) : 0; // x⁴/(e^x − 1) per ln E
-            sum += w * planck * (absorbed ? Extinction.XrayTransmission(e, obs.Av) : 1);
+            return planck * (absorbed ? Extinction.XrayTransmission(e, obs.Av) : 1);
         }
-        double share = sum * h / 3 / (Math.Pow(Math.PI, 4) / 15);
+        double share = LogEnergyIntegral.Simpson(PerLnE, BandLowKeV, BandHighKeV, BandIntervals) / (Math.Pow(Math.PI, 4) / 15);
         return s.LuminosityInf / (4 * Math.PI * Math.Pow(obs.LuminosityDistanceCm, 2)) * share;
     }
 

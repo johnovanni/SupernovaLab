@@ -17,8 +17,10 @@ public class RemnantEvolutionModelTests
     public void SedovRadius_MatchesTheTrueloveMcKeeValue()
     {
         // §7.2: R = 1.152 (E t² / ρ0)^(1/5), "about 0.336 pc E51^0.2 n0^-0.2 (t/yr)^0.4" for ρ0 = n0 m_p. E = 1e51 erg,
-        // n0 = 1 cm⁻³, t = 1,000 yr: 0.336 × 1000^0.4 = 0.336 × 15.8489 = 5.32524 pc. The exact constants give 5.33427 pc.
-        Assert.Equal(5.32524, RemnantEvolutionModel.SedovRadiusPc(1e51, 1, 1000 * Year), 5.32524 * 0.01);
+        // n0 = 1 cm⁻³, t = 1,000 yr: 0.336 × 1000^0.4 = 0.336 × 15.8489 = 5.32524 pc (the research's rounded coefficient).
+        // Exactly: E t²/ρ0 = 1e51 × (3.156e10)² / 1.6726e-24 = 5.95500e95, ^0.2 = 1.42890e19, × 1.152 = 1.64609e19 cm
+        // = 5.33427 pc.
+        Assert.Equal(5.3343, RemnantEvolutionModel.SedovRadiusPc(1e51, 1, 1000 * Year), 0.001);
     }
 
     [Fact]

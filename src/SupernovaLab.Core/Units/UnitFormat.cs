@@ -44,6 +44,12 @@ public static class UnitFormat
 
     public static string Mass(double msun) => $"{Sig(msun)} M☉";
 
+    /// <summary>
+    /// A bare number for a flux density or ratio: up to three decimals between 0.01 and 10⁴ (e.g. "0.317", "14.5"),
+    /// otherwise two-decimal scientific notation (e.g. "7.94e-4"). The caller adds the unit.
+    /// </summary>
+    public static string Figure(double v) => v.ToString(v >= 0.01 && v < 1e4 ? "0.###" : "0.##e0", Inv);
+
     public static string Energy(double erg)
     {
         if (erg == 0) return "0 erg";

@@ -1,6 +1,7 @@
 using System.Globalization;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
+using SupernovaLab.Core.Progenitors;
 using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.Core.Signals;
@@ -14,8 +15,10 @@ namespace SupernovaLab.Core.Signals;
 /// <item>Radio (§6.1, Chevalier 1998 synchrotron self-absorption as given by Chevalier &amp; Fransson 2006, p = 3,
 /// inverted): B(t) = √(8π × 0.052 ε_B,-1 A_*) / t_10 G, R = v t, L_ν,p = 1.197e24 [R B / 4.4e14]^(19/7) erg/s/Hz,
 /// ν_p = 5 GHz (B / 1.1 G)(L_ν,p / 1.197e24)^(2/19), with equipartition ε_e = ε_B = 0.1 (α = 1) and filling factor
-/// f = 0.5 [APPROX]; spectrum L_ν = L_p / ((ν/ν_p)^(−5/2) + ν/ν_p) (the research's smooth join, s = 1). Since
-/// u_B ∝ ρv² ∝ A/t², L_p stays constant and ν_p falls as 1/t.</item>
+/// f = 0.5 [APPROX]; spectrum: the research's smooth join (s = 1) rescaled so that its maximum is L_p at ν_p (ruling
+/// R42; the CF06 relations are defined at the observed peak), L_ν = N L_p / ((x0 x)^(−5/2) + x0 x) with x = ν/ν_p,
+/// x0 = 2.5^(2/7) and N = x0^(−5/2) + x0 = 1.81897. Since u_B ∝ ρv² ∝ A/t², L_p stays constant and ν_p falls as
+/// 1/t.</item>
 /// <item>Shock speed (§6.1 [APPROX]): R/t from the observed ranges, scaled with √(E/M_ej): hydrogen-poor supernovae
 /// (Ib, Ic, Ic-BL, SLSN-I, compact IIb) 58,000 km/s at 1e51 erg and 3 M☉ — the geometric middle of CF06's
 /// 32,000–105,000 km/s — and hydrogen-rich ones (II-P, II-L, SLSN-II) 10,000 km/s at 1e51 erg and 10 M☉. A IIb whose star
@@ -32,14 +35,15 @@ namespace SupernovaLab.Core.Signals;
 /// (<see cref="Extinction.XrayTransmission"/>). Absorption by the wind itself is not modeled.</item>
 /// <item>Detection: radio against the VLA and MeerKAT's 0.03 mJy and the SKA's 0.01 mJy (ruling R40), at the brightest
 /// of the panel frequencies each covers [APPROX: VLA 1–50 GHz, MeerKAT 0.58–3.5 GHz, SKA-Mid 0.35–15.4 GHz]; X-rays
-/// against Chandra's and XMM-Newton's 1e-15 and Swift XRT's 1e-13 erg cm⁻² s⁻¹ [APPROX].</item>
+/// against Chandra's and XMM-Newton's 1e-15 (~100 ks) and Swift XRT's 1e-13 erg cm⁻² s⁻¹ (~10 ks) [APPROX].</item>
 /// </list>
 /// Not modeled: Type Ia supernovae, whose surroundings are clean (SN 2011fe and SN 2014J showed no radio or X-rays,
 /// Ṁ ≲ 1e-9 M☉/yr; presets §4–5), so <see cref="Applies"/> is false and no circumstellar gas is invented; dense
 /// circumstellar gas (Type IIn, Ibn, Icn, the dense-CSM input, pulsational pair-instability shells), which applies but
 /// returns NaN and NotModeled; free-free absorption by a dense wind, which can dominate early for II-P (§6.1, so the
 /// early low-frequency radio is overestimated); and the SN 1987A ring (§6.3), whose luminosity is
-/// <see cref="RingXrayLuminosityErgS"/> but which no outcome flag yet switches on. Source time throughout.
+/// <see cref="RingXrayLuminosityErgS"/> but which no outcome flag yet switches on (ruling R41: Task 13). Source time
+/// throughout.
 /// Speculative (rulings R24/R27): the microphysics, shock speeds and spectral shapes are [APPROX].
 /// </summary>
 public sealed class CsmInteractionModel : ISignalModel
@@ -68,11 +72,6 @@ public sealed class CsmInteractionModel : ISignalModel
 
     private const double RefEnergyErg = 1e51;
 
-    /// <summary>
-    /// An extended (eIIb) envelope, cm: Chevalier &amp; Soderberg 2010's split, which the progenitor model also uses for
-    /// its red-supergiant wind (outcomes §3.2, §8.2 step 2).
-    /// </summary>
-    private const double ExtendedEnvelopeCm = 1e13;
 
     /// <summary>[APPROX] The Newtonian formulas are stretched to Γβ = 1 at most: v ≤ c/√2.</summary>
     private static readonly double MaxSpeedCmS = PhysicalConstants.C / Math.Sqrt(2);
@@ -113,7 +112,10 @@ public sealed class CsmInteractionModel : ISignalModel
     /// <summary>The X-ray detectors this model compares against.</summary>
     public static IReadOnlyList<string> XrayDetectorIds { get; } = new[] { "chandra", "xmm", "swift-xrt" };
 
-    /// <summary>§6.3 [APPROX]: SN 1987A's ring, 0.5–2 keV, a logistic rise from 3,000 to 9,000 d to the observed plateau.</summary>
+    /// <summary>
+    /// §6.3 [APPROX]: SN 1987A's ring, 0.5–2 keV, zero until the shock reaches it at 3,000 d, then a logistic rise (5% at
+    /// 3,000 d, 95% at 9,000 d) to the observed plateau.
+    /// </summary>
     private const double RingPlateauFlux = 8e-12, RingDistancePc = 51_400, RingRiseStartDays = 3000, RingRiseEndDays = 9000;
 
     private static readonly LightCurveModel Optical = new();
@@ -137,8 +139,9 @@ public sealed class CsmInteractionModel : ISignalModel
     public IReadOnlyList<Source> Sources { get; } = new Source[]
     {
         new("Chevalier 1998, ApJ 499, 810; Chevalier & Fransson 2006, ApJ 651, 381 (synchrotron self-absorption, p = 3, " +
-            "f = 0.5, inverted to a forward model [DERIVED]); ε_e = ε_B = 0.1 [APPROX]; smooth spectral join [APPROX]; " +
-            "check: SN 1994I's R = 1.17e16 cm, B = 0.51 G give 1.42e27 erg/s/Hz at 4.88 GHz", "signals §6.1"),
+            "f = 0.5, inverted to a forward model [DERIVED]); ε_e = ε_B = 0.1 [APPROX]; smooth spectral join [APPROX], " +
+            "normalized so the drawn spectrum peaks at L_p at ν_p (ruling R42); check: SN 1994I's R = 1.17e16 cm, " +
+            "B = 0.51 G give a drawn peak of 1.42e27 erg/s/Hz at 4.88 GHz (observed 1.40e27)", "signals §6.1"),
         new("Shock R/t [APPROX]: hydrogen-poor 58,000 km/s at 1e51 erg / 3 M☉ (middle of 32,000–105,000, CF06 Table 3); " +
             "hydrogen-rich 10,000 km/s at 1e51 erg / 10 M☉ (Chevalier, Fransson & Nymark 2006), also for IIb with an " +
             "extended envelope (Chevalier & Soderberg 2010); ∝ √(E/M_ej), constant, capped at Γβ = 1. Wind A_* from Ṁ " +
@@ -150,7 +153,8 @@ public sealed class CsmInteractionModel : ISignalModel
             "Observed: II-P up to ~3e39 erg/s (Dwarkadas 2014), SN 2008D 1e39 erg/s at ~10 d (Soderberg et al. 2008)",
             "signals §6.2"),
         new("Detection: VLA and MeerKAT 0.03 mJy (5σ), SKA 0.01 mJy (ruling R40); Chandra and XMM-Newton 1e-15, Swift XRT " +
-            "1e-13 erg cm⁻² s⁻¹ [APPROX]; telescope frequency ranges [APPROX]", "signals §6.1, §6.2, §11"),
+            "1e-13 erg cm⁻² s⁻¹, for exposures of ~100 ks and ~10 ks [APPROX]; telescope frequency ranges [APPROX]",
+            "signals §6.1, §6.2, §11"),
         new("Not modeled: dense circumstellar gas (IIn, Ibn, Icn; the brightest radio and X-ray supernovae), free-free " +
             "absorption in dense winds (early II-P radio is overestimated), the SN 1987A ring (formula only), and Type Ia " +
             "supernovae, whose surroundings are clean (SN 2011fe, SN 2014J: Ṁ ≲ 1e-9 M☉/yr)",
@@ -217,18 +221,22 @@ public sealed class CsmInteractionModel : ISignalModel
                 .Select(b => (b.Hz, Mjy: RadioMjy(shock, observer, sourceTimeS, b.Hz)))
                 .MaxBy(b => b.Mjy);
             var status = best.Mjy >= detector.Threshold ? DetectionStatus.Detected : DetectionStatus.TooFaint;
+            // R42: the drawn spectrum's maximum is L_p at ν_p, so the stated peak is where the curve peaks.
+            double peakHz = shock.Peak(sourceTimeS).FrequencyHz / z1;
             return new Detection(status,
-                $"{detector.Name} receives about {FormatMjy(best.Mjy)} mJy at {(best.Hz / 1e9).ToString("0.#", inv)} GHz " +
+                $"{detector.Name} receives about {UnitFormat.Figure(best.Mjy)} mJy at {(best.Hz / 1e9).ToString("0.#", inv)} GHz " +
                 $"against its limit of about {detector.Threshold.ToString("0.##", inv)} mJy: " +
-                $"{(status == DetectionStatus.Detected ? "detected" : "too faint")}. The radio spectrum peaks near " +
-                $"{(shock.Peak(sourceTimeS).FrequencyHz / z1 / 1e9).ToString("0.##", inv)} GHz now; below that the glowing " +
-                $"gas absorbs its own radio waves.{caveat}");
+                $"{(status == DetectionStatus.Detected ? "detected" : "too faint")}. The radio spectrum now peaks at about " +
+                $"{UnitFormat.Figure(RadioMjy(shock, observer, sourceTimeS, peakHz))} mJy near " +
+                $"{(peakHz / 1e9).ToString("0.##", inv)} GHz; below that the glowing gas absorbs its own radio waves, and " +
+                $"the peak moves to lower frequencies as the shell expands.{caveat}");
         }
 
         double lx = XrayLuminosity(outcome, shock, sourceTimeS);
         double absorbed = XrayFlux(lx, observer, absorbed: true), clear = XrayFlux(lx, observer, absorbed: false);
         string flux = $"{detector.Name} would receive {FormatFlux(absorbed)} erg cm⁻² s⁻¹ in 0.3–10 keV (from " +
-                      $"{FormatFlux(lx)} erg/s) against about {FormatFlux(detector.Threshold)}";
+                      $"{FormatFlux(lx)} erg/s) against the {FormatFlux(detector.Threshold)} it reaches in " +
+                      $"{XrayExposure(detector.Id)}";
         if (absorbed >= detector.Threshold)
             return new Detection(DetectionStatus.Detected, $"{flux}: detected.{caveat}");
         if (clear >= detector.Threshold)
@@ -259,11 +267,22 @@ public sealed class CsmInteractionModel : ISignalModel
     public static double MagneticFieldG(double aStar, double timeS)
         => Math.Sqrt(8 * Math.PI * 0.052 * (EpsilonB / 0.1) * aStar) / (timeS / (10 * Day));
 
-    /// <summary>§6.1: L_ν = L_p / ((ν/ν_p)^(−5/2) + ν/ν_p), erg/s/Hz (the smooth join with s = 1).</summary>
+    /// <summary>R42: x0 = 2.5^(2/7) = 1.29926, where 1/(y^(−5/2) + y) peaks.</summary>
+    private static readonly double JoinPeakX = Math.Pow(2.5, 2.0 / 7);
+
+    /// <summary>R42: N = x0^(−5/2) + x0 = 1.81897, which makes the join's maximum exactly 1.</summary>
+    private static readonly double JoinNorm = Math.Pow(JoinPeakX, -2.5) + JoinPeakX;
+
+    /// <summary>
+    /// §6.1 with ruling R42: L_ν = N L_p / ((x0 x)^(−5/2) + x0 x), erg/s/Hz, x = ν/ν_p, x0 = 2.5^(2/7),
+    /// N = x0^(−5/2) + x0 = 1.81897 (R42 quotes 1.81907, from x0 rounded up to 1.29935). The research's smooth join
+    /// (s = 1), shifted and rescaled so that its maximum is L_p exactly at ν_p, where the CF06 relations define them;
+    /// the asymptotes keep their ν^(5/2) and ν⁻¹ slopes.
+    /// </summary>
     public static double SpectralLuminosity(SsaPeak peak, double nuHz)
     {
-        double x = nuHz / peak.FrequencyHz;
-        return peak.LuminosityErgSHz / (Math.Pow(x, -2.5) + x);
+        double y = JoinPeakX * nuHz / peak.FrequencyHz;
+        return JoinNorm * peak.LuminosityErgSHz / (Math.Pow(y, -2.5) + y);
     }
 
     /// <summary>
@@ -285,14 +304,17 @@ public sealed class CsmInteractionModel : ISignalModel
            * Math.Log(XrayHighKeV / XrayLowKeV);
 
     /// <summary>
-    /// §6.3 [APPROX]: the X-ray luminosity of SN 1987A's equatorial ring, 0.5–2 keV, erg/s, at this age (s): a logistic
-    /// rise from 5% at 3,000 d to 95% at 9,000 d onto the plateau that Chandra measured from about 9,500 d, 8e-12 erg
-    /// cm⁻² s⁻¹ at 51.4 kpc (presets §1) = 2.53e36 erg/s. The slow decline after about 10,000 d is not included (it
-    /// begins at the very end of this model's 30 years). No outcome switches it on yet: SN 1987A-like rings are a
-    /// preset feature.
+    /// §6.3 [APPROX]: the X-ray luminosity of SN 1987A's equatorial ring in the 0.5–2 keV band (not <c>lx</c>'s 0.3–10
+    /// keV), erg/s, at this age (s). Zero before 3,000 d, when the forward shock reaches the ring; then a logistic rise
+    /// from 5% at 3,000 d to 95% at 9,000 d onto the plateau Chandra measured from about 9,500 d, 8e-12 erg cm⁻² s⁻¹ at
+    /// 51.4 kpc (presets §1) = 2.53e36 erg/s. That flux is as observed, already absorbed by the gas toward the LMC: a
+    /// channel built on this (Task 13's <c>ringLx</c>, ruling R41) must not apply the interstellar absorption again, and
+    /// should be labelled "0.5–2 keV, as observed". The slow decline after about 10,000 d is not included (the research
+    /// gives no rate, and it begins at the very end of this model's 30 years).
     /// </summary>
     public static double RingXrayLuminosityErgS(double ageS)
     {
+        if (!(ageS >= RingRiseStartDays * Day)) return 0; // the shock has not reached the ring
         double plateau = RingPlateauFlux * 4 * Math.PI * Math.Pow(RingDistancePc * PhysicalConstants.Pc, 2);
         double mid = (RingRiseStartDays + RingRiseEndDays) / 2 * Day;
         double width = (RingRiseEndDays - RingRiseStartDays) / 2 / Math.Log(19) * Day; // 5% → 95% over the rise
@@ -323,10 +345,12 @@ public sealed class CsmInteractionModel : ISignalModel
         public static Shock Of(Outcome o)
         {
             var star = o.Star!;
-            bool envelope = star.HydrogenEnvelopeMass.Value > 0;
+            // An extended-envelope IIb (eIIb) takes the hydrogen-rich speed: the progenitor model's own test, which also
+            // gives it the red-supergiant wind (review M4).
             bool hydrogen = o.Type is SupernovaType.IIP or SupernovaType.IIL or SupernovaType.SlsnII
-                            || (o.Type == SupernovaType.Pisn && envelope)
-                            || (o.Type == SupernovaType.IIb && envelope && star.RadiusCm.Value >= ExtendedEnvelopeCm);
+                            || (o.Type == SupernovaType.Pisn && star.HydrogenEnvelopeMass.Value > 0)
+                            || (o.Type == SupernovaType.IIb &&
+                                ProgenitorModel.HasExtendedEnvelope(star.HydrogenEnvelopeMass.Value, star.RadiusCm.Value));
             double refSpeed = (hydrogen ? HydrogenSpeedKmS : StrippedSpeedKmS) * 1e5;
             double refMass = hydrogen ? HydrogenRefMsun : StrippedRefMsun;
             double v = refSpeed * Math.Sqrt(o.ExplosionEnergyErg!.Value / o.EjectaMass!.Value / (RefEnergyErg / refMass));
@@ -360,20 +384,17 @@ public sealed class CsmInteractionModel : ISignalModel
     {
         double flux = lx / (4 * Math.PI * Math.Pow(obs.LuminosityDistanceCm, 2));
         if (!absorbed || obs.Av <= 0) return flux;
-        double a = Math.Log(XrayLowKeV), h = (Math.Log(XrayHighKeV) - a) / BandIntervals, sum = 0;
-        for (int i = 0; i <= BandIntervals; i++)
-        {
-            double w = i == 0 || i == BandIntervals ? 1 : i % 2 == 1 ? 4 : 2;
-            sum += w * Extinction.XrayTransmission(Math.Exp(a + i * h), obs.Av);
-        }
-        return flux * (sum * h / 3) / (Math.Log(XrayHighKeV) - a);
+        double transmitted = LogEnergyIntegral.Simpson(e => Extinction.XrayTransmission(e, obs.Av), XrayLowKeV, XrayHighKeV,
+            BandIntervals);
+        return flux * transmitted / Math.Log(XrayHighKeV / XrayLowKeV);
     }
 
     // ---------------------------------------------------------------- text
 
-    private static string FormatMjy(double v) => v.ToString(v >= 0.01 && v < 1e4 ? "0.###" : "0.##e0", CultureInfo.InvariantCulture);
-
     private static string FormatFlux(double f) => f.ToString("0.##e0", CultureInfo.InvariantCulture);
+
+    /// <summary>The exposure each registry X-ray threshold assumes (Detectors; signals §6.2).</summary>
+    internal static string XrayExposure(string detectorId) => detectorId == "swift-xrt" ? "about 10 ks" : "about 100 ks";
 
     private static string NotProducedReason(Outcome o)
     {

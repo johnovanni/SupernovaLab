@@ -86,8 +86,8 @@ public sealed class GrbModel : ISignalModel
 
     private const string SelfAbsorbedReason =
         "the afterglow curve ends here because its formulas stop applying: the glowing gas has become thick enough to " +
-        "absorb (self-absorbed) its own radio waves up to the frequency where most of its electrons shine, a case these " +
-        "formulas do not cover. For a typical burst this happens about 7 weeks after the burst.";
+        "absorb its own radio waves (it is \"self-absorbed\") up to the frequency where most of its electrons shine, a " +
+        "case these formulas do not cover. For a typical burst this happens about 7 weeks after the burst.";
 
     /// <summary>
     /// [APPROX] The afterglow's outer limit: the formulas hold to "months" (§11). The drawn curve usually stops sooner,

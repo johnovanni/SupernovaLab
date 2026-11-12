@@ -126,7 +126,7 @@ public sealed class RemnantEvolutionModel : ISignalModel
         var status = mJy >= detector.Threshold ? DetectionStatus.Detected : DetectionStatus.TooFaint;
         var inv = CultureInfo.InvariantCulture;
         return new Detection(status,
-            $"{detector.Name} receives about {FormatMjy(mJy)} mJy at 1 GHz against its limit of about " +
+            $"{detector.Name} receives about {UnitFormat.Figure(mJy)} mJy at 1 GHz against its limit of about " +
             $"{detector.Threshold.ToString("0.##", inv)} mJy: {(status == DetectionStatus.Detected ? "detected" : "too faint")}. " +
             "The brightness assumes a remnant as radio-bright as Cas A, the brightest young remnant; most are tens to " +
             $"hundreds of times fainter. It is about {FormatArcsec(AngularSizeArcsec(outcome, observer, sourceTimeS))} across.");
@@ -200,8 +200,6 @@ public sealed class RemnantEvolutionModel : ISignalModel
     }
 
     // ---------------------------------------------------------------- text
-
-    private static string FormatMjy(double v) => v.ToString(v >= 0.01 && v < 1e4 ? "0.###" : "0.##e0", CultureInfo.InvariantCulture);
 
     private static string FormatArcsec(double arcsec)
     {

@@ -39,6 +39,14 @@ public class UnitsTests
     [Fact]
     public void Mass_Thousand() => Assert.Equal("1,000 M☉", UnitFormat.Mass(1000));
 
+    [Theory]
+    [InlineData(0.31773, "0.318")]
+    [InlineData(14.4855, "14.486")]
+    [InlineData(7.94e-4, "7.94e-4")]
+    [InlineData(2.5e4, "2.5e4")]
+    public void Figure_IsPlainBetweenAHundredthAndTenThousand_ElseScientific(double v, string expected)
+        => Assert.Equal(expected, UnitFormat.Figure(v));
+
     [Fact]
     public void MSun_IsSignalsValue() => Assert.Equal(1.989e33, PhysicalConstants.MSun);
 

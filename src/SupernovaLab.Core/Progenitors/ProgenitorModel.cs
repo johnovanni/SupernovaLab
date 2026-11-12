@@ -547,8 +547,15 @@ public static class ProgenitorModel
     private static bool IsRedSupergiant(Structure s)
         => s.HydrogenEnvelope > 0 && s.Radius.Value >= RedSupergiantMinRadiusRSun * PhysicalConstants.RSun;
 
-    private static bool HasExtendedEnvelope(Structure s)
-        => s.HydrogenEnvelope > 0 && s.Radius.Value >= ExtendedEnvelopeMinRadiusCm;
+    private static bool HasExtendedEnvelope(Structure s) => HasExtendedEnvelope(s.HydrogenEnvelope, s.Radius.Value);
+
+    /// <summary>
+    /// Whether a star with this hydrogen-rich envelope (M☉) and radius (cm) has an extended envelope (R ≥ 1e13 cm;
+    /// Chevalier &amp; Soderberg 2010's extended/compact split, outcomes §3.2). Such stars get the red-supergiant wind here;
+    /// the circumstellar-interaction model uses the same test for its shock speed, so the two always agree.
+    /// </summary>
+    public static bool HasExtendedEnvelope(double hydrogenEnvelopeMsun, double radiusCm)
+        => hydrogenEnvelopeMsun > 0 && radiusCm >= ExtendedEnvelopeMinRadiusCm;
 
     private static Quantity SurfaceTemperature(Structure s)
     {

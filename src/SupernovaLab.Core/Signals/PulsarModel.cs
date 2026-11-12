@@ -16,7 +16,8 @@ namespace SupernovaLab.Core.Signals;
 /// received; §8.1 notes the two dipole conventions differ (by a factor of 8 in τ0 for the same B).</item>
 /// <item>Radio (§8.3): S = L_1400 / D², with L_1400 the median of Faucher-Giguère &amp; Kaspi's log-normal luminosity
 /// function, 10^(−1.1) ≈ 0.079 mJy kpc² (σ = 0.9 dex, a factor of 8 either way; the Crab's 56 mJy kpc² is about 3σ
-/// bright). The model is deterministic: no luminosity is drawn.</item>
+/// bright). The model is deterministic: no luminosity is drawn. Magnetars get the same function [APPROX], although most
+/// known magnetars are radio-quiet; the Detect reason says so.</item>
 /// <item>Beaming (§8.3): only observers inside the beam see pulses. Whether the beam sweeps Earth is the observer's
 /// <see cref="ObserverSetup.BeamTowardEarth"/> (rolled, if at all, outside the model); when it does not, the verdict is
 /// <see cref="DetectionStatus.NotPointedAtUs"/>. <see cref="BeamingFraction"/> gives the chance (Tauris &amp; Manchester
@@ -56,6 +57,13 @@ public sealed class PulsarModel : ISignalModel
     /// <summary>§8.3: the luminosity function's spread, dex.</summary>
     private const double LuminositySigmaDex = 0.9;
 
+    /// <summary>
+    /// Review M7 [APPROX]: magnetars get the ordinary pulsars' luminosity function, which may overstate them.
+    /// </summary>
+    private const string MagnetarRadioCaveat =
+        " This is a magnetar: most known magnetars are radio-quiet, and the luminosity function used here was fitted to " +
+        "ordinary pulsars, so its radio pulses may well be fainter or absent (approximate).";
+
     /// <summary>[APPROX] PulseTimes refuses a window holding more than this many pulses.</summary>
     public const int MaxPulses = 100_000;
 
@@ -94,7 +102,8 @@ public sealed class PulsarModel : ISignalModel
         new("Beaming fraction f(P) = 0.09 [log10(P/s) − 1]² + 0.03 (Tauris & Manchester 1998), below 0.1 s the linear " +
             "extension −0.255 log10(P/s) + 0.135 capped at 0.9 (Titus et al. 2020)", "signals §8.3"),
         new("Radio luminosity at 1.4 GHz: log-normal, ⟨log10 L⟩ = −1.1, σ = 0.9 (L in mJy kpc²; Faucher-Giguère & Kaspi " +
-            "2006, ApJ 643, 332); the median is shown", "signals §8.3"),
+            "2006, ApJ 643, 332); the median is shown. It was fitted to ordinary radio pulsars; magnetars, mostly " +
+            "radio-quiet, are given it too [APPROX]", "signals §8.3"),
         new("Pulses shown from 10 yr: the ejecta are opaque to radio for years to decades, \"pulses visible after about " +
             "10–30 yr\" [APPROX]; no pulsar is yet seen in SN 1987A (Fransson et al. 2024)", "signals §8.3"),
         new("Pulsar-search thresholds (ruling R40): FAST 0.01 mJy (\"large telescopes reach about 10 µJy\"), Parkes and " +
@@ -150,12 +159,13 @@ public sealed class PulsarModel : ISignalModel
         double flux = FluxMjy(observer), ratio = flux / detector.Threshold;
         var status = ratio >= 1 ? DetectionStatus.Detected : DetectionStatus.TooFaint;
         return new Detection(status,
-            $"{detector.Name} receives about {FormatMjy(flux)} mJy of pulsed radio at 1.4 GHz against its pulsar-search " +
-            $"limit of about {FormatMjy(detector.Threshold)} mJy: {(status == DetectionStatus.Detected ? "detected" : "too faint")}. " +
+            $"{detector.Name} receives about {UnitFormat.Figure(flux)} mJy of pulsed radio at 1.4 GHz against its pulsar-search " +
+            $"limit of about {UnitFormat.Figure(detector.Threshold)} mJy: {(status == DetectionStatus.Detected ? "detected" : "too faint")}. " +
             $"This assumes a median pulsar ({MedianLuminosityMjyKpc2.ToString("0.###", inv)} mJy kpc²); real pulsars range about " +
             $"{Math.Pow(10, LuminositySigmaDex).ToString("0", inv)} times fainter to as many times brighter (one standard " +
             "deviation), and the young Crab pulsar is about 700 times the median. " +
-            $"It spins every {UnitFormat.Time(spin.PeriodS(sourceTimeS))}.");
+            $"It spins every {UnitFormat.Time(spin.PeriodS(sourceTimeS))}." +
+            (outcome.Remnant.Kind == RemnantKind.Magnetar ? MagnetarRadioCaveat : ""));
     }
 
     // ---------------------------------------------------------------- markers and pulses
@@ -169,21 +179,23 @@ public sealed class PulsarModel : ISignalModel
     /// <summary>
     /// The times (s after bounce, source time) at which a pulse is emitted inside [windowStartS, windowStartS +
     /// windowLengthS], for drawing the pulse train: pulse k is where the rotational phase φ(t) = (2τ0/P0)((1 + t/τ0)^½ − 1)
-    /// reaches the whole number k. Empty when there is no pulsar, or outside the model's range (before
-    /// <see cref="EmergenceTimeS"/> or after 1,000 yr). Whether the beam points at Earth is the caller's
-    /// (<see cref="Detect"/> says NotPointedAtUs). Throws when the window would hold more than <see cref="MaxPulses"/>.
+    /// reaches the whole number k. The window is clipped to the model's range (<see cref="EmergenceTimeS"/> to 1,000 yr);
+    /// empty when there is no pulsar or no overlap. Whether the beam points at Earth is the caller's (<see cref="Detect"/>
+    /// says NotPointedAtUs), as is the (1 + z) stretch to observer time. Throws when the window would hold more than
+    /// <see cref="MaxPulses"/>.
     /// </summary>
     public IReadOnlyList<double> PulseTimes(Outcome o, double windowStartS, double windowLengthS)
     {
         if (!(windowLengthS >= 0)) throw new ArgumentOutOfRangeException(nameof(windowLengthS));
-        double end = windowStartS + windowLengthS;
-        if (!AppliesTo(o) || !InRange(windowStartS) || !InRange(end)) return Array.Empty<double>();
+        if (!AppliesTo(o)) return Array.Empty<double>();
+        double start = Math.Max(windowStartS, EmergenceYears * Year), end = Math.Min(windowStartS + windowLengthS, EndS);
+        if (!(start <= end)) return Array.Empty<double>();
         var spin = Spin.Of(o);
-        double first = Math.Ceiling(spin.Phase(windowStartS)), last = Math.Floor(spin.Phase(end));
+        double first = Math.Ceiling(spin.Phase(start)), last = Math.Floor(spin.Phase(end));
         if (last - first + 1 > MaxPulses)
             throw new ArgumentOutOfRangeException(nameof(windowLengthS), $"The window holds more than {MaxPulses} pulses.");
         var times = new List<double>();
-        for (double k = first; k <= last; k++) times.Add(Math.Clamp(spin.TimeAtPhase(k), windowStartS, end));
+        for (double k = first; k <= last; k++) times.Add(Math.Clamp(spin.TimeAtPhase(k), start, end));
         return times;
     }
 
@@ -257,8 +269,6 @@ public sealed class PulsarModel : ISignalModel
     }
 
     // ---------------------------------------------------------------- text
-
-    private static string FormatMjy(double v) => v.ToString(v >= 0.01 && v < 1e4 ? "0.###" : "0.##e0", CultureInfo.InvariantCulture);
 
     private static string NotProducedReason(Outcome o) => o.Fate switch
     {
