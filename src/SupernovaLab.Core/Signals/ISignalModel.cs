@@ -9,9 +9,10 @@ public enum Messenger { GravitationalWaves, Neutrinos, GammaRays, XRaysUv, Visib
 
 /// <summary>
 /// One plotted quantity of a model. A detector-dependent channel's Id carries the detector after '@'
-/// (<see cref="ChannelId"/>), e.g. "rate@superk".
+/// (<see cref="ChannelId"/>), e.g. "rate@superk". <see cref="MayBeNegative"/> is true only for channels whose values
+/// can legitimately be negative (magnitudes, a signed strain); the contract tests hold every other channel to ≥ 0.
 /// </summary>
-public sealed record SignalChannel(string Id, string Label, string Unit, bool LogScale);
+public sealed record SignalChannel(string Id, string Label, string Unit, bool LogScale, bool MayBeNegative = false);
 
 /// <summary>
 /// A signal model (spec §5, §7). Models are pure functions of their inputs, with no state, and take source time:

@@ -1,6 +1,7 @@
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Signals;
+using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.Tests;
 
@@ -59,12 +60,54 @@ public class NeutrinoModelTests
         => Assert.InRange(Sample(Star12, 20, "cumulative@superk"), 2900, 9800);
 
     [Fact]
-    public void SuperK_AtM31_FollowsTheTwoEventRule()
+    public void SuperK_AtM31_IsTooFaint_ButDetectedAt10And200Kpc()
     {
-        var m31 = AtKpc(770);
-        double n = Sample(Star12, 20, "cumulative@superk", m31);
-        var expected = n >= 2 ? DetectionStatus.Detected : DetectionStatus.TooFaint;
-        Assert.Equal(expected, Model.Detect(Star12, m31, 20, Detectors.Get("superk")).Status);
+        // Ruling R25: the distant-supernova trigger needs 2 events with E_e+ ≥ 17 MeV within 20 s (signals §1.4). At
+        // M31 (778 kpc) even the all-IBD count is ~1.3, so the trigger count is below 2. Super-K detects with 100%
+        // efficiency to about 200 kpc (§1.4): ~20 IBD events there, of which roughly half to 70% pass 17 MeV.
+        var superk = Detectors.Get("superk");
+        Assert.True(Sample(Star12, 20, "cumulative@superk", AtKpc(778)) < 2);
+        Assert.Equal(DetectionStatus.TooFaint, Model.Detect(Star12, AtKpc(778), 20, superk).Status);
+        Assert.Equal(DetectionStatus.Detected, Model.Detect(Star12, At10Kpc, 20, superk).Status);
+        Assert.Equal(DetectionStatus.Detected, Model.Detect(Star12, AtKpc(200), 20, superk).Status);
+    }
+
+    [Fact]
+    public void SuperKTriggerFraction_Above17MeV_MatchesTheHandValue()
+    {
+        // Fraction of the IBD event spectrum (Fermi-Dirac E² × σ ∝ (E − 1.293)²) with E_e+ = E − 1.293 ≥ 17 MeV.
+        // Computed independently by Simpson integration (200,000 steps, 0–400 MeV): ⟨E⟩ = 12 MeV → 0.5196,
+        // 15 MeV → 0.7005, 20 MeV → 0.8637.
+        Assert.InRange(NeutrinoModel.SuperKTriggerFraction(12), 0.5196 * 0.99, 0.5196 * 1.01);
+        Assert.InRange(NeutrinoModel.SuperKTriggerFraction(15), 0.7005 * 0.99, 0.7005 * 1.01);
+        Assert.InRange(NeutrinoModel.SuperKTriggerFraction(20), 0.8637 * 0.99, 0.8637 * 1.01);
+        foreach (double e in new[] { 1.0, 5, 30, 1e4 })
+            Assert.InRange(NeutrinoModel.SuperKTriggerFraction(e), 0, 1);
+    }
+
+    [Theory]
+    [InlineData(0.5)]
+    [InlineData(2.0)]
+    [InlineData(4.7)]
+    public void FailedSupernova_AntiNueEnergy_StaysInsideTheModelCompilation(double tBh)
+    {
+        // Signals §1.3 (Suwa et al. 2025, 28 models): E(anti-ν_e) = 0.27–1.53e53 erg for t_BH = 0.34–6.2 s.
+        // Ruling R23: L_a = L_a0 min(1, 2 s / t_BH), L_a0 = 7.41e52 erg/s, gives 3.7e52 (0.5 s) and 1.48e53 (2, 4.7 s).
+        var o = TestOutcomes.Custom(SupernovaType.None, null, null, null, 1e13, TestOutcomes.BlackHole(10, tBh),
+            Fate.FailedSupernova);
+        double e = Integrate(t => Sample(o, t, "lum_anue"), 0, tBh);
+        Assert.InRange(e, 0.27e53, 1.53e53);
+    }
+
+    [Fact]
+    public void Dune_SeesTheBurstThroughMswConversion()
+    {
+        // Ruling R25: F_νe,Earth = 0.022 F_νe + 0.978 F_νx. By hand for 12 M☉ (scale ≈ 1.17): unoscillated, the ν_e rate
+        // at the burst peak (5 ms, Σ L⟨E⟩ ≈ 3.5e53 × 12.5 + 1.17 × 7.3e52 × 11.5 ≈ 5.4e54) is ~20 times that at 0.5 s
+        // (≈ 1.17 × 2.0e52 × 11.5 ≈ 2.7e53). With conversion: 0.022 × 5.4e54 ≈ 1.2e53 at 5 ms (ν_x ≈ 0 so early)
+        // against 0.022 × 2.7e53 + 0.978 × 1.17 × 3.75e51 × 14.5 ≈ 6.8e52 at 0.5 s, a ratio of ~1.8.
+        double ratio = Sample(Star12, 0.005, "rate@dune") / Sample(Star12, 0.5, "rate@dune");
+        Assert.InRange(ratio, 1.0, 3.0);
     }
 
     [Fact]
@@ -149,7 +192,8 @@ public class NeutrinoModelTests
             double n = Sample(Star12, 20, "cumulative@" + d.Id, obs);
             var status = Model.Detect(Star12, obs, 20, d).Status;
             if (n < 2) Assert.Equal(DetectionStatus.TooFaint, status);
-            else Assert.Equal(DetectionStatus.Detected, status);
+            // Super-K's trigger counts only events above 17 MeV (ruling R25), so n ≥ 2 need not be Detected there.
+            else if (d.Id != "superk") Assert.Equal(DetectionStatus.Detected, status);
         }
     }
 
@@ -208,7 +252,12 @@ public class NeutrinoModelTests
             Assert.False(string.IsNullOrWhiteSpace(d.ThresholdUnit));
             Assert.False(string.IsNullOrWhiteSpace(d.Source.Citation));
             Assert.StartsWith("signals §", d.Source.ResearchRef);
+            // Ruling R24: an estimated threshold is Speculative in data, not only in its citation text.
+            if (d.Source.Citation.Contains("APPROX")) Assert.Equal(Confidence.Speculative, d.ThresholdConfidence);
         }
+        Assert.Contains("17 MeV", Detectors.Get("superk").Source.Citation);
+        Assert.Equal(Confidence.Speculative, Detectors.Get("ultrasat").ThresholdConfidence);
+        Assert.DoesNotContain("Lorimer", Detectors.Get("fast").Source.Citation);
         Assert.Throws<KeyNotFoundException>(() => Detectors.Get("hubble"));
     }
 }

@@ -57,6 +57,14 @@ public sealed class NeutrinoModel : ISignalModel
     // [APPROX] The recommended app model: L_a held flat, anti-ν_e ⟨E⟩ rising linearly from about 12 to about 20 MeV at t_BH.
     private const double FailedMeanStartMeV = 12, FailedMeanAtTbhMeV = 20;
 
+    /// <summary>
+    /// Ruling R23 [APPROX, Speculative]: the flat accretion luminosity saturates, L_a = L_a0 min(1, t_sat / t_BH) with
+    /// t_sat = 2.0 s, so E(anti-ν_e) = L_a0 min(t_BH, t_sat) ≤ 1.48e53 erg. Signals §1.3's 28-model compilation (Suwa et al.
+    /// 2025, Table 1) spans E(anti-ν_e) = 0.27–1.53e53 erg over t_BH = 0.34–6.2 s, and does not grow linearly with t_BH
+    /// (Choi 2025, 23 M☉: t_BH 6.23 s, 0.736e53 erg). Held flat at L_a0, a 4.7 s collapse would radiate 3.5e53.
+    /// </summary>
+    private const double FailedAccretionSaturationS = 2.0;
+
     /// <summary>[APPROX] t_BH when a black-hole outcome carries none: 1.0 s, as RemnantModel uses (O'Connor & Ott 2011).</summary>
     private const double DefaultTbhS = 1.0;
 
@@ -104,12 +112,28 @@ public sealed class NeutrinoModel : ISignalModel
 
     /// <summary>
     /// [APPROX] ν_e mean energies for DUNE's ν_e + ⁴⁰Ar rate: 12.5 MeV in the burst (12–13 MeV, signals §1.1) and 11.5 MeV
-    /// otherwise (10–13 MeV, §1.2e). The cross-section is taken ∝ E², and flavour conversion of ν_e is ignored.
+    /// otherwise (10–13 MeV, §1.2e). The cross-section is taken ∝ E².
     /// </summary>
     private const double BurstNueMeanMeV = 12.5, NueMeanMeV = 11.5;
 
+    /// <summary>
+    /// Ruling R25 [APPROX]: ν_e survival at Earth with MSW conversion in the normal ordering, P_ee ≈ sin²θ13 ≈ 0.022
+    /// (global oscillation fits), so F(ν_e at Earth) = 0.022 F0(ν_e) + 0.978 F0(ν_x). The ν_x take the anti-ν_e cooling
+    /// mean energy, as for inverse beta decay.
+    /// </summary>
+    private const double NueSurvival = 0.022;
+
     /// <summary>[APPROX] DUNE's count at 10 kpc for a typical supernova: about 3,000 ν_e charged-current events (SNEWS 2.0).</summary>
     private const double DuneTypicalEventsAt10Kpc = 3000;
+
+    /// <summary>
+    /// Super-K's distant-supernova trigger counts events with positron energy E_e+ ≥ 17 MeV (Abdikamalov et al. 2020;
+    /// signals §1.4; ruling R25), i.e. E_ν ≥ 17 + 1.293 MeV.
+    /// </summary>
+    private const double SuperKTriggerPositronMeV = 17;
+
+    /// <summary>Complete Fermi integrals F_n(0) = Γ(n+1) η(n+1) for n = 2, 3, 4 (see <see cref="FermiDiracSecondMomentRatio"/>).</summary>
+    private const double F2 = 1.803086, F3 = 5.682198, F4 = 23.33088;
 
     /// <summary>Super-K's distant-supernova trigger window (Abdikamalov et al. 2020; signals §1.4).</summary>
     private const double TriggerWindowS = 20;
@@ -226,13 +250,15 @@ public sealed class NeutrinoModel : ISignalModel
         var p = Profile.Of(outcome);
         double d = observer.LuminosityDistanceCm;
         bool icecube = detector.Id == "icecube";
-        double window = Cumulative(p, detector.Id, d, TriggerWindowS);
+        // Ruling R25: Super-K's trigger counts only events above 17 MeV; the plotted channels count every IBD event.
+        bool superK = detector.Id == "superk";
+        double window = Cumulative(p, detector.Id, d, TriggerWindowS, superK);
         // IceCube's figure of merit is the significance of its excess hits; the others count events.
         double Merit(double count) => icecube ? count * IceCubeSigmaPerHit : count;
         double total = Merit(window);
         string Expected(string verb) => icecube
             ? $"{detector.Name} {verb} its photon hits over the first 20 s to rise {FormatSigma(total)} above the background"
-            : $"{detector.Name} {verb} about {Format(window)} events in the first 20 s";
+            : $"{detector.Name} {verb} about {Format(window)} events{(superK ? " at 17 MeV or above" : "")} in the first 20 s";
         string expected = Expected("expects");
         string rule = icecube
             ? $"a detection needs {FormatSigma(detector.Threshold)}"
@@ -245,7 +271,7 @@ public sealed class NeutrinoModel : ISignalModel
         if (!(total >= detector.Threshold))
             return new Detection(DetectionStatus.TooFaint, $"{expected}; {rule}.");
 
-        double now = Merit(Cumulative(p, detector.Id, d, Math.Min(sourceTimeS, TriggerWindowS)));
+        double now = Merit(Cumulative(p, detector.Id, d, Math.Min(sourceTimeS, TriggerWindowS), superK));
         if (!(now >= detector.Threshold))
             return new Detection(DetectionStatus.NotYet, $"The first neutrinos are arriving. {expected}; {rule}.");
         return new Detection(DetectionStatus.Detected, $"{expected}; {rule}.");
@@ -272,6 +298,48 @@ public sealed class NeutrinoModel : ISignalModel
     /// </summary>
     public static double MeanIbdCrossSectionCm2(double meanEnergyMeV)
         => IbdSigma0Cm2 * (FermiDiracSecondMomentRatio * Sq(meanEnergyMeV) - 2 * IbdDeltaMeV * meanEnergyMeV + Sq(IbdDeltaMeV));
+
+    /// <summary>
+    /// [DERIVED] The fraction of inverse-beta-decay events with positron energy E_e+ = E_ν − 1.293 MeV ≥ 17 MeV (Super-K's
+    /// distant trigger, ruling R25), for a zero-degeneracy Fermi-Dirac spectrum of this mean energy. Events follow
+    /// E² (E − 1.293)² / (1 + e^{E/T}), T = ⟨E⟩/3.151, the same weighting as <see cref="MeanIbdCrossSectionCm2"/>: the
+    /// whole-spectrum integral is T⁵F4 − 2ΔT⁴F3 + Δ²T³F2, and the part above threshold is integrated numerically.
+    /// ⟨E⟩ = 12, 15, 20 MeV give 0.520, 0.700, 0.864.
+    /// </summary>
+    public static double SuperKTriggerFraction(double meanEnergyMeV)
+    {
+        if (!(meanEnergyMeV > 0)) return 0;
+        double t = meanEnergyMeV / FermiDiracMeanOverT, delta = IbdDeltaMeV;
+        double whole = Math.Pow(t, 5) * F4 - 2 * delta * Math.Pow(t, 4) * F3 + delta * delta * Math.Pow(t, 3) * F2;
+        double eMin = SuperKTriggerPositronMeV + delta, eMax = eMin + 60 * t;
+        const int n = 200;
+        double h = (eMax - eMin) / n, sum = 0;
+        for (int k = 0; k <= n; k++)
+        {
+            double e = eMin + k * h, w = k == 0 || k == n ? 1 : k % 2 == 1 ? 4 : 2;
+            sum += w * e * e * Sq(e - delta) / (1 + Math.Exp(e / t));
+        }
+        return Math.Clamp(sum * h / 3 / whole, 0, 1);
+    }
+
+    // SuperKTriggerFraction tabulated on a log grid of ⟨E⟩ from 1 to 1,000 MeV, so Detect's 20 s integrals do not
+    // integrate a spectrum at every step. Below 1 MeV the fraction is ~e^-57, taken as 0; above 1,000 MeV it is ~1.
+    private const double TriggerTableMinMeV = 1, TriggerTableMaxMeV = 1000;
+    private const int TriggerTableSize = 513;
+    private static readonly double[] TriggerTable = Enumerable.Range(0, TriggerTableSize)
+        .Select(i => SuperKTriggerFraction(TriggerTableMinMeV *
+                                           Math.Pow(TriggerTableMaxMeV / TriggerTableMinMeV, (double)i / (TriggerTableSize - 1))))
+        .ToArray();
+
+    private static double TriggerFractionFast(double meanEnergyMeV)
+    {
+        if (!(meanEnergyMeV > TriggerTableMinMeV)) return 0;
+        if (meanEnergyMeV >= TriggerTableMaxMeV) return 1;
+        double x = Math.Log(meanEnergyMeV / TriggerTableMinMeV) / Math.Log(TriggerTableMaxMeV / TriggerTableMinMeV)
+                   * (TriggerTableSize - 1);
+        int i = Math.Min((int)x, TriggerTableSize - 2);
+        return TriggerTable[i] + (x - i) * (TriggerTable[i + 1] - TriggerTable[i]);
+    }
 
     // ---------------------------------------------------------------- emission
 
@@ -328,11 +396,13 @@ public sealed class NeutrinoModel : ISignalModel
 
         if (p.Failed)
         {
-            // §1.3 [APPROX]: anti-ν_e and ν_e from accretion held flat at L_a0, ⟨E⟩ rising linearly to t_BH. ν_x keep the
-            // fit's (lower) thermal emission from the proto-neutron star, unscaled.
+            // §1.3 [APPROX]: anti-ν_e and ν_e from accretion held flat, ⟨E⟩ rising linearly to t_BH. The flat level
+            // saturates for late black holes (ruling R23). ν_x keep the fit's (lower) thermal emission from the
+            // proto-neutron star, unscaled.
             double tBhFailed = p.CutoffS!.Value;
+            double flat = La0 * Math.Min(1, FailedAccretionSaturationS / tBhFailed);
             double accE = FailedMeanStartMeV + (FailedMeanAtTbhMeV - FailedMeanStartMeV) * t / tBhFailed;
-            return new Emission(burst, La0, accE, 0, cool, coolE);
+            return new Emission(burst, flat, accE, 0, cool, coolE);
         }
 
         // §1.2b: L_a(t) = L_a0 exp(−(t/τ_a)²) / (1 + t/0.5 s), T_a(t) = T_a + (0.6 T_c − T_a)(t/τ_a)².
@@ -350,25 +420,35 @@ public sealed class NeutrinoModel : ISignalModel
 
     /// <summary>
     /// Inverse beta decays per second on <paramref name="protons"/> free protons (signals §1.4):
-    /// N_p (L/⟨E⟩) ⟨σ⟩ / (4π D²) summed over the anti-ν_e reaching Earth, P × anti-ν_e + (1 − P) × ν_x.
+    /// N_p (L/⟨E⟩) ⟨σ⟩ / (4π D²) summed over the anti-ν_e reaching Earth, P × anti-ν_e + (1 − P) × ν_x. With
+    /// <paramref name="aboveTrigger"/>, only events above Super-K's 17 MeV trigger threshold.
     /// </summary>
-    private static double IbdRate(Emission e, double protons, double distanceCm)
+    private static double IbdRate(Emission e, double protons, double distanceCm, bool aboveTrigger = false)
     {
-        double antiNue = Number(e.AccL, e.AccMeanE) * MeanIbdCrossSectionCm2(e.AccMeanE)
-                         + Number(e.CoolEL, e.CoolMeanE) * MeanIbdCrossSectionCm2(e.CoolMeanE);
+        double Events(double l, double meanE)
+        {
+            double n = Number(l, meanE) * MeanIbdCrossSectionCm2(meanE);
+            return n > 0 && aboveTrigger ? n * TriggerFractionFast(meanE) : n;
+        }
+        double antiNue = Events(e.AccL, e.AccMeanE) + Events(e.CoolEL, e.CoolMeanE);
         // [APPROX] ν_x take the anti-ν_e cooling spectrum (signals §1.2e: "slightly softer").
-        double nuX = Number(e.CoolXL, e.CoolMeanE) * MeanIbdCrossSectionCm2(e.CoolMeanE);
+        double nuX = Events(e.CoolXL, e.CoolMeanE);
         return protons * Fluence(distanceCm) * (AntiNueSurvival * antiNue + (1 - AntiNueSurvival) * nuX);
     }
 
-    /// <summary>DUNE's ν_e rate before κ: Σ L ⟨E⟩ / (4π D²), a cross-section ∝ E² on the ν_e number flux [APPROX].</summary>
+    /// <summary>
+    /// DUNE's ν_e rate before κ: Σ L ⟨E⟩ / (4π D²), a cross-section ∝ E² on the number flux of ν_e reaching Earth
+    /// (P_ee ν_e + (1 − P_ee) ν_x, ruling R25) [APPROX].
+    /// </summary>
     private static double DuneRawRate(Emission e, double distanceCm)
-        => Fluence(distanceCm) * (e.BurstL * BurstNueMeanMeV + (e.AccL + e.CoolEL) * NueMeanMeV);
+        => Fluence(distanceCm) * (NueSurvival * (e.BurstL * BurstNueMeanMeV + (e.AccL + e.CoolEL) * NueMeanMeV)
+                                  + (1 - NueSurvival) * e.CoolXL * e.CoolMeanE);
 
-    private static double Rate(Emission e, string detectorId, double distanceCm) => detectorId switch
+    /// <summary>Events (IceCube: hits) per second; <paramref name="aboveTrigger"/> applies Super-K's 17 MeV cut.</summary>
+    private static double Rate(Emission e, string detectorId, double distanceCm, bool aboveTrigger = false) => detectorId switch
     {
         // §1.4: Super-K 32 kt and Hyper-K 217 kt (fiducial for supernovae) of water; JUNO 20 kt of scintillator.
-        "superk" => IbdRate(e, 32 * ProtonsPerKtWater, distanceCm),
+        "superk" => IbdRate(e, 32 * ProtonsPerKtWater, distanceCm, aboveTrigger),
         "hyperk" => IbdRate(e, 217 * ProtonsPerKtWater, distanceCm),
         "juno" => IbdRate(e, 20 * ProtonsPerKtScintillator, distanceCm),
         "icecube" => IceCubeHitsPerSuperKEvent * IbdRate(e, 32 * ProtonsPerKtWater, distanceCm),
@@ -377,10 +457,12 @@ public sealed class NeutrinoModel : ISignalModel
     };
 
     /// <summary>Events (or IceCube hits) from bounce to <paramref name="t"/>; nothing arrives after t_BH or the model's end.</summary>
-    private static double Cumulative(Profile p, string detectorId, double distanceCm, double t)
+    private static double Cumulative(Profile p, string detectorId, double distanceCm, double t, bool aboveTrigger = false)
     {
         double upper = Math.Min(t, Math.Min(EndS, p.CutoffS ?? EndS));
-        return upper > 0 ? Integrate(s => Rate(EmissionAt(p, s), detectorId, distanceCm), 0, upper, p.CutoffS) : 0;
+        return upper > 0
+            ? Integrate(s => Rate(EmissionAt(p, s), detectorId, distanceCm, aboveTrigger), 0, upper, p.CutoffS)
+            : 0;
     }
 
     /// <summary>Simpson's rule over the fixed segments (plus the cutoff, where the rate steps to zero) from a to b.</summary>

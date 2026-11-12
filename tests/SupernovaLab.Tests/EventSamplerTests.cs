@@ -47,6 +47,20 @@ public class EventSamplerTests
     }
 
     [Fact]
+    public void ANarrowSpikeFarFromT0_IsSampledAtItsFullRate()
+    {
+        // A σ = 2 ms spike at t = 60 s on a 10/s background, in a 0–100 s window: far from t0, where the sub-intervals
+        // are coarse, so the probed bound can miss most of the peak. Spike integral 5e4 × 0.002 × √(2π) = 250.7, plus
+        // 10/s × 0.2 s = 2 background events in 59.9–60.1 s: 252.7, Poisson σ ≈ 15.9; allow ±4σ.
+        Func<double, double> rate = t => 10 + 5e4 * Math.Exp(-Math.Pow(t - 60.0, 2) / (2 * 0.002 * 0.002));
+        foreach (int seed in new[] { 1, 2, 3 })
+        {
+            int n = EventSampler.SampleTimes(rate, 0, 100, seed).Count(t => t >= 59.9 && t <= 60.1);
+            Assert.InRange(n, 189, 316);
+        }
+    }
+
+    [Fact]
     public void ZeroOrNaNRate_AndAnEmptyWindow_GiveNoEvents()
     {
         Assert.Empty(EventSampler.SampleTimes(_ => 0, 0, 10, 1));

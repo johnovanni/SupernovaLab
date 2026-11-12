@@ -54,12 +54,6 @@ public class SignalContractTests
         for (int i = 0; i < grid.Length; i += 50) yield return grid[i];
     }
 
-    /// <summary>
-    /// Channels that may legitimately be negative: magnitudes ("mag") and dimensionless signed signals such as a GW strain
-    /// (unit ""). Every other channel is a luminosity, count, flux, energy, temperature or similar and must be ≥ 0.
-    /// </summary>
-    private static bool MayBeNegative(SignalChannel c) => c.Unit is "mag" or "";
-
     [Fact]
     public void EveryModel_IsPublicSealedWithAParameterlessConstructor()
     {
@@ -110,7 +104,7 @@ public class SignalContractTests
             string where = $"{m.Id}/{c.Id} at t = {t} s ({outcome}, {observer})";
             Assert.True(double.IsNaN(v) || double.IsFinite(v), $"{where} is infinite");
             if (!applies || t < start || t > end) Assert.True(double.IsNaN(v), $"{where} should be NaN, was {v}");
-            if (double.IsFinite(v) && !MayBeNegative(c)) Assert.True(v >= 0, $"{where} is negative: {v}");
+            if (double.IsFinite(v) && !c.MayBeNegative) Assert.True(v >= 0, $"{where} is negative: {v}");
         }
     }
 
