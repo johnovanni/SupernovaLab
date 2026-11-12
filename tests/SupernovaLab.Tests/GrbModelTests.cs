@@ -177,9 +177,10 @@ public class GrbModelTests
         // A_* = (2.51189e-6 / 1e-5) / (1000 / 1000) = 0.251189 (the collapsar's Wolf-Rayet wind). By hand:
         // ν_m = 5e12 × 0.5^½ × 0.1^½ × 13.1396^½ = 4.05271e12 Hz; ν_c = 2e12 × 0.5^-1.5 × 0.1^-1.5 × 13.1396^½ ×
         // 0.251189^-2 = 1.02770e16 Hz; ν_A = 1e11 × 0.5^-0.4 × 0.1^0.2 × 13.1396^-0.4 × 0.251189^1.2 = 5.66213e9 Hz;
-        // F_ν,max = 7.0e32 x^1.5 (ε_B/0.1)^½ E52^½ A_* t_d^-½ / (4π D²) [DERIVED: the research's 3.5e32 local luminosity
-        // is per z = 1 observer day, i.e. per 2 rest-frame days] = 4.12438e-22 erg cm⁻² s⁻¹ Hz⁻¹ at 38 Mpc.
-        var b = GrbModel.WindAfterglow(1.31396e53, 0.251189, 1.0, 0, 38e6 * 3.0857e18, double.PositiveInfinity);
+        // F_ν,max = 7.0e32 x^1.5 (ε_B/0.1)^½ E52^½ A_* t_d^-½ / (4π D_L²) (Chevalier & Li 2000 Eq. 11; R39)
+        // = 4.12438e-22 erg cm⁻² s⁻¹ Hz⁻¹ at D_L = 38 Mpc (z = 0, so D_L = D).
+        var b = GrbModel.WindAfterglow(1.31396e53, 0.251189, 1.0, 0, new ObserverSetup(38e6, 0, true).LuminosityDistanceCm,
+            double.PositiveInfinity);
         Assert.Equal(4.05271e12, b.NuMHz, 0.001 * 4.05271e12);
         Assert.Equal(1.02770e16, b.NuCHz, 0.001 * 1.02770e16);
         Assert.Equal(5.66213e9, b.NuAHz, 0.001 * 5.66213e9);
@@ -222,6 +223,63 @@ public class GrbModelTests
         double f5 = Model.Sample(Collapsar, obs, t0 + 5 * Day, "afterglowX");
         double f10 = Model.Sample(Collapsar, obs, t0 + 10 * Day, "afterglowX");
         Assert.Equal(-2.5, Math.Log(f10 / f5) / Math.Log(2), 3);
+    }
+
+    [Fact]
+    public void PromptLabel_SaysRestFrame()
+        => Assert.Contains("rest-frame 1–10⁴ keV", Model.Channels.Single(c => c.Id == "prompt").Label);
+
+    [Fact]
+    public void Grb980425Pinned_AfterglowIsNotModeled_AndSaysWhy()
+    {
+        // Ruling R39: a low-luminosity burst (pinned E_iso 8.5e47 < 1e49 erg) has a mildly relativistic afterglow outside
+        // the relativistic forward-shock formulas: every afterglow channel is NaN, and the reason says so. (By hand its
+        // ν_A already exceeds ν_m: at the jet break t_j = 0.0318 d, ν_A = 5.34e12 Hz > ν_m = 1.82e12 Hz.)
+        var o = Grb980425();
+        var obs = At38Mpc();
+        foreach (double days in new[] { 0.01, 1, 10, 100 })
+        {
+            double t = Model.OnsetS(o) + days * Day;
+            foreach (string c in new[] { "afterglowX", "afterglowOpt", "afterglowRadio" })
+                Assert.True(double.IsNaN(Model.Sample(o, obs, t, c)), $"{c} at {days} d");
+            string? reason = Model.AfterglowNotModeledReason(o, obs, t);
+            Assert.NotNull(reason);
+            Assert.Contains("low-luminosity burst", reason);
+            Assert.Contains("mildly relativistic", reason);
+        }
+        // The trigger verdict mentions it too.
+        Assert.Contains("low-luminosity burst", Model.Detect(o, obs, Model.PeakTimeS(o), Detectors.Get("gbm")).Reason);
+    }
+
+    [Fact]
+    public void ClassicalAfterglow_IsDrawnUntilItsSelfAbsorptionFrequencyPassesNuM()
+    {
+        // Ruling R39 for the unpinned burst. By hand (z = 0): at the jet break t_j = 1.70513 d, ν_m = 4.05271e12 ×
+        // 1.70513^-1.5 = 1.82016e12 Hz and ν_A = 5.66213e9 × 1.70513^-0.6 = 4.11079e9 Hz; afterwards ν_m ∝ t⁻² and
+        // ν_A ∝ t^-0.2, so they cross at t_j × (1.82016e12 / 4.11079e9)^(1/1.8) = 1.70513 × 29.5191 = 50.334 d.
+        var obs = At38Mpc();
+        double t0 = Model.OnsetS(Collapsar);
+        foreach (double days in new[] { 1, 10, 40 })
+        {
+            Assert.True(double.IsFinite(Model.Sample(Collapsar, obs, t0 + days * Day, "afterglowRadio")), $"{days} d");
+            Assert.Null(Model.AfterglowNotModeledReason(Collapsar, obs, t0 + days * Day));
+        }
+        Assert.True(double.IsFinite(Model.Sample(Collapsar, obs, t0 + 50.2 * Day, "afterglowX")));
+        Assert.True(double.IsNaN(Model.Sample(Collapsar, obs, t0 + 50.5 * Day, "afterglowX")));
+        string? late = Model.AfterglowNotModeledReason(Collapsar, obs, t0 + 60 * Day);
+        Assert.NotNull(late);
+        Assert.Contains("self-absorbed", late);
+    }
+
+    [Fact]
+    public void FluxDensity_RefusesASelfAbsorptionFrequencyAboveNuM()
+    {
+        // R39: the (ν/ν_A)^(5/3) factor gives F ∝ ν² only when ν_A < ν_m, so the formula returns NaN otherwise.
+        var thick = new GrbModel.AfterglowState(NuAHz: 1e13, NuMHz: 1e12, NuCHz: 1e16, FMaxCgs: 1e-22);
+        Assert.True(double.IsNaN(GrbModel.FluxDensity(thick, 5e9)));
+        var thin = thick with { NuAHz = 1e10 };
+        // Below ν_A < ν_m: F_max (ν_A/ν_m)^(1/3) (ν/ν_A)² = 1e-22 × 0.01^(1/3) × 0.25 = 5.38609e-24.
+        Assert.Equal(5.38609e-24, GrbModel.FluxDensity(thin, 5e9), 1e-29);
     }
 
     [Fact]

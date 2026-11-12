@@ -150,8 +150,9 @@ public class GammaLineModelTests
     public void CasALike_Ti44_IsSeenByNuStarAndCosi()
     {
         // A core-collapse outcome with Cas A's NuSTAR ⁴⁴Ti mass pinned (1.25e-4 M☉) seen from 3.4 kpc 340 yr later:
-        // F_68 ≈ 1.56e-5, F_78 ≈ 1.62e-5, F_1157 ≈ 1.68e-5. NuSTAR (ruling R38): 2e-6 for its 2.6 Ms window. COSI's 2-yr
-        // survey: 3.0e-6.
+        // F_1157 = 1.74538e-5 (the 1.3e-4 M☉ hand value above) × 1.25/1.3 = 1.67825e-5, with f_esc ≈ 1 at 340 yr (T0_line
+        // ≈ 2 yr); F_68 = 0.930 × that ≈ 1.56e-5 and F_78 = 0.968 × that ≈ 1.62e-5. NuSTAR (ruling R38): 2e-6 for its 2.6 Ms
+        // window. COSI's 2-yr survey: 3.0e-6.
         var o = TestOutcomes.Engine.Compute(LabInputs.Default,
             new PresetPins(null, null, null, null, TestSource, Ti44Mass: 1.25e-4));
         Assert.Equal(1.25e-4, o.Ti44Mass!.Value);
@@ -160,7 +161,7 @@ public class GammaLineModelTests
         double t = 340 * Year;
         Assert.Equal(DetectionStatus.Detected, Model.Detect(o, obs, t, Detectors.Get("nustar")).Status);
         Assert.Equal(DetectionStatus.Detected, Model.Detect(o, obs, t, Detectors.Get("cosi")).Status);
-        Assert.Equal(1.68e-5, Model.Sample(o, obs, t, "ti44_1157"), 0.01e-5);
+        Assert.Equal(1.67825e-5, Model.Sample(o, obs, t, "ti44_1157"), 0.001 * 1.67825e-5);
     }
 
     [Fact]

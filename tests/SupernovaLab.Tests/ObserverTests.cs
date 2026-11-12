@@ -75,4 +75,14 @@ public class ObserverTests
 
     [Fact]
     public void NhFromAv_Is2p2e21() => Assert.Equal(2.2e22, Extinction.NhFromAv(10), 1e10);
+
+    [Fact]
+    public void XrayTransmission_IsPhotoelectricAbsorptionByTheGasColumn()
+    {
+        // e^(−N_H σ(E)), N_H = 2.2e21 A_V, σ = 2.4e-22 cm² (E / 1 keV)^(−8/3). By hand: A_V = 1 at 1 keV, τ = 0.528,
+        // e^−0.528 = 0.589783; at 0.5 keV σ = 2.4e-22 × 0.5^(−8/3) = 1.52390e-21, τ = 3.35259, e^−τ = 0.0349936.
+        Assert.Equal(1.0, Extinction.XrayTransmission(1, 0));
+        Assert.Equal(0.589783, Extinction.XrayTransmission(1, 1), 6);
+        Assert.Equal(0.0349936, Extinction.XrayTransmission(0.5, 1), 7);
+    }
 }

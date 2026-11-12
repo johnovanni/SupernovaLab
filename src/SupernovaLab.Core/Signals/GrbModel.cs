@@ -28,7 +28,8 @@ namespace SupernovaLab.Core.Signals;
 /// (F ∝ ν²) [APPROX]. The jet break (§9.2 inverted, with the formula's own η_γ = 0.2, n = 0.1 cm⁻³ [APPROX: an ISM
 /// formula]) steepens the decline to t^(−p) above ν_m (Sari, Piran &amp; Halpern 1999), here through their post-break
 /// scalings F_max ∝ t⁻¹, ν_m ∝ t⁻², ν_c constant, ν_A ∝ t^(−1/5). Valid from the end of the prompt (about a minute) to
-/// 180 days [APPROX, §11: "minutes to months"; later the blast wave is no longer relativistic].</item>
+/// 180 days [APPROX, §11: "minutes to months"; later the blast wave is no longer relativistic], and only while ν_A &lt; ν_m
+/// and never for a pinned low-luminosity burst (E_iso &lt; 1e49 erg): ruling R39, <see cref="AfterglowNotModeledReason"/>.</item>
 /// </list>
 /// Source time throughout, from core bounce. Speculative (rulings R24/R27): the energetics, pulse shape, jet angle,
 /// microphysics and both trigger thresholds are [APPROX].
@@ -72,6 +73,20 @@ public sealed class GrbModel : ISignalModel
     /// <summary>[APPROX] A_* when the star has no wind data: 1, a typical Wolf-Rayet wind (§0.4).</summary>
     private const double DefaultAStar = 1;
 
+    /// <summary>
+    /// Ruling R39: a burst pinned below this isotropic energy (erg) is low-luminosity, like GRB 980425 (8.5e47 erg).
+    /// </summary>
+    public const double LowLuminosityEnergyErg = 1e49;
+
+    private const string LowLuminosityReason =
+        "low-luminosity burst: its mildly relativistic afterglow is outside the relativistic forward-shock formulas, so it " +
+        "is not modeled (the bright radio of such events, e.g. SN 1998bw, comes from the supernova's shock in the gas " +
+        "around the star).";
+
+    private const string SelfAbsorbedReason =
+        "the afterglow's self-absorption frequency has passed its peak frequency ν_m (the radio spectrum is self-absorbed " +
+        "above ν_m), outside the range of the relativistic forward-shock formulas used here, so it is not modeled.";
+
     /// <summary>[APPROX] The afterglow formulas hold to "months" (§11).</summary>
     public const double AfterglowEndS = 180 * Day;
 
@@ -94,7 +109,7 @@ public sealed class GrbModel : ISignalModel
 
     public IReadOnlyList<SignalChannel> Channels { get; } = new SignalChannel[]
     {
-        new("prompt", "Prompt gamma-ray flux (1–10⁴ keV)", "erg cm⁻² s⁻¹", true),
+        new("prompt", "Prompt gamma-ray flux (bolometric, rest-frame 1–10⁴ keV)", "erg cm⁻² s⁻¹", true),
         new("afterglowX", "X-ray afterglow (0.3–10 keV, after gas absorption)", "erg cm⁻² s⁻¹", true),
         new("afterglowOpt", "Optical afterglow (AB magnitude at 550 nm, with dust)", "mag", false, MayBeNegative: true),
         new("afterglowRadio", "Radio afterglow at 5 GHz", "mJy", true),
@@ -119,8 +134,9 @@ public sealed class GrbModel : ISignalModel
             "Sari, Piran & Halpern 1999 (jet break, t_j from the ISM formula [APPROX]). Off-axis \"orphan\" afterglows are " +
             "not modeled", "signals §9.2, §9.3"),
         new("Unpinned, this is a classical burst. A preset may pin E_iso, E_p,i and T90 (ruling R36), e.g. the low-luminosity " +
-            "GRB 980425 / SN 1998bw (8.5e47 erg, T90 23.3 s, peak 3e-7 erg cm⁻² s⁻¹ at about 38 Mpc, an Amati outlier); its " +
-            "mildly relativistic afterglow is then only roughly described by the relativistic formulas", "signals §9.4"),
+            "GRB 980425 / SN 1998bw (8.5e47 erg, T90 23.3 s, peak 3e-7 erg cm⁻² s⁻¹ at about 38 Mpc, an Amati outlier). The " +
+            "afterglow is not drawn for a pinned burst below 1e49 erg (mildly relativistic, Kulkarni et al. 1998) nor once " +
+            "ν_A exceeds ν_m: both are outside the relativistic forward-shock formulas (ruling R39)", "signals §9.3, §9.4"),
     };
 
     public bool Applies(Outcome outcome) => outcome.HasGrb && outcome.Fate == Fate.Supernova;
@@ -145,6 +161,7 @@ public sealed class GrbModel : ISignalModel
 
         if (since < burst.T90S) return double.NaN;
         var state = Afterglow(outcome, burst, observer, since);
+        if (AfterglowLimit(burst, state) is not null) return double.NaN; // ruling R39
         return id.Base switch
         {
             "afterglowRadio" => FluxDensity(state, RadioHz) / MilliJansky,
@@ -197,7 +214,21 @@ public sealed class GrbModel : ISignalModel
               $"peaking near {burst.PeakEnergyKeV.ToString("0", inv)} keV";
         return new Detection(status,
             $"{detector.Name} receives {measure} {when}: {(status == DetectionStatus.Detected ? "it triggers" : "too faint to trigger")}." +
-            $" {kind}; it assumes the instrument is watching that part of the sky.{tail}");
+            $" {kind}; it assumes the instrument is watching that part of the sky.{tail}" +
+            (IsLowLuminosity(burst) ? $" Its afterglow is not drawn: {LowLuminosityReason}" : ""));
+    }
+
+    /// <summary>
+    /// Ruling R39: why the afterglow channels are NaN at this source time even though the burst is seen, or null when
+    /// the afterglow is drawn (or does not apply: no GRB, jet away, outside its time range).
+    /// </summary>
+    public string? AfterglowNotModeledReason(Outcome outcome, ObserverSetup observer, double sourceTimeS)
+    {
+        if (!Applies(outcome) || !observer.BeamTowardEarth) return null;
+        var burst = Burst.Of(outcome);
+        double since = sourceTimeS - OnsetS(outcome);
+        if (!(since >= burst.T90S && since <= AfterglowEndS)) return null;
+        return AfterglowLimit(burst, Afterglow(outcome, burst, observer, since));
     }
 
     // ---------------------------------------------------------------- markers
@@ -250,17 +281,18 @@ public sealed class GrbModel : ISignalModel
     /// F_ν,max = (1+z) L_ν,max / (4π D_L²), with the research's L_ν,max ≈ 3.5e32 (ε_B/0.1)^½ E52^½ A_* t_d^(−½) erg/s/Hz,
     /// whose t_d is the z = 1 observer day, i.e. 2 rest-frame days [DERIVED]: F_ν,max = 7.0e32 x^(3/2) (…) t_d^(−½) / (4π D_L²).
     /// After the jet break t_j (days; +∞ for none) the values at t_j scale as F_max ∝ t⁻¹, ν_m ∝ t⁻², ν_c ∝ t⁰,
-    /// ν_A ∝ t^(−1/5) (Sari, Piran &amp; Halpern 1999). <paramref name="distanceCm"/> is the comoving distance D.
+    /// ν_A ∝ t^(−1/5) (Sari, Piran &amp; Halpern 1999). <paramref name="luminosityDistanceCm"/> is D_L
+    /// (<see cref="ObserverSetup.LuminosityDistanceCm"/>).
     /// </summary>
     public static AfterglowState WindAfterglow(double isotropicEnergyErg, double aStar, double tObsDays, double redshift,
-        double distanceCm, double jetBreakDays)
+        double luminosityDistanceCm, double jetBreakDays)
     {
         double t = Math.Min(tObsDays, jetBreakDays), after = tObsDays / t;
         double x = (1 + redshift) / 2, e52 = isotropicEnergyErg / 1e52, ee = EpsilonE / 0.1, eb = EpsilonB / 0.1;
         double nuM = 5e12 * Math.Sqrt(x) * ee * ee * Math.Sqrt(eb) * Math.Sqrt(e52) * Math.Pow(t, -1.5);
         double nuC = 2e12 * Math.Pow(x, -1.5) * Math.Pow(eb, -1.5) * Math.Sqrt(e52) / (aStar * aStar) * Math.Sqrt(t);
         double nuA = 1e11 * Math.Pow(x, -0.4) / ee * Math.Pow(eb, 0.2) * Math.Pow(e52, -0.4) * Math.Pow(aStar, 1.2) * Math.Pow(t, -0.6);
-        double dl = distanceCm * (1 + redshift);
+        double dl = luminosityDistanceCm;
         double fMax = 7.0e32 * Math.Pow(x, 1.5) * Math.Sqrt(eb) * Math.Sqrt(e52) * aStar / Math.Sqrt(t) / (4 * Math.PI * dl * dl);
         return new AfterglowState(nuA * Math.Pow(after, -0.2), nuM / (after * after), nuC, fMax / after);
     }
@@ -268,11 +300,13 @@ public sealed class GrbModel : ISignalModel
     /// <summary>
     /// §9.3 synchrotron spectrum (Sari, Piran &amp; Narayan 1998), erg cm⁻² s⁻¹ Hz⁻¹ at frequency ν (Hz), p = 2.5. Slow
     /// cooling (ν_m &lt; ν_c): ν^(1/3), ν^(−(p−1)/2), ν^(−p/2); fast cooling: ν^(1/3), ν^(−1/2), ν^(−p/2). Below ν_A the
-    /// thin spectrum is multiplied by (ν/ν_A)^(5/3), giving F ∝ ν² below ν_A &lt; ν_m [APPROX].
+    /// thin spectrum is multiplied by (ν/ν_A)^(5/3), giving F ∝ ν² below ν_A &lt; ν_m [APPROX]. That holds only for
+    /// ν_A below ν_m and ν_c; otherwise (ν_m &lt; ν &lt; ν_A would get the wrong slope) the result is NaN (ruling R39).
     /// </summary>
     public static double FluxDensity(AfterglowState s, double nuHz)
     {
         const double p = ElectronIndex;
+        if (SelfAbsorbedBeyondRange(s)) return double.NaN; // ruling R39: never draw the wrong-slope branch
         double shape;
         if (s.NuMHz < s.NuCHz)
             shape = nuHz < s.NuMHz ? Math.Cbrt(nuHz / s.NuMHz)
@@ -365,11 +399,25 @@ public sealed class GrbModel : ISignalModel
 
     // ---------------------------------------------------------------- the afterglow
 
+    private static bool IsLowLuminosity(Burst burst) => burst.Pinned && burst.IsotropicEnergyErg < LowLuminosityEnergyErg;
+
+    /// <summary>
+    /// Ruling R39: the afterglow is drawn only where its formulas hold. A pinned low-luminosity burst never; otherwise only
+    /// while ν_A &lt; ν_m (and &lt; ν_c), the regime in which Chevalier &amp; Li's ν_A is derived and the self-absorbed
+    /// spectrum is F ∝ ν². Null when it is drawn.
+    /// </summary>
+    private static string? AfterglowLimit(Burst burst, AfterglowState state)
+        => IsLowLuminosity(burst) ? LowLuminosityReason
+            : SelfAbsorbedBeyondRange(state) ? SelfAbsorbedReason
+            : null;
+
+    private static bool SelfAbsorbedBeyondRange(AfterglowState s) => !(s.NuAHz < s.NuMHz && s.NuAHz < s.NuCHz);
+
     private static AfterglowState Afterglow(Outcome o, Burst burst, ObserverSetup obs, double sinceSourceS)
     {
         double z = obs.Redshift;
         double tDays = sinceSourceS * obs.TimeDilation / Day;
-        return WindAfterglow(burst.IsotropicEnergyErg, AStar(o), tDays, z, obs.DistancePc * PhysicalConstants.Pc,
+        return WindAfterglow(burst.IsotropicEnergyErg, AStar(o), tDays, z, obs.LuminosityDistanceCm,
             JetBreakDays(burst.IsotropicEnergyErg, z));
     }
 
@@ -381,20 +429,17 @@ public sealed class GrbModel : ISignalModel
     }
 
     /// <summary>
-    /// 0.3–10 keV energy flux, erg cm⁻² s⁻¹, after photoelectric absorption by the gas column N_H = 2.2e21 A_V with the
-    /// shock-breakout model's σ(E) = 2.4e-22 (E / 1 keV)^(−8/3) cm² [APPROX] (Simpson in ln ν).
+    /// 0.3–10 keV energy flux, erg cm⁻² s⁻¹, after photoelectric absorption by the gas
+    /// (<see cref="Extinction.XrayTransmission"/>) (Simpson in ln ν).
     /// </summary>
     private static double XrayFlux(AfterglowState s, ObserverSetup obs)
     {
-        double nH = Extinction.NhFromAv(obs.Av);
         double keVToHz = 1000 * PhysicalConstants.C * 1e7 / PhysicalConstants.HcEvNm;
         double a = Math.Log(XrayLowKeV), h = (Math.Log(XrayHighKeV) - a) / SpectrumIntervals, sum = 0;
         for (int i = 0; i <= SpectrumIntervals; i++)
         {
             double kev = Math.Exp(a + i * h), nu = kev * keVToHz;
-            double absorbed = nH > 0
-                ? Math.Exp(-nH * ShockBreakoutModel.PhotoCrossSection1KeV * Math.Pow(kev, ShockBreakoutModel.PhotoCrossSectionSlope))
-                : 1;
+            double absorbed = Extinction.XrayTransmission(kev, obs.Av);
             double w = i == 0 || i == SpectrumIntervals ? 1 : i % 2 == 1 ? 4 : 2;
             sum += w * FluxDensity(s, nu) * nu * absorbed;
         }

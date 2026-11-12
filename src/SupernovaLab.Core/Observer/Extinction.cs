@@ -11,6 +11,23 @@ public static class Extinction
     /// <summary>Hydrogen column density, cm^-2: N_H = 2.2e21 A_V (Guver and Ozel 2009; signals section 6, [APPROX coefficient]).</summary>
     public static double NhFromAv(double av) => 2.2e21 * av;
 
+    /// <summary>
+    /// [APPROX] Photoelectric absorption cross-section per H atom at 1 keV, cm², and its slope: σ(E) = 2.4e-22 cm²
+    /// (E / 1 keV)^(−8/3), a power-law approximation of Morrison &amp; McCammon 1983 (solar abundances), not in the research.
+    /// </summary>
+    private const double PhotoCrossSection1KeV = 2.4e-22, PhotoCrossSectionSlope = -8.0 / 3;
+
+    /// <summary>
+    /// The fraction of X-ray photons of this energy (keV) that pass the interstellar gas in front of a source dimmed by
+    /// A_V magnitudes: e^(−N_H σ(E)), with N_H = <see cref="NhFromAv"/> and σ(E) = 2.4e-22 cm² (E / 1 keV)^(−8/3) [APPROX].
+    /// 1 when A_V ≤ 0.
+    /// </summary>
+    public static double XrayTransmission(double energyKeV, double av)
+    {
+        double nH = NhFromAv(av);
+        return nH > 0 ? Math.Exp(-nH * PhotoCrossSection1KeV * Math.Pow(energyKeV, PhotoCrossSectionSlope)) : 1;
+    }
+
     private static double Ratio(Band band) => band switch
     {
         // signals.md section 4.7 (Cardelli, Clayton and Mathis 1989, ApJ 345, 245; R_V = 3.1) [APPROX, read from the CCM curve].

@@ -89,13 +89,6 @@ public sealed class ShockBreakoutModel : ISignalModel
     private static readonly double UltrasatBandHz = C * 1e7 * (1 / UltrasatShortNm - 1 / UltrasatLongNm);
 
     /// <summary>
-    /// [APPROX] Photoelectric absorption by the interstellar gas, σ(E) = 2.4e-22 cm² (E / 1 keV)^(−8/3) per H atom: a
-    /// power-law approximation of Morrison &amp; McCammon 1983 (solar abundances), not in the research. The column is
-    /// N_H = 2.2e21 A_V (<see cref="Extinction.NhFromAv"/>).
-    /// </summary>
-    internal const double PhotoCrossSection1KeV = 2.4e-22, PhotoCrossSectionSlope = -8.0 / 3;
-
-    /// <summary>
     /// [APPROX] Ruling R29: the X-ray detectors' registry exposures, t_reg. Swift XRT's 1e-13 erg cm⁻² s⁻¹ is a ~10 ks
     /// figure (signals §6.2); Einstein Probe WXT's 2.5e-11 is for 1,000 s (§3.3, §6.2).
     /// </summary>
@@ -533,8 +526,11 @@ public sealed class ShockBreakoutModel : ISignalModel
         return PlanckG(ev / (peakEv / PlanckPeakX)) / g0;
     }
 
-    /// <summary>The fraction of L emitted between two photon energies (eV), each photon weighted by e^(−τ(ε)).</summary>
-    private static double BandFraction(State s, double lowEv, double highEv, double nH, int intervals = BandIntervals)
+    /// <summary>
+    /// The fraction of L emitted between two photon energies (eV), each photon weighted by the gas transmission e^(−τ(ε))
+    /// for this visual extinction (<see cref="Extinction.XrayTransmission"/>; 0: none).
+    /// </summary>
+    private static double BandFraction(State s, double lowEv, double highEv, double av, int intervals = BandIntervals)
     {
         double norm = PlanckWidth + Math.Log(s.PeakEv / (PlanckPeakX * s.ThermalEv));
         double a = Math.Log(lowEv), h = (Math.Log(highEv) - a) / intervals, sum = 0;
@@ -542,7 +538,7 @@ public sealed class ShockBreakoutModel : ISignalModel
         {
             double ev = Math.Exp(a + i * h);
             double w = i == 0 || i == intervals ? 1 : i % 2 == 1 ? 4 : 2;
-            double absorption = nH > 0 ? Math.Exp(-nH * PhotoCrossSection1KeV * Math.Pow(ev / 1000, PhotoCrossSectionSlope)) : 1;
+            double absorption = Extinction.XrayTransmission(ev / 1000, av);
             sum += w * Shape(ev, s.ThermalEv, s.PeakEv) * absorption;
         }
         return sum * h / 3 / norm;
@@ -553,7 +549,7 @@ public sealed class ShockBreakoutModel : ISignalModel
     {
         var (lo, hi) = detectorId == "einstein-probe" ? (EpLowEv, EpHighEv) : (XrtLowEv, XrtHighEv);
         double d = obs.LuminosityDistanceCm;
-        return s.Luminosity * BandFraction(s, lo, hi, absorbed ? Extinction.NhFromAv(obs.Av) : 0, intervals)
+        return s.Luminosity * BandFraction(s, lo, hi, absorbed ? obs.Av : 0, intervals)
                / (4 * Math.PI * d * d);
     }
 

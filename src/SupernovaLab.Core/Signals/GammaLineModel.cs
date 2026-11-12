@@ -141,7 +141,8 @@ public sealed class GammaLineModel : ISignalModel
         new("⁴⁴Ti mass = 2×10⁻³ × ⁵⁶Ni mass for core-collapse supernovae [APPROX], from SN 1987A and Cas A, unless a preset " +
             "pins it; not modeled for Type Ia/Iax or pair-instability supernovae (not in the research)",
             "signals §5.3; ruling R35"),
-        new("INTEGRAL/SPI 3e-5 for 10⁶ s (Roques et al. 2003; operations ended 2025); COSI 3.0e-6 for its 2-yr survey " +
+        new("INTEGRAL/SPI 3e-5 for 10⁶ s (Roques et al. 2003; operations ended 2025), its 1 MeV sensitivity used for every " +
+            "line [APPROX]; COSI 3.0e-6 for its 2-yr survey " +
             "(Tomsick et al. 2023, projected), used for every line; NuSTAR 2e-6 for 2.6 Ms, anchored to its Cas A and " +
             "SN 1987A detections (Boggs et al. 2015; ruling R38) [APPROX, verify]. Sensitivity scaled as (T/T_ref)^(−1/2); " +
             "windows: SPI 10⁶ s, COSI 100 d (⁵⁶Co) or 2 yr (⁴⁴Ti), NuSTAR 2.6 Ms [APPROX]", "signals §5.4, §11"),
