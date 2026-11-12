@@ -153,8 +153,22 @@ public sealed partial class OutcomeEngine
             }
             else ti44 = new Quantity(Ti44PerNickel * ejectedNickel.Value, MSun, Confidence.Speculative, Ti44Source);
         }
+        // Ruling R36: a preset's gamma-ray burst pins, for an outcome that has a GRB.
+        Quantity? grbEnergy = null, grbPeak = null, grbT90 = null;
+        if (d.HasGrb && pins is not null)
+        {
+            Quantity? GrbPin(double? v, string unit)
+            {
+                if (v is not double value) return null;
+                published = true;
+                return new Quantity(value, unit, Confidence.ModelDependent, pins.Source, Published: true);
+            }
+            grbEnergy = GrbPin(pins.GrbEisoErg, "erg");
+            grbPeak = GrbPin(pins.GrbEpKeV, "keV");
+            grbT90 = GrbPin(pins.GrbT90S, "s");
+        }
         return new Outcome(x, d.Fate, d.Type, d.HasGrb, d.Remnant, star, energy, ejecta, nickel, peak,
-            d.MagnetarEnergy, d.MagnetarTimescale, notes, published, magB, dm15, ti44);
+            d.MagnetarEnergy, d.MagnetarTimescale, notes, published, magB, dm15, ti44, grbEnergy, grbPeak, grbT90);
     }
 
     /// <summary>

@@ -10,9 +10,10 @@ namespace SupernovaLab.Core.Signals;
 /// (68, 78, 1157 keV) photon fluxes at Earth, and how INTEGRAL/SPI, COSI and NuSTAR see them.
 /// <list type="bullet">
 /// <item>Flux (§5.2): F_line(t) = [N(t)/τ] I_line f_esc(t) / (4π D²), with the Bateman ⁵⁶Ni → ⁵⁶Co chain and the ⁴⁴Ti
-/// decay. f_esc = exp(−(T0/t)²) with the optical tail's own trapping time T0
-/// (<see cref="LightCurveModel.GammaRayTrappingTimeS"/>), so the lines and the light curve agree. [APPROX] Compton-
-/// scattered photons leave the line and are not counted; photo-absorption of the 68/78 keV lines is ignored.</item>
+/// decay. Line escape (ruling R37): a line photon is lost on any Compton scatter, so f_esc = exp(−(T0_line/t)²) with
+/// T0_line = T0 √(κ_KN(E_line)/κ_γ), where T0 and κ_γ = 0.03 are the optical tail's (§4.1,
+/// <see cref="LightCurveModel.GammaRayTrappingTimeS"/>) and κ_KN is the Klein–Nishina cross-section per gram for
+/// Y_e = 0.5. [APPROX] Photo-absorption of the 68/78 keV lines is ignored.</item>
 /// <item>⁴⁴Ti (ruling R35): the outcome's <see cref="Outcome.Ti44Mass"/>, for core-collapse supernovae only. Type Ia,
 /// Iax and pair-instability supernovae get no ⁴⁴Ti lines: their yields are not in the research.</item>
 /// <item>Detection (§5.4): the line flux averaged over the instrument's observing window is compared with its 3σ
@@ -83,13 +84,13 @@ public sealed class GammaLineModel : ISignalModel
 
     /// <summary>
     /// The exposure the registry sensitivity refers to, s of observer time: SPI 10⁶ s (Roques et al. 2003); COSI the 2-yr
-    /// survey (Tomsick et al. 2023); [APPROX] NuSTAR 1 Ms, the research's "Ms exposures" for Cas A's flux (§5.4).
+    /// survey (Tomsick et al. 2023); NuSTAR 2.6 Ms, the depth of its SN 1987A detection (ruling R38 [APPROX]).
     /// </summary>
     private static double ReferenceExposureS(string detectorId) => detectorId switch
     {
         "spi" => 1e6,
         "cosi" => 2 * Year,
-        "nustar" => 1e6,
+        "nustar" => 2.6e6,
         _ => throw new ArgumentException($"No line sensitivity for '{detectorId}'.", nameof(detectorId)),
     };
 
@@ -97,13 +98,13 @@ public sealed class GammaLineModel : ISignalModel
     /// [APPROX] The default observing window, s of observer time, ending at the moment shown. SPI: one 10⁶ s pointing,
     /// the reference exposure. COSI (a survey; the exposure fraction cancels when its sensitivity is scaled by elapsed
     /// survey time): about 100 days of survey for the ⁵⁶Ni/⁵⁶Co lines (§5.4's own figure), the full 2-yr survey for the
-    /// slowly decaying ⁴⁴Ti. NuSTAR: 2.4 Ms, the depth of the Cas A ⁴⁴Ti maps (Grefenstette et al. 2017; presets §3).
+    /// slowly decaying ⁴⁴Ti. NuSTAR: its 2.6 Ms reference exposure (ruling R38).
     /// </summary>
     public static double ObservingWindowS(string detectorId, bool ti44) => detectorId switch
     {
         "spi" => 1e6,
         "cosi" => ti44 ? 2 * Year : 100 * Day,
-        "nustar" => 2.4e6,
+        "nustar" => 2.6e6,
         _ => throw new ArgumentException($"No line observing window for '{detectorId}'.", nameof(detectorId)),
     };
 
@@ -132,17 +133,18 @@ public sealed class GammaLineModel : ISignalModel
     {
         new("Junde et al. 2011, Nucl. Data Sheets 112, 1513 (⁵⁶Ni lines); Churazov et al. 2014, Nature 512, 406 (⁵⁶Co " +
             "lines); Ahmad et al. 2006, PRC 74, 065803 (⁴⁴Ti, 58.9 yr)", "signals §5.1"),
-        new("F = [N(t)/τ] I f_esc / (4πD²), f_esc = exp(−(T0/t)²) with the light curve's T0 (Clocchiatti & Wheeler 1997, " +
-            "κ_γ = 0.03 [APPROX]); Compton-scattered photons leave the line [APPROX]; supernova lines are Doppler-broadened " +
+        new("F = [N(t)/τ] I f_esc / (4πD²), f_esc = exp(−(T0_line/t)²), T0_line = T0 √(κ_KN(E)/κ_γ): the light curve's T0 " +
+            "(Clocchiatti & Wheeler 1997, κ_γ = 0.03 [APPROX]) scaled to each line's Klein–Nishina opacity (Y_e = 0.5), " +
+            "since any Compton scatter removes a photon from the line (ruling R37 [APPROX]); supernova lines are Doppler-broadened " +
             "(about 4,000 km/s for SN 2014J), which makes them harder to detect than the narrow lines the sensitivities " +
             "assume (not modeled)", "signals §5.2, §5.3"),
         new("⁴⁴Ti mass = 2×10⁻³ × ⁵⁶Ni mass for core-collapse supernovae [APPROX], from SN 1987A and Cas A, unless a preset " +
             "pins it; not modeled for Type Ia/Iax or pair-instability supernovae (not in the research)",
             "signals §5.3; ruling R35"),
         new("INTEGRAL/SPI 3e-5 for 10⁶ s (Roques et al. 2003; operations ended 2025); COSI 3.0e-6 for its 2-yr survey " +
-            "(Tomsick et al. 2023, projected), used for every line; NuSTAR 1.7e-5 for ~1 Ms, Cas A's own flux, an upper " +
-            "bound [APPROX]. Sensitivity scaled as (T/T_ref)^(−1/2); windows: SPI 10⁶ s, COSI 100 d (⁵⁶Co) or 2 yr (⁴⁴Ti), " +
-            "NuSTAR 2.4 Ms [APPROX]", "signals §5.4, §11"),
+            "(Tomsick et al. 2023, projected), used for every line; NuSTAR 2e-6 for 2.6 Ms, anchored to its Cas A and " +
+            "SN 1987A detections (Boggs et al. 2015; ruling R38) [APPROX, verify]. Sensitivity scaled as (T/T_ref)^(−1/2); " +
+            "windows: SPI 10⁶ s, COSI 100 d (⁵⁶Co) or 2 yr (⁴⁴Ti), NuSTAR 2.6 Ms [APPROX]", "signals §5.4, §11"),
     };
 
     public bool Applies(Outcome outcome) => AppliesTo(outcome);
@@ -181,7 +183,7 @@ public sealed class GammaLineModel : ISignalModel
 
         var best = BestLine(outcome, observer, sourceTimeS, detector.Id)!;
         var status = best.Ratio >= 1 ? DetectionStatus.Detected : DetectionStatus.TooFaint;
-        double escape = EscapeFraction(TrappingTimeS(outcome), sourceTimeS);
+        double escape = LineEscapeFraction(TrappingTimeS(outcome), best.Line.KeV, sourceTimeS);
         double reference = ReferenceExposureS(detector.Id);
         string scaled = Math.Abs(best.WindowObsS - reference) < 1e-6 * reference
             ? "approximate"
@@ -222,6 +224,35 @@ public sealed class GammaLineModel : ISignalModel
     /// <summary>§5.2: the escape fraction f_esc = exp(−(T0/t)²); 0 at t ≤ 0.</summary>
     public static double EscapeFraction(double trappingTimeS, double timeS)
         => timeS > 0 ? Math.Exp(-Math.Pow(trappingTimeS / timeS, 2)) : 0;
+
+    /// <summary>
+    /// The Klein–Nishina total cross-section per gram, cm²/g, at photon energy E (keV) for Y_e = 0.5 electrons per
+    /// nucleon (ruling R37): κ = σ_KN Y_e / m_u with x = E / m_e c² and
+    /// σ_KN = 2π r_e² {(1+x)/x² [2(1+x)/(1+2x) − ln(1+2x)/x] + ln(1+2x)/(2x) − (1+3x)/(1+2x)²}. Below x = 10⁻³ the
+    /// series σ_T (1 − 2x + 26x²/5) avoids cancellation.
+    /// </summary>
+    public static double KleinNishinaOpacity(double energyKeV)
+    {
+        const double ye = 0.5;
+        double re = PhysicalConstants.ClassicalElectronRadius, x = energyKeV / PhysicalConstants.ElectronRestEnergyKeV;
+        double sigma;
+        if (x < 1e-3)
+            sigma = 8 * Math.PI / 3 * re * re * (1 - 2 * x + 26.0 / 5 * x * x);
+        else
+        {
+            double l = Math.Log(1 + 2 * x);
+            sigma = 2 * Math.PI * re * re * ((1 + x) / (x * x) * (2 * (1 + x) / (1 + 2 * x) - l / x) + l / (2 * x)
+                                             - (1 + 3 * x) / Math.Pow(1 + 2 * x, 2));
+        }
+        return sigma * ye / PhysicalConstants.AtomicMassUnit;
+    }
+
+    /// <summary>
+    /// Ruling R37: a line's escape fraction exp(−(T0_line/t)²), T0_line = T0 √(κ_KN(E)/κ_γ), from §4.1's trapping time
+    /// T0 (s), the line energy (keV) and the time (s).
+    /// </summary>
+    public static double LineEscapeFraction(double trappingTimeS, double lineKeV, double timeS)
+        => EscapeFraction(trappingTimeS * Math.Sqrt(KleinNishinaOpacity(lineKeV) / LightCurveModel.KappaGamma), timeS);
 
     /// <summary>§5.2: line photon flux, photons cm⁻² s⁻¹: decays/s × I_line × f_esc / (4π D²).</summary>
     public static double LinePhotonFlux(double decaysPerS, double intensity, double escapeFraction, double distanceCm)
@@ -273,7 +304,8 @@ public sealed class GammaLineModel : ISignalModel
             Isotope.Co56 => CobaltDecayRate(o.NickelMass!.Value, t),
             _ => Ti44DecayRate(o.Ti44Mass!.Value, t),
         };
-        double flux = LinePhotonFlux(rate, l.Intensity, EscapeFraction(TrappingTimeS(o), t), obs.LuminosityDistanceCm);
+        double flux = LinePhotonFlux(rate, l.Intensity, LineEscapeFraction(TrappingTimeS(o), l.KeV, t),
+            obs.LuminosityDistanceCm);
         return flux * obs.TimeDilation;
     }
 

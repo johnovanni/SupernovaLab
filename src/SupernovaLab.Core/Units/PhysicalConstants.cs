@@ -33,6 +33,10 @@ public static class PhysicalConstants
     // Not in signals section 0.2: CODATA 2018 values (k_B and h c exact in SI; sigma_SB derived from them).
     /// <summary>Stefan-Boltzmann constant, erg cm^-2 s^-1 K^-4 (CODATA 2018).</summary>
     public const double StefanBoltzmann = 5.670374419e-5;
+    /// <summary>Electron rest energy m_e c², keV (CODATA 2018).</summary>
+    public const double ElectronRestEnergyKeV = 510.99895;
+    /// <summary>Classical electron radius r_e, cm (CODATA 2018).</summary>
+    public const double ClassicalElectronRadius = 2.8179403262e-13;
     /// <summary>Boltzmann constant, eV/K (CODATA 2018, exact).</summary>
     public const double BoltzmannEv = 8.617333262e-5;
     /// <summary>h c, eV nm (CODATA 2018, exact to the digits given).</summary>

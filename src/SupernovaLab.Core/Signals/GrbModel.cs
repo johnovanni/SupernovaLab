@@ -13,7 +13,8 @@ namespace SupernovaLab.Core.Signals;
 /// <item>Energetics: a classical long GRB. Beaming-corrected E_γ = 5e50 erg (Frail et al. 2001; §9.2) in two jets of
 /// half-angle θ_j = 5° [APPROX, the research's example], so E_iso = E_γ / (1 − cos θ_j) = 1.31e53 erg (§9.1's range
 /// 1e48–1e54). Peak energy from the Amati relation, E_p,i = 95 keV (E_iso / 1e52)^0.49 (§9.1). The low-luminosity
-/// bursts seen nearby, such as GRB 980425 (8.5e47 erg; §9.4), are Amati outliers and are not this model.</item>
+/// bursts seen nearby, such as GRB 980425 (8.5e47 erg; §9.4), are Amati outliers: a preset may pin E_iso, E_p,i and T90
+/// (ruling R36), which then replace these values everywhere, afterglow included.</item>
 /// <item>Prompt light curve [APPROX]: one fast-rise, exponential-decay pulse — a linear rise over τ_d/3, then
 /// e^(−t/τ_d) — whose 5%–95% fluence interval is T90 = 23.3 s (GRB 980425's, the research's one measured T90; §9.1:
 /// long bursts last more than 2 s). Fluence E_iso/(4πD²) (§9.1). It starts when the black hole forms plus the light
@@ -117,8 +118,9 @@ public sealed class GrbModel : ISignalModel
             "Piran & Narayan 1998 (spectrum, p = 2.5); ε_e = 0.1, ε_B = 0.01 [APPROX]; self-absorption F ∝ ν² [APPROX]; " +
             "Sari, Piran & Halpern 1999 (jet break, t_j from the ISM formula [APPROX]). Off-axis \"orphan\" afterglows are " +
             "not modeled", "signals §9.2, §9.3"),
-        new("Low-luminosity bursts such as GRB 980425 / SN 1998bw (E_γ 8.5e47 erg, peak 3e-7 erg cm⁻² s⁻¹ at about 38 Mpc, " +
-            "an Amati outlier) are not modeled: this is a classical burst", "signals §9.4"),
+        new("Unpinned, this is a classical burst. A preset may pin E_iso, E_p,i and T90 (ruling R36), e.g. the low-luminosity " +
+            "GRB 980425 / SN 1998bw (8.5e47 erg, T90 23.3 s, peak 3e-7 erg cm⁻² s⁻¹ at about 38 Mpc, an Amati outlier); its " +
+            "mildly relativistic afterglow is then only roughly described by the relativistic formulas", "signals §9.4"),
     };
 
     public bool Applies(Outcome outcome) => outcome.HasGrb && outcome.Fate == Fate.Supernova;
@@ -133,15 +135,16 @@ public sealed class GrbModel : ISignalModel
         double onset = OnsetS(outcome), since = sourceTimeS - onset;
         if (!(since >= 0 && since <= AfterglowEndS)) return double.NaN;
 
+        var burst = Burst.Of(outcome);
         if (id.Base is "prompt" or "detect")
         {
-            if (since > PromptEndT90s * T90Seconds) return double.NaN;
-            double flux = PromptFlux(since, observer);
-            return id.DetectorId is { } d ? TriggerRatio(flux, observer, d) : flux;
+            if (since > PromptEndT90s * burst.T90S) return double.NaN;
+            double flux = burst.PromptFlux(since, observer);
+            return id.DetectorId is { } d ? burst.TriggerRatio(flux, observer, d) : flux;
         }
 
-        if (since < T90Seconds) return double.NaN;
-        var state = Afterglow(outcome, observer, since);
+        if (since < burst.T90S) return double.NaN;
+        var state = Afterglow(outcome, burst, observer, since);
         return id.Base switch
         {
             "afterglowRadio" => FluxDensity(state, RadioHz) / MilliJansky,
@@ -156,12 +159,16 @@ public sealed class GrbModel : ISignalModel
         if (!Applies(outcome)) return new Detection(DetectionStatus.NotProduced, NotProducedReason(outcome));
         if (!DetectorIds.Contains(detector.Id))
             return new Detection(DetectionStatus.NotModeled, $"{detector.Name} does not watch for gamma-ray bursts.");
+        var burst = Burst.Of(outcome);
         if (!observer.BeamTowardEarth)
             return new Detection(DetectionStatus.NotPointedAtUs,
-                "The jets point away from Earth, so there is no gamma-ray burst to see: its light is beamed into two cones " +
-                $"of about {(JetHalfAngleRad * 180 / Math.PI).ToString("0", CultureInfo.InvariantCulture)}°, which only " +
-                $"{(BeamingFraction(JetHalfAngleRad) * 100).ToString("0.0", CultureInfo.InvariantCulture)}% of directions " +
-                "see. A late \"orphan\" afterglow may appear as the jets slow and spread, but it is not modeled.");
+                "The jets point away from Earth, so there is no gamma-ray burst to see: its light is beamed into two " +
+                (burst.Pinned
+                    ? "narrow cones. "
+                    : $"cones of about {(JetHalfAngleRad * 180 / Math.PI).ToString("0", CultureInfo.InvariantCulture)}°, which " +
+                      $"only {(BeamingFraction(JetHalfAngleRad) * 100).ToString("0.0", CultureInfo.InvariantCulture)}% of " +
+                      "directions see. ") +
+                "A late \"orphan\" afterglow may appear as the jets slow and spread, but it is not modeled.");
 
         var inv = CultureInfo.InvariantCulture;
         double z1 = observer.TimeDilation, onset = OnsetS(outcome), since = sourceTimeS - onset;
@@ -171,8 +178,8 @@ public sealed class GrbModel : ISignalModel
                 "and its jets have drilled out of the star.");
 
         // The trigger looks at the brightest moment so far: the pulse peaks at the end of its rise.
-        double peakSince = RiseS, seen = Math.Min(since, peakSince);
-        double flux = PromptFlux(seen, observer), ratio = TriggerRatio(flux, observer, detector.Id);
+        double peakSince = burst.RiseS, seen = Math.Min(since, peakSince);
+        double flux = burst.PromptFlux(seen, observer), ratio = burst.TriggerRatio(flux, observer, detector.Id);
         var status = ratio >= 1 ? DetectionStatus.Detected : DetectionStatus.TooFaint;
         string measure = detector.Id == "gbm"
             ? $"{FormatNumber(ratio * detector.Threshold)} photons cm⁻² s⁻¹ in 50–300 keV against its trigger threshold " +
@@ -180,20 +187,23 @@ public sealed class GrbModel : ISignalModel
             : $"{FormatNumber(ratio * detector.Threshold)} erg cm⁻² s⁻¹ in 15–150 keV against its trigger threshold of " +
               $"about {detector.Threshold.ToString("0.#e0", inv)}";
         string when = since < peakSince ? "so far" : "at its peak";
-        string tail = since > PromptEndT90s * T90Seconds
-            ? $" The burst lasted about {UnitFormat.Time(T90Seconds * z1)}; its afterglow fades over the following months."
-            : $" It lasts about {UnitFormat.Time(T90Seconds * z1)} (T90).";
+        string tail = since > PromptEndT90s * burst.T90S
+            ? $" The burst lasted about {UnitFormat.Time(burst.T90S * z1)}; its afterglow fades over the following months."
+            : $" It lasts about {UnitFormat.Time(burst.T90S * z1)} (T90).";
+        string kind = burst.Pinned
+            ? $"This burst uses published values: {UnitFormat.Energy(burst.IsotropicEnergyErg)} (isotropic equivalent) " +
+              $"peaking near {burst.PeakEnergyKeV.ToString("0", inv)} keV"
+            : $"This is a classical long burst of {UnitFormat.Energy(burst.IsotropicEnergyErg)} (isotropic equivalent) " +
+              $"peaking near {burst.PeakEnergyKeV.ToString("0", inv)} keV";
         return new Detection(status,
             $"{detector.Name} receives {measure} {when}: {(status == DetectionStatus.Detected ? "it triggers" : "too faint to trigger")}." +
-            $" This is a classical long burst of {UnitFormat.Energy(IsotropicEnergyErg)} (isotropic equivalent) peaking " +
-            $"near {AmatiPeakEnergyKeV(IsotropicEnergyErg).ToString("0", inv)} keV; it assumes the instrument is watching " +
-            $"that part of the sky.{tail}");
+            $" {kind}; it assumes the instrument is watching that part of the sky.{tail}");
     }
 
     // ---------------------------------------------------------------- markers
 
-    /// <summary>T90 of the prompt burst, s (source time); NaN when the outcome has no GRB.</summary>
-    public double T90S(Outcome o) => Applies(o) ? T90Seconds : double.NaN;
+    /// <summary>T90 of the prompt burst, s (source time): a preset's pin (R36) or 23.3 s; NaN when the outcome has no GRB.</summary>
+    public double T90S(Outcome o) => Applies(o) ? Burst.Of(o).T90S : double.NaN;
 
     /// <summary>
     /// When the burst starts, s after bounce (source time): black-hole formation (t_BH, else 1 s [APPROX]) plus the star's
@@ -208,7 +218,7 @@ public sealed class GrbModel : ISignalModel
     }
 
     /// <summary>The prompt peak, s after bounce (source time); NaN when the outcome has no GRB.</summary>
-    public double PeakTimeS(Outcome o) => OnsetS(o) + RiseS;
+    public double PeakTimeS(Outcome o) => Applies(o) ? OnsetS(o) + Burst.Of(o).RiseS : double.NaN;
 
     // ---------------------------------------------------------------- public formulas (tested against signals §9)
 
@@ -291,33 +301,48 @@ public sealed class GrbModel : ISignalModel
         return c <= r / 2 ? Math.Sqrt(2 * r * c) : r - Math.Log(1 - (c - r / 2));
     }
 
-    private static double DecayS => T90Seconds / T90OverDecay;
-    private static double RiseS => RiseOverDecay * DecayS;
-
-    /// <summary>The isotropic luminosity at this time after onset, erg/s; E_iso over the pulse.</summary>
-    private static double PromptLuminosity(double since)
-    {
-        double peak = IsotropicEnergyErg / (DecayS * (1 + RiseOverDecay / 2));
-        if (since < 0) return 0;
-        return since <= RiseS ? peak * since / RiseS : peak * Math.Exp(-(since - RiseS) / DecayS);
-    }
-
-    /// <summary>Bolometric prompt flux at Earth, erg cm⁻² s⁻¹: L_iso / (4π D_L²).</summary>
-    private static double PromptFlux(double since, ObserverSetup obs)
-        => PromptLuminosity(since) / (4 * Math.PI * Math.Pow(obs.LuminosityDistanceCm, 2));
-
     /// <summary>
-    /// The instrument-band flux over its threshold: GBM's 50–300 keV photon flux over 0.7, or BAT's 15–150 keV energy
-    /// flux over 1e-8, from the bolometric flux and the Band spectrum at E_p = E_p,i / (1 + z).
+    /// A burst's energetics: the classical defaults, or a preset's pins (ruling R36) — isotropic energy (erg), rest-frame
+    /// peak energy (keV, Amati when not pinned) and T90 (s).
     /// </summary>
-    private static double TriggerRatio(double bolometricFlux, ObserverSetup obs, string detectorId)
+    private sealed record Burst(double IsotropicEnergyErg, double PeakEnergyKeV, double T90S, bool Pinned)
     {
-        double z1 = obs.TimeDilation, ep = AmatiPeakEnergyKeV(IsotropicEnergyErg) / z1;
-        double bolometric = BandIntegral(ep, BolometricLowKeV / z1, BolometricHighKeV / z1, energyWeighted: true);
-        var detector = Detectors.Get(detectorId);
-        return detectorId == "gbm"
-            ? bolometricFlux * BandIntegral(ep, GbmLowKeV, GbmHighKeV, false) / (bolometric * PhysicalConstants.KeV) / detector.Threshold
-            : bolometricFlux * BandIntegral(ep, BatLowKeV, BatHighKeV, true) / bolometric / detector.Threshold;
+        public static Burst Of(Outcome o)
+        {
+            double energy = o.GrbIsotropicEnergyErg?.Value ?? GrbModel.IsotropicEnergyErg;
+            return new Burst(energy, o.GrbPeakEnergyKeV?.Value ?? AmatiPeakEnergyKeV(energy), o.GrbT90S?.Value ?? T90Seconds,
+                o.GrbIsotropicEnergyErg is not null || o.GrbPeakEnergyKeV is not null || o.GrbT90S is not null);
+        }
+
+        public double DecayS => T90S / T90OverDecay;
+        public double RiseS => RiseOverDecay * DecayS;
+
+        /// <summary>The isotropic luminosity at this time after onset, erg/s; E_iso over the pulse.</summary>
+        public double PromptLuminosity(double since)
+        {
+            double peak = IsotropicEnergyErg / (DecayS * (1 + RiseOverDecay / 2));
+            if (since < 0) return 0;
+            return since <= RiseS ? peak * since / RiseS : peak * Math.Exp(-(since - RiseS) / DecayS);
+        }
+
+        /// <summary>Bolometric prompt flux at Earth, erg cm⁻² s⁻¹: L_iso / (4π D_L²).</summary>
+        public double PromptFlux(double since, ObserverSetup obs)
+            => PromptLuminosity(since) / (4 * Math.PI * Math.Pow(obs.LuminosityDistanceCm, 2));
+
+        /// <summary>
+        /// The instrument-band flux over its threshold: GBM's 50–300 keV photon flux over 0.7, or BAT's 15–150 keV energy
+        /// flux over 1e-8, from the bolometric flux and the Band spectrum at E_p = E_p,i / (1 + z).
+        /// </summary>
+        public double TriggerRatio(double bolometricFlux, ObserverSetup obs, string detectorId)
+        {
+            double z1 = obs.TimeDilation, ep = PeakEnergyKeV / z1;
+            double bolometric = BandIntegral(ep, BolometricLowKeV / z1, BolometricHighKeV / z1, energyWeighted: true);
+            var detector = Detectors.Get(detectorId);
+            return detectorId == "gbm"
+                ? bolometricFlux * BandIntegral(ep, GbmLowKeV, GbmHighKeV, false) / (bolometric * PhysicalConstants.KeV)
+                  / detector.Threshold
+                : bolometricFlux * BandIntegral(ep, BatLowKeV, BatHighKeV, true) / bolometric / detector.Threshold;
+        }
     }
 
     /// <summary>
@@ -340,12 +365,12 @@ public sealed class GrbModel : ISignalModel
 
     // ---------------------------------------------------------------- the afterglow
 
-    private static AfterglowState Afterglow(Outcome o, ObserverSetup obs, double sinceSourceS)
+    private static AfterglowState Afterglow(Outcome o, Burst burst, ObserverSetup obs, double sinceSourceS)
     {
         double z = obs.Redshift;
         double tDays = sinceSourceS * obs.TimeDilation / Day;
-        return WindAfterglow(IsotropicEnergyErg, AStar(o), tDays, z, obs.DistancePc * PhysicalConstants.Pc,
-            JetBreakDays(IsotropicEnergyErg, z));
+        return WindAfterglow(burst.IsotropicEnergyErg, AStar(o), tDays, z, obs.DistancePc * PhysicalConstants.Pc,
+            JetBreakDays(burst.IsotropicEnergyErg, z));
     }
 
     /// <summary>§0.4: A_* = (Ṁ / 1e-5 M☉/yr) / (v_w / 1000 km/s), from the progenitor's wind.</summary>

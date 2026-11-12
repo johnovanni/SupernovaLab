@@ -55,7 +55,10 @@ public sealed class LightCurveModel : ISignalModel
     /// Wheeler 1997); [APPROX] κ_γ = 0.03 cm²/g, the top of the research's 0.025–0.03 range and the value its worked
     /// examples use.
     /// </summary>
-    private const double TrappingC = 0.05, KappaGamma = 0.03;
+    private const double TrappingC = 0.05;
+
+    /// <summary>§4.1's effective gray gamma-ray opacity κ_γ, cm²/g [APPROX]; the line model scales from it (ruling R37).</summary>
+    public const double KappaGamma = 0.03;
 
     /// <summary>
     /// [APPROX] The Arnett opacity for thermonuclear (Type Ia, Iax) ejecta, cm²/g. The research gives κ only for

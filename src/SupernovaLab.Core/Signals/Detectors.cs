@@ -61,11 +61,13 @@ public static class Detectors
         // COSI has not launched (planned 2027): its sensitivity is a mission projection.
         new("cosi", "COSI", Messenger.GammaRays, 3.0e-6, "photons cm⁻² s⁻¹ (narrow line, 2-yr survey)",
             new Source("Tomsick et al. 2023, arXiv:2308.12362 (projected)", "signals §5.4, §11"), ModelDependent),
-        // [APPROX] The research gives no NuSTAR line sensitivity, only that it detects Cas A's ⁴⁴Ti in Ms exposures. The
-        // threshold is set at that flux, about 1.7e-5 photons cm⁻² s⁻¹ (signals §5.3, §11), so it is an upper bound.
-        new("nustar", "NuSTAR", Messenger.GammaRays, 1.7e-5, "photons cm⁻² s⁻¹ (68/78 keV, Ms exposure)",
-            new Source("Grefenstette et al. 2014, Nature 506, 339 (Cas A ⁴⁴Ti detected in Ms exposures) [APPROX]",
-                "signals §5.3, §5.4, §11"), Speculative),
+        // Ruling R38 [APPROX, verify]: the research gives no NuSTAR line sensitivity, only its detections. The threshold
+        // is anchored to them: 2e-6 photons cm⁻² s⁻¹ (3σ, 67.9 keV) for 2.6 Ms, so that both Cas A (≈1.6e-5) and
+        // SN 1987A (≈3.3e-6, about 5σ in about 2.6 Ms; Boggs et al. 2015) are detected at their real ages.
+        new("nustar", "NuSTAR", Messenger.GammaRays, 2e-6, "photons cm⁻² s⁻¹ (68/78 keV, 3σ, 2.6 Ms)",
+            new Source("Anchored to NuSTAR's ⁴⁴Ti detections: Grefenstette et al. 2014, Nature 506, 339 (Cas A); Boggs et al. " +
+                       "2015, Science 348, 670 (SN 1987A, ~5σ in ~2.6 Ms) [APPROX, verify]", "signals §5.3, §5.4, §11"),
+            Speculative),
 
         // ---- X-rays and UV (signals §3, §6.2, §11)
         // [APPROX] signals §6.2 gives 1e-13 to 1e-14 erg cm⁻² s⁻¹ in about 10 ks; the conservative end is used.

@@ -44,6 +44,20 @@ public class GammaLineModelTests
     }
 
     [Fact]
+    public void KleinNishinaOpacity_At847keV_MatchesTheHandValue()
+    {
+        // Ruling R37: κ_KN = σ_KN Y_e / m_u, Y_e = 0.5, m_e c² = 510.99895 keV, r_e = 2.8179403262e-13 cm (CODATA 2018).
+        // x = 846.77 / 510.99895 = 1.657088, ln(1 + 2x) = 1.461906;
+        // σ_KN = 2π r_e² {(1+x)/x² [2(1+x)/(1+2x) − ln(1+2x)/x] + ln(1+2x)/(2x) − (1+3x)/(1+2x)²}
+        //      = 4.98935e-25 cm² × 0.458549 = 2.28786e-25 cm²; κ_KN = 2.28786e-25 × 0.5 / 1.6605e-24 = 0.0688906 cm²/g
+        // (independent Python). The ruling's check: ≈ 0.068. Low energies approach Thomson, 0.5 × 6.6524587e-25 / m_u
+        // = 0.200315 cm²/g; 1157 keV gives 0.0591444.
+        Assert.Equal(0.0688906, GammaLineModel.KleinNishinaOpacity(846.77), 0.0001 * 0.0688906);
+        Assert.Equal(0.200315, GammaLineModel.KleinNishinaOpacity(1e-3), 0.0001 * 0.200315);
+        Assert.Equal(0.0591444, GammaLineModel.KleinNishinaOpacity(1157.0), 0.0001 * 0.0591444);
+    }
+
+    [Fact]
     public void EscapeFraction_IsExpOfMinusT0OverTSquared()
     {
         // §5.2: f_esc = exp(−(T0/t)²). At t = T0: e^-1 = 0.367879; at t = 2 T0: e^-0.25 = 0.778801.
@@ -59,32 +73,36 @@ public class GammaLineModelTests
     {
         // Spec §8 / signals §5.3: Churazov et al. 2014, INTEGRAL days 50–100: F_847 = (2.34 ± 0.74)e-4 photons cm⁻² s⁻¹.
         // Ni pinned at 0.6 M☉; the engine's Ia ejecta 1.38 M☉ and E 1.35e51 erg give T0 = √(0.05 × 0.03 × M² / E)
-        // = 33.4872 d. By hand (independent Python, Simpson with 20,000 intervals): N0 = 1.28339e55 ⁵⁶Ni atoms,
-        // the 847 keV flux averaged over days 50–100 at 3.5 Mpc is 4.02764e-4 (1.72 × the measurement; the model's
-        // escape fraction at day 75 is 0.82 against Churazov's fitted 0.60).
+        // = 33.4872 d. Ruling R37: the 847 keV line escapes with T0_line = T0 √(κ_KN(847 keV) / 0.03) = 33.4872 ×
+        // √(0.0688906 / 0.03) = 50.7456 d. By hand (independent Python, Simpson with 20,000 intervals): N0 = 1.28339e55
+        // ⁵⁶Ni atoms, the 847 keV flux averaged over days 50–100 at 3.5 Mpc is 3.02061e-4 (1.29 × the measurement;
+        // f_esc at day 75 is 0.632675 against Churazov's fitted 0.60).
         var o = PinnedIa(0.6);
         var obs = At(3.5e6);
         double f = Model.AverageFlux(o, obs, "line847", 50 * Day, 100 * Day);
         Assert.InRange(f, 2.34e-4 / 2, 2.34e-4 * 2);
-        Assert.Equal(4.02764e-4, f, 0.002 * 4.02764e-4);
+        Assert.Equal(3.02061e-4, f, 0.002 * 3.02061e-4);
 
-        // The 1238 keV line (I = 0.66): 2.65824e-4 by hand, against the measured (2.78 ± 0.74)e-4.
+        // The 1238 keV line (I = 0.66, κ_KN 0.0571318): 2.17175e-4 by hand, against the measured (2.78 ± 0.74)e-4.
         double f1238 = Model.AverageFlux(o, obs, "line1238", 50 * Day, 100 * Day);
         Assert.InRange(f1238, 2.78e-4 / 2, 2.78e-4 * 2);
-        Assert.Equal(2.65824e-4, f1238, 0.002 * 2.65824e-4);
+        Assert.Equal(2.17175e-4, f1238, 0.002 * 2.17175e-4);
     }
 
     [Fact]
     public void Line847_AtDay75_MatchesTheHandValue()
     {
-        // By hand: N_Co(75 d) = N0 × 111.3/102.5 × (e^(−75/111.3) − e^(−75/8.8)); rate N_Co/τ_Co; f_esc = 0.819256;
-        // 4π (3.5 Mpc)²: F_847 = 4.12731e-4.
+        // By hand: N_Co(75 d) = N0 × 111.3/102.5 × (e^(−75/111.3) − e^(−75/8.8)); rate N_Co/τ_Co; line escape (R37)
+        // f_esc = exp(−(50.7456/75)²) = 0.632675; 4π (3.5 Mpc)²: F_847 = 3.18734e-4.
         double f = Model.Sample(PinnedIa(0.6), At(3.5e6), 75 * Day, "line847");
-        Assert.Equal(4.12731e-4, f, 0.001 * 4.12731e-4);
-        // Line ratios follow the intensities: 812/158 = 0.860/0.988, 1238/847 = 0.66.
+        Assert.Equal(3.18734e-4, f, 0.001 * 3.18734e-4);
+        Assert.Equal(0.632675, GammaLineModel.LineEscapeFraction(33.4872 * Day, 846.77, 75 * Day), 5);
+        // Ratio of the two ⁵⁶Ni lines at day 20: intensities 0.860/0.988 times the escape ratio
+        // exp(−(T0/t)² (κ_KN(812) − κ_KN(158)) / 0.03) = exp(2.80353 × 2.04089): 265.825. The 158 keV line is far more
+        // easily scattered.
         double f158 = Model.Sample(PinnedIa(0.6), At(3.5e6), 20 * Day, "line158");
         double f812 = Model.Sample(PinnedIa(0.6), At(3.5e6), 20 * Day, "line812");
-        Assert.Equal(0.860 / 0.988, f812 / f158, 9);
+        Assert.Equal(265.825, f812 / f158, 0.002 * 265.825);
     }
 
     // ---------------------------------------------------------------- detection
@@ -95,7 +113,7 @@ public class GammaLineModelTests
         // Signals §11: SPI (3e-5 in 10⁶ s) sees an Ia with 0.6 M☉ of Ni to about 5–10 Mpc; COSI sees ⁵⁶Co from an Ia
         // at about 20 Mpc (Tomsick et al. 2023). SPI's 11.6-day pointing ends near the 847 keV peak (day 75); COSI's
         // 100-day survey window ends at day 135, so it spans days 35–135 around the peak. (The model's horizons are
-        // about 13 Mpc for SPI and 23 Mpc for COSI.)
+        // about 11.5 Mpc for SPI and 20.8 Mpc for COSI with the R37 line escape.)
         var o = PinnedIa(0.6);
         double spiT = 75 * Day, cosiT = 135 * Day;
         Assert.Equal(DetectionStatus.Detected, Model.Detect(o, At(5e6), spiT, Detectors.Get("spi")).Status);
@@ -132,8 +150,8 @@ public class GammaLineModelTests
     public void CasALike_Ti44_IsSeenByNuStarAndCosi()
     {
         // A core-collapse outcome with Cas A's NuSTAR ⁴⁴Ti mass pinned (1.25e-4 M☉) seen from 3.4 kpc 340 yr later:
-        // F_68 ≈ 1.56e-5, F_78 ≈ 1.63e-5, F_1157 ≈ 1.68e-5. NuSTAR's limit 1.7e-5 for 1 Ms scaled to the 2.4 Ms window:
-        // 1.7e-5 / √2.4 = 1.0974e-5. COSI's 2-yr survey: 3.0e-6.
+        // F_68 ≈ 1.56e-5, F_78 ≈ 1.62e-5, F_1157 ≈ 1.68e-5. NuSTAR (ruling R38): 2e-6 for its 2.6 Ms window. COSI's 2-yr
+        // survey: 3.0e-6.
         var o = TestOutcomes.Engine.Compute(LabInputs.Default,
             new PresetPins(null, null, null, null, TestSource, Ti44Mass: 1.25e-4));
         Assert.Equal(1.25e-4, o.Ti44Mass!.Value);
@@ -143,6 +161,25 @@ public class GammaLineModelTests
         Assert.Equal(DetectionStatus.Detected, Model.Detect(o, obs, t, Detectors.Get("nustar")).Status);
         Assert.Equal(DetectionStatus.Detected, Model.Detect(o, obs, t, Detectors.Get("cosi")).Status);
         Assert.Equal(1.68e-5, Model.Sample(o, obs, t, "ti44_1157"), 0.01e-5);
+    }
+
+    [Fact]
+    public void Sn1987ALike_Ti44_IsSeenByNuStar()
+    {
+        // Ruling R38: NuSTAR saw SN 1987A's ⁴⁴Ti (Boggs et al. 2015, ~5σ in ~2.6 Ms) about 27 yr after the explosion.
+        // 1.5e-4 M☉ at 51.4 kpc, 27 yr: N0 = 4.08289e51, e^(−27/84.9747) = 0.727736, rate 1.10794e42 s⁻¹,
+        // 4π (51.4 kpc)² = 3.16016e47 → F_78 = 3.39349e-6 before escape. Pinned E 1.1e51, M_ej 14: T0 = 376.356 d;
+        // κ_KN(78 keV) = 0.156431, T0_line = 2.35275 yr, f_esc(27 yr) = 0.992436 → F_78 = 3.36782e-6 (independent
+        // Python), above 2e-6. F_68 (I = 0.930) is similar.
+        var o = TestOutcomes.Engine.Compute(LabInputs.Default,
+            new PresetPins(1.1e51, 14, 0.07, 3e12, TestSource, Ti44Mass: 1.5e-4));
+        var obs = At(51.4e3);
+        double t = 27 * Year;
+        Assert.Equal(3.36782e-6, Model.Sample(o, obs, t, "ti44_78"), 0.002 * 3.36782e-6);
+        var d = Model.Detect(o, obs, t, Detectors.Get("nustar"));
+        Assert.Equal(DetectionStatus.Detected, d.Status);
+        Assert.Contains("30.1 days", d.Reason); // the 2.6 Ms window
+        Assert.Equal(2e-6, Detectors.Get("nustar").Threshold);
     }
 
     [Fact]

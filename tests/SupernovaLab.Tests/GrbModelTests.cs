@@ -80,6 +80,50 @@ public class GrbModelTests
         Assert.Equal(1.82721e-2 / 1e-8, Model.Sample(Collapsar, obs, peak, "detect@bat"), 0.005 * 1.82721e-2 / 1e-8);
     }
 
+    // ---------------------------------------------------------------- pinned energetics (ruling R36)
+
+    private static Outcome Grb980425()
+        => TestOutcomes.Engine.Compute(Collapsar.Inputs, new PresetPins(null, null, null, null,
+            new SupernovaLab.Core.Units.Source("GRB 980425 (test)", "signals §9.4"), GrbEisoErg: 8.5e47, GrbEpKeV: 55,
+            GrbT90S: 23.3));
+
+    [Fact]
+    public void Grb980425Pinned_At38Mpc_IsDetectedByGbm_WithAboutTheObservedPeakFlux()
+    {
+        // Ruling R36 pins (signals §9.4; E_p,i ≈ 55 keV from Amati 2006's table [APPROX]). By hand: the FRED pulse with
+        // T90 = 23.3 s has τ_d = 23.3 / 2.97771 = 7.82480 s and holds (1 + 1/6) τ_d = 9.12893 s × L_peak, so
+        // L_peak = 8.5e47 / 9.12893 = 9.31106e46 erg/s (the observed peak L is 5.5e46; one pulse is peakier than the real
+        // light curve). At 38 Mpc: 9.31106e46 / 1.72777e53 = 5.38908e-7 erg cm⁻² s⁻¹ (1–10⁴ keV), 1.80 × the observed
+        // 3.0e-7 (24–1,820 keV); in that band the Band spectrum (E_p = 55 keV) holds 0.682795 of it: 3.680e-7, 1.23 ×.
+        // GBM, 50–300 keV (independent Python, 200,000-interval Band integral): 1.12275 photons cm⁻² s⁻¹, 1.60393 × 0.7.
+        var o = Grb980425();
+        Assert.True(o.HasGrb);
+        Assert.Equal(8.5e47, o.GrbIsotropicEnergyErg!.Value);
+        Assert.True(o.GrbIsotropicEnergyErg.Published);
+        Assert.Equal(55, o.GrbPeakEnergyKeV!.Value);
+        Assert.Equal(23.3, Model.T90S(o));
+
+        var obs = At38Mpc();
+        double peak = Model.PeakTimeS(o);
+        double flux = Model.Sample(o, obs, peak, "prompt");
+        Assert.InRange(flux, 3.0e-7 / 2, 3.0e-7 * 2);
+        Assert.Equal(5.38908e-7, flux, 0.001 * 5.38908e-7);
+        Assert.Equal(1.60393, Model.Sample(o, obs, peak, "detect@gbm"), 0.005 * 1.60393);
+        var d = Model.Detect(o, obs, peak + 5, Detectors.Get("gbm"));
+        Assert.Equal(DetectionStatus.Detected, d.Status);
+        Assert.Contains("1.12 photons", d.Reason);
+        Assert.Contains("published", d.Reason);
+    }
+
+    [Fact]
+    public void GrbPins_AreIgnoredWithoutAGrb()
+    {
+        var o = TestOutcomes.Engine.Compute(TestOutcomes.Star(16).Inputs, new PresetPins(null, null, null, null,
+            new SupernovaLab.Core.Units.Source("test", "tests"), GrbEisoErg: 8.5e47));
+        Assert.Null(o.GrbIsotropicEnergyErg);
+        Assert.False(o.UsesPublishedValues);
+    }
+
     // ---------------------------------------------------------------- detection
 
     [Fact]
