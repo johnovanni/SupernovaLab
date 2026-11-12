@@ -90,7 +90,7 @@ The same as Universe3D:
   - **Nickel yield**: Calibrated to observations (default) / Theory (outcomes §8.2 step 5).
   - **Dense gas around the star** (a pre-supernova eruption): off by default. On gives a Type IIn (or Ibn/Icn)
     and strong radio and X-ray emission.
-  - **Ejecta opacity** κ: 0.05–0.10 cm²/g, default 0.07 (signals §4.2).
+  - **Ejecta opacity** κ: 0.05–0.10 cm²/g, default 0.07 (signals §4.2). It applies to core-collapse ejecta; Type Ia/Iax use a fixed effective κ = 0.19 [APPROX], calibrated to the observed 17–19 d rise (Hayden et al. 2010), and the slider is disabled for them (ruling R31).
 
 ### 2.2 Observer
 - **Distance**: logarithmic slider from 10 pc to 1 Gpc, with landmark ticks: Betelgeuse (0.2 kpc), Galactic
