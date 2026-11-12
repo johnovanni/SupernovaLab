@@ -84,14 +84,15 @@ public sealed partial class LabViewModel : ObservableObject
 
     /// <summary>
     /// The chosen real supernova. Setting it applies its inputs, observer and pins at once (one <see cref="Changed"/>).
-    /// It returns to null when a star input is edited afterwards (ruling R47e); an observer edit keeps it (R49).
+    /// It returns to null when a star input is edited afterwards (ruling R47e); an observer edit keeps it (R49), and
+    /// choosing the same preset again then restores its published distance, dust and beam (Task 14 review N2).
     /// </summary>
     public Preset? SelectedPreset
     {
         get => _selectedPreset;
         set
         {
-            if (ReferenceEquals(value, _selectedPreset)) return;
+            if (ReferenceEquals(value, _selectedPreset) && (value is null || _observerIsPublished)) return;
             if (value is null)
             {
                 string? dropped = _selectedPreset?.Name;

@@ -6,6 +6,8 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SupernovaLab.App.ViewModels;
+using SupernovaLab.App.Windows;
+using SupernovaLab.Core.Timeline;
 using SupernovaLab.Core.Presets;
 
 namespace SupernovaLab.App.Services;
@@ -16,18 +18,23 @@ public readonly record struct SnapshotSize(int Width, int Height)
     public override string ToString() => $"{Width}x{Height}";
 }
 
-/// <summary>The windows the --snapshot diagnostic can render.</summary>
-public enum SnapshotWindow { Main, Instruments, Details, PresetInfo }
+/// <summary>
+/// The windows the --snapshot diagnostic can render. <see cref="InstrumentTabs"/> is the Instruments grid again with every
+/// panel on each of its other sub-tabs in turn (instruments-tab1.png, -tab2, -tab3).
+/// </summary>
+public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentTabs }
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
 /// [--window main|instruments|details|presetinfo]</c>. To batch captures into one launch, <c>--preset</c>,
 /// <c>--size</c> and <c>--window</c> may be repeated or given comma-separated lists: every requested window is captured
-/// for each preset in turn. Sizes apply to the main window (its outer size, as a user would set it); the other windows
-/// render at their own default size, and again scrolled to the end when they scroll.
+/// for each preset in turn; a preset may carry its own time as "id@seconds". Sizes apply to the main window (its outer size, as a user would set it); the other windows
+/// render at their own default size, and again scrolled to the end when they scroll. <c>--bench &lt;seconds&gt;</c> then
+/// plays the whole timeline once over that many seconds with the Instruments window open, counts rendered frames and
+/// writes the frame rate to bench.log (the redraw-rate check of spec §8, measured in-app: no screen capture).
 /// </summary>
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
-    IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows)
+    IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null)
 {
     /// <summary>The first preset, or null for the lab's defaults.</summary>
     public string? PresetId => PresetIds.Count > 0 ? PresetIds[0] : null;
@@ -45,6 +52,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         double? time = null;
         var sizes = new List<SnapshotSize>();
         var windows = new List<SnapshotWindow>();
+        double? bench = null;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -54,7 +62,12 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
             switch (option)
             {
                 case "--preset":
-                    presets.AddRange(value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                    foreach (string entry in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        if (entry.Contains('@') && SplitPreset(entry).TimeS is null)
+                            throw new ArgumentException($"--preset {entry}: the time after '@' must be a positive number of seconds.");
+                        presets.Add(entry);
+                    }
                     break;
                 case "--time":
                     if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double t) || !(t > 0))
@@ -67,13 +80,29 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                 case "--window":
                     windows.AddRange(value.Split(',').Select(ParseWindow));
                     break;
+                case "--bench":
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double b) || !(b > 0) || b > 600)
+                        throw new ArgumentException($"--bench needs a number of seconds between 0 and 600, not '{value}'.");
+                    bench = b;
+                    break;
                 default:
                     throw new ArgumentException($"Unknown option '{option}'.");
             }
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench);
+    }
+
+    /// <summary>A preset entry, "id" or "id@seconds" (its own time, overriding --time for that preset).</summary>
+    public static (string? Id, double? TimeS) SplitPreset(string? entry)
+    {
+        if (entry is null) return (null, null);
+        int at = entry.IndexOf('@');
+        if (at < 0) return (entry, null);
+        return double.TryParse(entry[(at + 1)..], NumberStyles.Float, CultureInfo.InvariantCulture, out double t) && t > 0
+            ? (entry[..at], t)
+            : (entry[..at], null);
     }
 
     private static SnapshotSize ParseSize(string text)
@@ -92,7 +121,9 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         "instruments" => SnapshotWindow.Instruments,
         "details" => SnapshotWindow.Details,
         "presetinfo" => SnapshotWindow.PresetInfo,
-        _ => throw new ArgumentException($"--window must be main, instruments, details or presetinfo, not '{text}'."),
+        "instrument-tabs" => SnapshotWindow.InstrumentTabs,
+        _ => throw new ArgumentException(
+            $"--window must be main, instruments, instrument-tabs, details or presetinfo, not '{text}'."),
     };
 }
 
@@ -114,13 +145,15 @@ public static class SnapshotRenderer
             PlaceOffScreen(main);
             main.Show();
             var presets = request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
-            foreach (string? id in presets)
+            foreach (string? entry in presets)
             {
+                var (id, own) = SnapshotRequest.SplitPreset(entry);
                 if (id is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
-                if (request.ObserverTimeS is double t) vm.Timeline.ObserverTimeS = t;
+                if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = id is null ? "" : $"-{id}";
                 await Capture(request, main, windows, suffix, log);
             }
+            await RunBench(request, main, vm, windows, log);
         }
         catch (Exception e)
         {
@@ -154,6 +187,16 @@ public static class SnapshotRenderer
             Window? window = Open(kind, windows);
             if (window is null) { log.Add($"{kind}: no window opened"); continue; }
             PlaceOffScreen(window);
+            if (window is InstrumentsWindow instruments)
+            {
+                if (kind == SnapshotWindow.InstrumentTabs) await CaptureTabs(instruments, request, suffix, log);
+                else
+                {
+                    await RedrawPanels(instruments);
+                    log.Add(Save(instruments, Path.Combine(request.OutDirectory, $"instruments{suffix}.png")));
+                }
+                continue;
+            }
             string name = $"{kind.ToString().ToLowerInvariant()}{suffix}";
             var scroller = MainScrollViewer(window);
             scroller?.ScrollToHome();
@@ -167,6 +210,95 @@ public static class SnapshotRenderer
                 scroller.ScrollToHome();
             }
         }
+    }
+
+    /// <summary>Draws every panel now and waits for the plots and their cursors to render.</summary>
+    private static async Task RedrawPanels(InstrumentsWindow window)
+    {
+        window.UpdateLayout();
+        foreach (var view in window.PanelViews) view.Redraw();
+        await NextFrame(window);
+        await NextFrame(window);
+    }
+
+    /// <summary>The grid with every panel on its k-th sub-tab (k = 1, 2, 3; a panel with fewer stays on its last).</summary>
+    private static async Task CaptureTabs(InstrumentsWindow window, SnapshotRequest request, string suffix, List<string> log)
+    {
+        if (window.DataContext is not MainViewModel vm) return;
+        var original = vm.Panels.Select(p => p.SelectedSubTab).ToList();
+        int most = vm.Panels.Max(p => p.SubTabs.Count);
+        for (int k = 1; k < most; k++)
+        {
+            foreach (var p in vm.Panels) p.ShowSubTabForSnapshot(p.SubTabs[Math.Min(k, p.SubTabs.Count - 1)]);
+            await RedrawPanels(window);
+            log.Add(Save(window, Path.Combine(request.OutDirectory, $"instruments-tab{k}{suffix}.png")));
+        }
+        for (int i = 0; i < vm.Panels.Count; i++) vm.Panels[i].ShowSubTabForSnapshot(original[i]);
+
+        // One panel enlarged within the window (spec §5.0: double-click maximizes; Esc restores).
+        window.Maximize(vm.Panels.First(p => p.Messenger == Core.Signals.Messenger.VisibleLight));
+        await RedrawPanels(window);
+        log.Add(Save(window, Path.Combine(request.OutDirectory, $"instruments-maximized{suffix}.png")));
+        window.RestoreGrid();
+    }
+
+    /// <summary>
+    /// Plays the whole timeline once over the requested seconds with the main and Instruments windows open, and counts
+    /// CompositionTarget.Rendering frames (the redraw-rate check; spec §8, target ≥ 30 fps). Writes bench.log.
+    /// </summary>
+    private static async Task RunBench(SnapshotRequest request, Window main, MainViewModel vm, WindowService windows, List<string> log)
+    {
+        if (request.BenchSeconds is not double seconds) return;
+        windows.ShowInstruments();
+        if (windows.Instruments is { } w) PlaceOffScreen(w);
+        main.Width = request.Sizes[0].Width;
+        main.Height = request.Sizes[0].Height;
+        await NextFrame(main);
+
+        // The worst case: the two views that redraw as the time moves (the schematic spectrum and the pulse train) are
+        // shown, beside the other four panels' curves and the strip.
+        vm.Panels.OfType<VisiblePanelViewModel>().Single().ShowSubTabForSnapshot(VisiblePanelViewModel.SpectrumTab);
+        vm.Panels.OfType<RadioPanelViewModel>().Single().ShowSubTabForSnapshot(RadioPanelViewModel.PulsarTab);
+        if (windows.Instruments is InstrumentsWindow iw) await RedrawPanels(iw);
+
+        double decades = Math.Log10(TimeAxis.MaxS / TimeAxis.MinS);
+        vm.Timeline.DecadesPerSecond = decades / seconds;
+        vm.Timeline.ObserverTimeS = TimeAxis.MinS;
+        new PlaybackClock(vm.Timeline).Start();
+        var intervals = new List<double>();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        double last = 0;
+        int frames = 0;
+        void OnRendering(object? s, EventArgs e)
+        {
+            double now = watch.Elapsed.TotalSeconds;
+            if (frames > 0) intervals.Add(now - last);
+            last = now;
+            frames++;
+        }
+        CompositionTarget.Rendering += OnRendering;
+        vm.Timeline.IsPlaying = true;
+        while (vm.Timeline.IsPlaying && watch.Elapsed.TotalSeconds < seconds * 1.5 + 5)
+            await Task.Delay(100);
+        CompositionTarget.Rendering -= OnRendering;
+        double elapsed = watch.Elapsed.TotalSeconds;
+        intervals.Sort();
+        double p95 = intervals.Count > 0 ? intervals[(int)(0.95 * (intervals.Count - 1))] * 1000 : double.NaN;
+        double worst = intervals.Count > 0 ? intervals[^1] * 1000 : double.NaN;
+        var inv = CultureInfo.InvariantCulture;
+        string preset = vm.Lab.SelectedPreset?.Id ?? "default";
+        var lines = new[]
+        {
+            $"SupernovaLab bench {DateTime.Now:O}",
+            $"preset {preset}; main window {main.ActualWidth:0}x{main.ActualHeight:0} and the Instruments window open (off-screen), " +
+            "the visible panel on its schematic spectrum and the radio panel on its pulses; " +
+            $"playing the whole timeline ({decades.ToString("0.0", inv)} decades) at {vm.Timeline.DecadesPerSecond.ToString("0.###", inv)} decades/s",
+            $"frames {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps",
+            $"frame interval p95 {p95.ToString("0.0", inv)} ms, worst {worst.ToString("0.0", inv)} ms",
+            $"reached the end of the timeline: {(vm.Timeline.ObserverTimeS >= TimeAxis.MaxS ? "yes" : "no")}",
+        };
+        File.WriteAllLines(Path.Combine(request.OutDirectory, "bench.log"), lines);
+        log.AddRange(lines);
     }
 
     /// <summary>The window's tallest scroll viewer (its main content), or null.</summary>
@@ -188,7 +320,7 @@ public static class SnapshotRenderer
     {
         switch (kind)
         {
-            case SnapshotWindow.Instruments: windows.ShowInstruments(); return windows.Instruments;
+            case SnapshotWindow.Instruments or SnapshotWindow.InstrumentTabs: windows.ShowInstruments(); return windows.Instruments;
             case SnapshotWindow.Details: windows.ShowOutcomeDetails(); return windows.OutcomeDetails;
             case SnapshotWindow.PresetInfo: windows.ShowPresetInfo(); return windows.PresetInfo;
             default: return null;

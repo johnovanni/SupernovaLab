@@ -35,8 +35,35 @@ public sealed partial class MainViewModel : ObservableObject
 
         _currentOutcome = Recompute();
         _currentObserver = Lab.Observer;
+
+        // The six panels are made once and shared by the strip's tiles and the Instruments window, so closing and
+        // reopening the window loses nothing (spec §5.0).
+        Panels = new InstrumentPanelViewModel[]
+        {
+            new GravitationalWavePanelViewModel(), new NeutrinoPanelViewModel(), new GammaPanelViewModel(),
+            new XrayUvPanelViewModel(), new VisiblePanelViewModel(), new RadioPanelViewModel(),
+        };
+        Tiles = Panels.Select(p => new InstrumentTileViewModel(p, ShowInstrumentsCommand)).ToList();
+        UpdatePanels();
+
         Lab.Changed += OnLabChanged;
+        Timeline.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TimelineViewModel.ObserverTimeS))
+                foreach (var p in Panels) p.OnTimeChanged(Timeline.ObserverTimeS);
+        };
+        // Re-roll changes only the run number (no OutcomeChanged); the panels resample their random events on it.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(RunNumber)) UpdatePanels();
+        };
     }
+
+    /// <summary>The six instrument panels (spec §5.1), in the strip's order: GW, neutrinos, gamma, X-ray/UV, visible, radio.</summary>
+    public IReadOnlyList<InstrumentPanelViewModel> Panels { get; }
+
+    /// <summary>The instrument strip's tiles, one per panel (spec §5.0).</summary>
+    public IReadOnlyList<InstrumentTileViewModel> Tiles { get; }
 
     public LabViewModel Lab { get; }
     public OutcomeViewModel Outcome { get; }
@@ -99,16 +126,32 @@ public sealed partial class MainViewModel : ObservableObject
     private void OnLabChanged(object? sender, LabChangedEventArgs e)
     {
         if (e.AppliedPreset is { } p)
-            StatusMessage = $"{p.Name}: the lab is set to its best match, with its published values pinned.";
+            StatusMessage = p.Pins is null
+                ? $"{p.Name}: the lab is set to its best match, at its published distance and dust."
+                : $"{p.Name}: the lab is set to its best match, with its published values pinned.";
         else if (e.DroppedPresetName is { } name)
             StatusMessage = $"Inputs changed, so {name}'s published values no longer apply: the lab shows its own model.";
         else if (e.ObserverLeftPresetName is { } moved)
-            StatusMessage = $"Observer changed: {moved}'s published explosion values still apply, but this is no longer " +
-                            "the distance and dust it was really seen at.";
+            StatusMessage = ObserverMovedMessage(moved);
+        // A later edit restates where things stand instead of leaving an older message (Task 14 review N2).
+        else
+            StatusMessage = Lab.SelectedPreset is { } p2 && !Lab.IsObserverPublished ? ObserverMovedMessage(p2.Name) : null;
 
         CurrentOutcome = Recompute();
         CurrentObserver = Lab.Observer;
+        UpdatePanels();
         OutcomeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static string ObserverMovedMessage(string presetName)
+        => $"Observer changed: {presetName}'s published explosion values still apply, but this is no longer the distance " +
+           "and dust it was really seen at.";
+
+    /// <summary>Resamples every panel for the current outcome, observer, run and preset facts, at the current time.</summary>
+    private void UpdatePanels()
+    {
+        var facts = Lab.SelectedPreset?.Facts ?? (IReadOnlyList<Core.Presets.ObservedFact>)Array.Empty<Core.Presets.ObservedFact>();
+        foreach (var p in Panels) p.Update(CurrentOutcome, CurrentObserver, RunNumber, facts, Lab.IsObserverPublished);
     }
 
     /// <summary>Computes the outcome and refreshes the summary, map, markers and time texts (never the time itself).</summary>

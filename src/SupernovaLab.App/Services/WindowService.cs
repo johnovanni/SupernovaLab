@@ -25,8 +25,11 @@ public sealed class WindowService : IWindowService
     public Window? OutcomeDetails => _details;
     public Window? PresetInfo => _presetInfo;
 
-    /// <summary>The Instruments window's focus request. Task 15 maximizes that panel; here it is only recorded.</summary>
+    /// <summary>The Instruments window's last focus request: the panel it enlarged, or null for the grid.</summary>
     public Messenger? LastInstrumentsFocus { get; private set; }
+
+    /// <summary>The open Instruments window, typed (null when closed).</summary>
+    public InstrumentsWindow? InstrumentsWindow => _instruments;
 
     public void ShowInstruments(Messenger? focus = null)
     {
@@ -43,6 +46,8 @@ public sealed class WindowService : IWindowService
             w.Closed += (_, _) => _instruments = null;
             return w;
         });
+        // A tile enlarges its own panel; the View menu (no focus) shows all six.
+        _instruments.ShowPanel(focus);
     }
 
     public void ShowOutcomeDetails() => _details = ShowOrActivate(_details, () =>

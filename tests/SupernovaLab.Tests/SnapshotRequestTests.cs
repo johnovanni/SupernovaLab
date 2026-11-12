@@ -68,4 +68,33 @@ public class SnapshotRequestTests
     [InlineData("--snapshot", "out", "--colour", "red")]       // unknown option
     public void BadArguments_Throw(params string[] args)
         => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(args));
+
+    [Fact]
+    public void Bench_AndInstrumentTabs_AreRead()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--window", "instruments,instrument-tabs", "--bench", "12" })!;
+
+        Assert.Equal(new[] { SnapshotWindow.Instruments, SnapshotWindow.InstrumentTabs }, r.Windows);
+        Assert.Equal(12, r.BenchSeconds);
+        Assert.Null(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.BenchSeconds);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    [InlineData("forever")]
+    [InlineData("601")]
+    public void Bench_NeedsAPositiveNumberOfSeconds(string value)
+        => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", value }));
+
+    [Fact]
+    public void APreset_MayCarryItsOwnTime()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1987a,sn1054@2.9e10", "--time", "1e7" })!;
+
+        Assert.Equal(new[] { "sn1987a", "sn1054@2.9e10" }, r.PresetIds);
+        Assert.Equal(("sn1987a", (double?)null), SnapshotRequest.SplitPreset(r.PresetIds[0]));
+        Assert.Equal(("sn1054", (double?)2.9e10), SnapshotRequest.SplitPreset(r.PresetIds[1]));
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1054@soon" }));
+    }
 }

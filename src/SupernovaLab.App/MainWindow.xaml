@@ -27,12 +27,8 @@
 
         <views:TimelineBar DockPanel.Dock="Bottom" DataContext="{Binding Timeline}" Margin="8,0,8,4"/>
 
-        <!-- Reserved for the instrument strip (Task 15 replaces the placeholder). -->
-        <Border x:Name="InstrumentStripHost" DockPanel.Dock="Bottom" Height="64" Margin="8,6,8,6"
-                Style="{StaticResource Placeholder}" ToolTip="{x:Static text:Glossary.InstrumentStrip}">
-            <TextBlock Text="Instrument strip: one tile per messenger (coming next)" Style="{StaticResource Muted}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-        </Border>
+        <!-- The instrument strip (spec §5.0): one tile per messenger; clicking a tile opens its panel. -->
+        <views:InstrumentStrip DockPanel.Dock="Bottom" Height="64" Margin="8,6,2,6"/>
 
         <Grid Margin="8,8,8,0">
             <Grid.ColumnDefinitions>

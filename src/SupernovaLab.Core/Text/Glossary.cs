@@ -302,6 +302,40 @@ public static class Glossary
         "its panel.";
     public const string SceneView = "A simple 3D view of the star, the expanding ejecta and what is left behind.";
 
+    // ---------------------------------------------------------------- instrument panels' views (spec §5.1)
+
+    public const string Strain =
+        "Strain h: the fraction by which a passing gravitational wave stretches and squeezes space, drawn as it would " +
+        "arrive at Earth.";
+    public const string Spectrogram =
+        "How strong the signal is at each frequency over time. Brighter colours mean more power, on a logarithmic scale.";
+    public const string NeutrinoEventRate = "How many neutrinos the selected detector would record each second.";
+    public const string NeutrinoCumulativeEvents =
+        "The running total of neutrinos the selected detector would record since core bounce. The dots are one simulated " +
+        "run of individual events; Re-roll draws another.";
+    public const string NeutrinoLuminosity = "The power carried off by each kind (flavour) of neutrino, in erg per second.";
+    public const string NeutrinoMeanEnergy =
+        "The average energy of the anti-electron neutrinos, in MeV. Higher-energy neutrinos are easier to detect.";
+    public const string NickelCobaltLines =
+        "Gamma-ray lines from radioactive nickel-56 and its daughter cobalt-56, the decays that power the supernova's light. " +
+        "They escape once the ejecta have thinned out.";
+    public const string ShockInWind =
+        "The shock running into the gas the star shed before it died. It glows in radio and X-rays for years to decades.";
+    public const string GrbAfterglow =
+        "The fading glow of a gamma-ray burst's jets as they plough into the surrounding gas, seen in X-rays, light and radio.";
+    public const string NeutronStarCooling =
+        "The newborn neutron star's hot surface, glowing in soft X-rays as it cools over the centuries.";
+    public const string LightCurve =
+        "How the supernova's brightness changes with time, in apparent magnitude: smaller numbers are brighter, and about +6 " +
+        "is the faintest the naked eye sees under a dark sky.";
+    public const string SchematicSpectrum =
+        "A sketch of the supernova's spectrum now: a glowing surface (a blackbody) with the dips and bumps of the lines that " +
+        "identify its type. It is drawn from a line list, not measured.";
+    public const string PulsarPulses =
+        "A pulsar is a spinning neutron star whose radio beams sweep past Earth like a lighthouse's, giving one pulse each turn.";
+    public const string SupernovaRemnant =
+        "The expanding cloud of debris left by the explosion, a supernova remnant, which glows in radio for thousands of years.";
+
     private static readonly Lazy<IReadOnlyDictionary<string, string>> Terms = new(() =>
         typeof(Glossary).GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(f => f.IsLiteral && f.FieldType == typeof(string))

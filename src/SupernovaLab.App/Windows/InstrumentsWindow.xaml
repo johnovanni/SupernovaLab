@@ -1,13 +1,32 @@
 <Window x:Class="SupernovaLab.App.Windows.InstrumentsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:SupernovaLab.App.Views"
         xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core"
         Title="Instruments" Width="1200" Height="760" MinWidth="720" MinHeight="480"
         WindowStartupLocation="CenterOwner" TextOptions.TextFormattingMode="Display"
         Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}" FontSize="13">
-    <!-- DataContext: the shared MainViewModel. An empty shell: Task 15 adds the six panels in a 3×2 grid (spec §5.0, §5.1). -->
-    <Border x:Name="PanelsHost" Margin="10" Style="{StaticResource Placeholder}" ToolTip="{x:Static text:Glossary.Instruments}">
-        <TextBlock Text="The six instrument panels will appear here." Style="{StaticResource Muted}" FontSize="14"
-                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-    </Border>
+    <!-- DataContext: the shared MainViewModel. The six panels in a 3×2 grid (spec §5.0, §5.1). Double-clicking a panel
+         maximizes it within the window; Esc (or another double-click) restores the grid. -->
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" Margin="10,0,10,4" TextWrapping="NoWrap"
+                   TextTrimming="CharacterEllipsis" ToolTip="{x:Static text:Glossary.Instruments}"
+                   Text="Double-click a panel to enlarge it; Esc returns to all six. Drag to pan a plot, scroll to zoom, middle-click to reset."/>
+        <Grid Margin="6,6,6,2">
+            <ItemsControl x:Name="PanelGrid" ItemsSource="{Binding Panels}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Rows="2" Columns="3"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <views:InstrumentPanel Margin="3" PreviewMouseLeftButtonDown="OnPanelMouseDown"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <views:InstrumentPanel x:Name="MaximizedPanel" Margin="3" Visibility="Collapsed"
+                                   PreviewMouseLeftButtonDown="OnPanelMouseDown"/>
+        </Grid>
+    </DockPanel>
 </Window>

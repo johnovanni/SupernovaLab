@@ -18,7 +18,14 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <ComboBox ItemsSource="{Binding Lab.Presets}" SelectedItem="{Binding Lab.SelectedPreset}"
-                          DisplayMemberPath="Name" ToolTip="{x:Static text:Glossary.Preset}"/>
+                          DisplayMemberPath="Name" ToolTip="{x:Static text:Glossary.Preset}">
+                    <!-- Choosing the selected preset again restores its published observer after an observer edit. -->
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                            <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnPresetItemClicked"/>
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
+                </ComboBox>
                 <TextBlock Text="Real supernovae…" Style="{StaticResource Muted}" FontSize="13" Margin="8,0,0,0"
                            VerticalAlignment="Center" IsHitTestVisible="False"
                            Visibility="{Binding Lab.HasPreset, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
