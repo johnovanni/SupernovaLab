@@ -178,7 +178,11 @@ public sealed class RemnantEvolutionModel : ISignalModel
         => o.Fate is Fate.Supernova or Fate.PairInstabilitySupernova
            && o.ExplosionEnergyErg is { Value: > 0 } && o.EjectaMass is { Value: > 0 };
 
-    private static double RadiusCm(Outcome o, double t)
+    /// <summary>
+    /// The blast wave's radius, cm, at source time t (s), from the §7.2 interpolation with n0 = <see cref="AmbientDensity"/>,
+    /// for an outcome the model applies to (<see cref="Applies"/>); the 3D view uses this same radius (Task 16).
+    /// </summary>
+    public static double RadiusCm(Outcome o, double t)
     {
         double m = o.EjectaMass!.Value, e = o.ExplosionEnergyErg!.Value;
         return CharacteristicRadiusPc(m, AmbientDensity) * Pc * ScaledRadius(t / CharacteristicTimeS(e, m, AmbientDensity));

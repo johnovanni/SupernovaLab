@@ -24,7 +24,8 @@ namespace SupernovaLab.App.Controllers;
 /// (and keeps auto-framing); the wheel zooms and freezes the physical scale, so the debris then grow across the view;
 /// Home restores auto-framing. The scene is drawn in units of the framing radius (or the frozen one), so it never
 /// stresses float precision whatever the physical size.</para>
-/// <para>Call <see cref="Dispose"/> when the view unloads: the view model lives as long as the app (Task 15's leak).</para>
+/// <para>Call <see cref="Dispose"/> when the window closes (its Closing event, while the GL control is still loaded):
+/// the view model lives as long as the app (Task 15's leak).</para>
 /// </summary>
 public sealed partial class SceneController : ObservableObject, IDisposable
 {
@@ -73,6 +74,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     /// <summary>Frames drawn so far (for the --bench frame rate).</summary>
     public long FramesDrawn { get; private set; }
+
+    /// <summary>True when <see cref="Dispose"/> deleted the GL objects with the context current (logged by --snapshot).</summary>
+    public bool GlReleased { get; private set; }
 
     /// <summary>True once the GL context and the renderers exist.</summary>
     public bool IsReady => _star is not null;
@@ -169,9 +173,15 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (!_disposed && !IsFailed) _host?.RequestRender();
     }
 
+    /// <summary>A new outcome or observer: a new scene, framed automatically again (review M5: a zoom frozen on one
+    /// outcome's scale could hide the next one).</summary>
     private void OnOutcomeChanged(object? sender, EventArgs e)
     {
         _scene = new ExplosionScene(_vm.CurrentOutcome, _vm.CurrentObserver.TimeDilation);
+        _frozenUnitCm = null;
+        Camera.DistanceMpc = AutoDistance;
+        Camera.Target = default;
+        IsAutoFraming = true;
         Restate();
     }
 
@@ -191,8 +201,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private void UpdateOverlay()
     {
         TimeText = _vm.Timeline.ObserverTimeText;
-        RadiusText = double.IsFinite(_state.FrameRadiusCm) && _state.FrameRadiusCm > 0
-            ? $"{_state.RadiusLabel}: {UnitFormat.Distance(_state.FrameRadiusCm)}"
+        RadiusText = double.IsFinite(_state.RadiusCm) && _state.RadiusCm > 0
+            ? $"{_state.RadiusLabel}: {UnitFormat.Distance(_state.RadiusCm)}"
             : "";
         NotesText = string.Join(Environment.NewLine, _state.Notes);
         UpdateScaleBar();
@@ -249,6 +259,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (unit > 0 && double.IsFinite(unit))
         {
             double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
+            if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
             if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor);
             if (s.ShowEjecta)
                 _ejecta.Render(Camera, viewportPx, pxPerDip, s.EjectaRadiusCm / unit, s.EjectaColor, s.EjectaBrightness);
@@ -278,7 +289,10 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         return bitmap;
     }
 
-    /// <summary>Stops listening to the view model and releases the GL objects (call when the view unloads).</summary>
+    /// <summary>
+    /// Stops listening to the view model and releases the GL objects. Call it while the GL control is still loaded (the
+    /// window's Closing): GLWpfControl releases its context when it unloads, after which the objects cannot be deleted.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -292,7 +306,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             host.ContextReady -= OnContextReady;
             host.Draw -= OnDraw;
             host.FrameFailed -= OnFrameFailed;
-            host.Shutdown(() =>
+            GlReleased = host.Shutdown(() =>
             {
                 _remnant?.Dispose();
                 _jets?.Dispose();

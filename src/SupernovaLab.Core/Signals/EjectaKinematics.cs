@@ -21,7 +21,7 @@ namespace SupernovaLab.Core.Signals;
 /// </summary>
 public static class EjectaKinematics
 {
-    private const double MSun = PhysicalConstants.MSun, Year = PhysicalConstants.Year, Pc = PhysicalConstants.Pc;
+    private const double MSun = PhysicalConstants.MSun, Year = PhysicalConstants.Year;
 
     /// <summary>
     /// [APPROX] The hand-off to the remnant model is a geometric blend over this window: free expansion (or the blast
@@ -34,6 +34,7 @@ public static class EjectaKinematics
 
     private static readonly ShockBreakoutModel Breakout = new();
     private static readonly LightCurveModel LightCurve = new();
+    private static readonly RemnantEvolutionModel Remnant = new();
 
     /// <summary>
     /// v_ej = √(10E / (3M_ej)) in cm/s (signals §0.4: 1e51 erg and 3 M☉ give 7.5e8 cm/s). NaN when the outcome throws
@@ -48,8 +49,9 @@ public static class EjectaKinematics
     /// <item>No ejecta (the star has not died, a white dwarf with no explosion, a failed supernova, the pulses of
     /// pulsational pair instability): the star's radius at every time. NaN if there is no star.</item>
     /// <item>Before the breakout time t_bo (<see cref="ShockBreakoutModel.BreakoutTimeS"/>): the star's radius R*.
-    /// t_bo = 0 for a Type Ia/Iax (no envelope) and, [APPROX], where the breakout is not modeled (inside dense
-    /// circumstellar gas).</item>
+    /// Where the breakout itself happens in dense circumstellar gas and is not modeled, t_bo is when the shock reaches the
+    /// star's surface (<see cref="ShockBreakoutModel.ShockAtSurfaceS"/>, the same Kistler et al. delay); t_bo = 0 for a
+    /// Type Ia/Iax (no envelope).</item>
     /// <item>After it: R_free = R* + v_ej (t − t_bo).</item>
     /// <item>The remnant model's blast wave R_rem = R* + R_LW(t) (signals §7.2; it adds R*, at most ~1e14 cm against
     /// R_LW ≳ 1e17 cm at 10 yr, so that it starts at the star's surface). Before 3 yr the radius is min(R_free, R_rem):
@@ -69,7 +71,7 @@ public static class EjectaKinematics
         if (!(sourceTimeS > tbo)) return r0;
 
         double free = r0 + OuterVelocityCmS(o) * (sourceTimeS - tbo);
-        double remnant = r0 + BlastWaveCm(o, sourceTimeS);
+        double remnant = r0 + RemnantEvolutionModel.RadiusCm(o, sourceTimeS);
         double early = Math.Min(free, remnant);
         if (sourceTimeS <= BlendStartS) return early;
         if (sourceTimeS >= RemnantEvolutionModel.StartS) return remnant;
@@ -81,11 +83,13 @@ public static class EjectaKinematics
     /// <summary>
     /// The temperature (K) of a blackbody sphere with the current radius (<see cref="RadiusCm"/>) that emits the
     /// bolometric luminosity: T = (L / (4π σ R²))^(1/4), never below <see cref="TemperatureFloorK"/>. L is the light
-    /// curve's (signals §4), or during the breakout flash before the light curve starts, the breakout model's (§3).
+    /// curve's (signals §4), or where the light curve has not started (the breakout flash), the breakout model's (§3).
     /// Before breakout, and for a star that does not explode, it is the star's surface temperature. NaN when there is no
     /// star, or no luminosity model at this time (after the light curve ends at 3 yr).
-    /// <para>[APPROX] The outer edge is not the photosphere, which recedes into the ejecta as they thin out, so this
-    /// underestimates the photosphere's temperature after the first weeks.</para>
+    /// <para>[APPROX] The outer edge is not the photosphere, so this is not the photosphere's temperature: early on the
+    /// real photosphere lies outside this uniform-sphere edge (the fastest layers outrun v_ej), which makes this too hot;
+    /// later the photosphere recedes inside the thinning ejecta, which makes it too cold. The 3D view colours the ejecta
+    /// with the light curve's colour temperature instead and uses this only for an outcome with no light curve.</para>
     /// </summary>
     public static double PhotosphereTemperatureK(Outcome o, double sourceTimeS)
     {
@@ -100,29 +104,20 @@ public static class EjectaKinematics
     }
 
     /// <summary>
-    /// When the ejecta leave the star, s after bounce: the breakout time, or 0 for a thermonuclear explosion and where the
-    /// breakout is not modeled. NaN when there are no ejecta.
+    /// When the ejecta leave the star, s after bounce: the breakout time; where the breakout happens in dense gas and is
+    /// not modeled, when the shock reaches the star's surface; 0 for a thermonuclear explosion. NaN when there are no ejecta.
     /// </summary>
     public static double BreakoutTimeS(Outcome o)
     {
         if (!HasEjecta(o)) return double.NaN;
         double tbo = Breakout.BreakoutTimeS(o);
+        if (!double.IsFinite(tbo)) tbo = Breakout.ShockAtSurfaceS(o);
         return double.IsFinite(tbo) ? tbo : 0;
     }
 
-    /// <summary>An explosion that throws out ejecta: a supernova or pair-instability supernova with E and M_ej.</summary>
-    public static bool HasEjecta(Outcome o)
-        => o.Fate is Fate.Supernova or Fate.PairInstabilitySupernova
-           && o.ExplosionEnergyErg is { Value: > 0 } && o.EjectaMass is { Value: > 0 };
-
     /// <summary>
-    /// The remnant model's blast-wave radius, cm (signals §7.2, Leahy &amp; Williams' n = 0 interpolation with
-    /// <see cref="RemnantEvolutionModel.AmbientDensity"/>), from its public formulas.
+    /// An explosion that throws out ejecta (a supernova or pair-instability supernova with E and M_ej): exactly the
+    /// outcomes <see cref="RemnantEvolutionModel"/> applies to, so the radius hand-off always has its blast wave.
     /// </summary>
-    private static double BlastWaveCm(Outcome o, double t)
-    {
-        double m = o.EjectaMass!.Value, e = o.ExplosionEnergyErg!.Value, n0 = RemnantEvolutionModel.AmbientDensity;
-        return RemnantEvolutionModel.CharacteristicRadiusPc(m, n0) * Pc
-               * RemnantEvolutionModel.ScaledRadius(t / RemnantEvolutionModel.CharacteristicTimeS(e, m, n0));
-    }
+    public static bool HasEjecta(Outcome o) => Remnant.Applies(o);
 }

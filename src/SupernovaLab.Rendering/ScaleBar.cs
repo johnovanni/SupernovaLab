@@ -7,21 +7,23 @@ namespace SupernovaLab.Rendering;
 public sealed record ScaleBarChoice(double LengthCm, double LengthPx, string Label);
 
 /// <summary>
-/// The 3D view's scale bar (spec §6): km, AU, light-years or parsecs. The unit is the largest of these of which at least
-/// one fits in the space allowed, and the length is the largest 1, 2 or 5 × 10^k of it that fits, so the bar is between
-/// a fifth of the space and all of it. Kilometres from 1 million up are written "20 million km"; AU and kilometres keep
-/// thousands separators ("20,000 AU"), since no unit in the spec's list falls between them and the next one.
+/// The 3D view's scale bar (spec §6): km, AU, light-years or parsecs, switching where the overlay's radius
+/// (<see cref="UnitFormat.Distance"/>) does: parsecs from 1 pc; light-years from 10,000 AU, fractions allowed ("0.5
+/// light-years", as the overlay gives pc with light-years there); AU from 1 AU; km below. The length is the largest 1, 2
+/// or 5 × 10^k of the unit that fits, so the bar is between a fifth of the space and all of it. Kilometres from 1 million
+/// up are written "20 million km"; AU and km keep thousands separators ("5,000 AU").
 /// </summary>
 public static class ScaleBar
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    private static readonly (double Cm, string Name)[] Units =
+    /// <summary>Each unit (cm), and the space (cm) from which it is used.</summary>
+    private static readonly (double Cm, double FromCm, string Name)[] Units =
     {
-        (PhysicalConstants.Pc, "pc"),
-        (PhysicalConstants.LightYear, "light-year"),
-        (PhysicalConstants.Au, "AU"),
-        (1e5, "km"),
+        (PhysicalConstants.Pc, PhysicalConstants.Pc, "pc"),
+        (PhysicalConstants.LightYear, 1e4 * PhysicalConstants.Au, "light-year"),
+        (PhysicalConstants.Au, PhysicalConstants.Au, "AU"),
+        (1e5, 0, "km"),
     };
 
     /// <summary>The bar for a view at this scale (cm per pixel) with at most this many pixels for it; null for a bad scale.</summary>
@@ -29,11 +31,10 @@ public static class ScaleBar
     {
         if (!(cmPerPx > 0) || double.IsInfinity(cmPerPx) || !(maxPx > 0)) return null;
         double maxCm = cmPerPx * maxPx;
-        foreach (var (unitCm, name) in Units)
+        foreach (var (unitCm, fromCm, name) in Units)
         {
-            double inUnit = maxCm / unitCm;
-            if (inUnit < 1 && name != "km") continue;
-            double nice = Nice(inUnit);
+            if (maxCm < fromCm) continue;
+            double nice = Nice(maxCm / unitCm);
             double cm = nice * unitCm;
             return new ScaleBarChoice(cm, cm / cmPerPx, Label(nice, name));
         }

@@ -187,7 +187,7 @@ public sealed class CsmInteractionModel : ISignalModel
     {
         if (channelId is not ("nuPeakGHz" or "lx" or "fluxX" or "ringLx") && RadioBands.All(b => b.Channel != channelId))
             throw new ArgumentException($"The circumstellar-interaction model has no channel '{channelId}'.", nameof(channelId));
-        if (!AppliesTo(outcome) || DenseCsm(outcome) || !(sourceTimeS >= StartTimeS(outcome) && sourceTimeS <= EndS)) return double.NaN;
+        if (!AppliesTo(outcome) || HasDenseCsm(outcome) || !(sourceTimeS >= StartTimeS(outcome) && sourceTimeS <= EndS)) return double.NaN;
         // Ruling R41: the ring's luminosity is as observed (absorbed once already), so it is returned as it is.
         if (channelId == "ringLx") return outcome.HasEquatorialRing ? RingXrayLuminosityErgS(sourceTimeS) : double.NaN;
 
@@ -211,7 +211,7 @@ public sealed class CsmInteractionModel : ISignalModel
         if (!radio && !xray)
             return new Detection(DetectionStatus.NotModeled,
                 $"{detector.Name} is not used for the shock's radio or X-ray glow here.");
-        if (DenseCsm(outcome))
+        if (HasDenseCsm(outcome))
             return new Detection(DetectionStatus.NotModeled,
                 "The shock runs into dense gas the star threw off shortly before dying. Such collisions make the brightest " +
                 "radio and X-ray supernovae (Type IIn average about 3×10²⁶ erg/s/Hz at radio peak, over ten times a normal " +
@@ -366,10 +366,20 @@ public sealed class CsmInteractionModel : ISignalModel
                && o.ExplosionEnergyErg is { Value: > 0 } && o.EjectaMass is { Value: > 0 };
     }
 
-    /// <summary>Dense circumstellar gas, which applies but is not modeled.</summary>
-    private static bool DenseCsm(Outcome o)
+    /// <summary>
+    /// Dense circumstellar gas, which applies but is not modeled: the lab's dense-gas input, pulsational pair instability's
+    /// shells, or an interacting type (IIn, Ibn, Icn). Public for the 3D view's gas shell (Task 16).
+    /// </summary>
+    public static bool HasDenseCsm(Outcome o)
         => o.Inputs.DenseCsm || o.Fate == Fate.PulsationalPairInstability
            || o.Type is SupernovaType.IIn or SupernovaType.Ibn or SupernovaType.Icn;
+
+    /// <summary>
+    /// The progenitor's wind density parameter A_* = (Ṁ / 1e-5 M☉/yr) / (v_w / 1,000 km/s) (signals §0.4); NaN when there
+    /// is no star or no wind.
+    /// </summary>
+    public static double WindAStar(Outcome o)
+        => o.Star is { } star ? star.MassLossRateMsunPerYr.Value / 1e-5 / (star.WindSpeedKmS.Value / 1000) : double.NaN;
 
     /// <summary>One outcome's shock: R/t (cm/s), the wind's A_*, and whether the ejecta are hydrogen-rich.</summary>
     private readonly record struct Shock(double SpeedCmS, double AStar, bool HydrogenRich)
@@ -386,8 +396,7 @@ public sealed class CsmInteractionModel : ISignalModel
             double refSpeed = (hydrogen ? HydrogenSpeedKmS : StrippedSpeedKmS) * 1e5;
             double refMass = hydrogen ? HydrogenRefMsun : StrippedRefMsun;
             double v = refSpeed * Math.Sqrt(o.ExplosionEnergyErg!.Value / o.EjectaMass!.Value / (RefEnergyErg / refMass));
-            double aStar = star.MassLossRateMsunPerYr.Value / 1e-5 / (star.WindSpeedKmS.Value / 1000);
-            return new Shock(Math.Min(v, MaxSpeedCmS), aStar, hydrogen);
+            return new Shock(Math.Min(v, MaxSpeedCmS), WindAStar(o), hydrogen);
         }
 
         public SsaPeak Peak(double t) => SynchrotronPeak(SpeedCmS * t, MagneticFieldG(AStar, t));

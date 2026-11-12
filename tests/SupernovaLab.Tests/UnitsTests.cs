@@ -46,6 +46,17 @@ public class UnitsTests
         => Assert.Equal("1,000 Mpc (3,260,000,000 light-years)", UnitFormat.Distance(1e9 * 3.0857e18));
 
     [Fact]
+    public void Time_OneDay_IsSingular() => Assert.Equal("1 day", UnitFormat.Time(86400));
+
+    [Fact]
+    public void Time_OneYear_IsSingular()
+        // 3.16e7 s is 365.7 days, which rounds to 366, past the day unit's 365.28-day limit (Year / Day), so it is "1 year" (by hand).
+        => Assert.Equal("1 year", UnitFormat.Time(3.16e7));
+
+    [Fact]
+    public void Time_RoundingUpToOneDay_IsSingular() => Assert.Equal("1 day", UnitFormat.Time(86399.9));
+
+    [Fact]
     public void Distance_StarSized_InKm()
         // A 43 R☉ star: 3e12 cm = 30,000,000 km (by hand), under 1 AU.
         => Assert.Equal("30,000,000 km", UnitFormat.Distance(3e12));

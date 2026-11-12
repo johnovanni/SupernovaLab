@@ -106,4 +106,16 @@ public class SnapshotRequestTests
         Assert.Equal("-sn1987a-t86400", SnapshotRequest.FileSuffix("sn1987a@86400"));
         Assert.Equal("-sn1987a-t0.001", SnapshotRequest.FileSuffix("sn1987a@1e-3"));
     }
+
+    [Fact]
+    public void APreset_MayTurnOnTheDenseGasInput()
+    {
+        // Task 16 fix round 1: no preset has the lab's dense-CSM input, so a snapshot can turn it on per entry.
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn2023ixf@0.001+densecsm,sn1998bw" })!;
+        Assert.Equal(("sn2023ixf", (double?)0.001), SnapshotRequest.SplitPreset(r.PresetIds[0]));
+        Assert.True(SnapshotRequest.WantsDenseCsm(r.PresetIds[0]));
+        Assert.False(SnapshotRequest.WantsDenseCsm(r.PresetIds[1]));
+        Assert.Equal("-sn2023ixf-t0.001-densecsm", SnapshotRequest.FileSuffix(r.PresetIds[0]));
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1054+dense" }));
+    }
 }

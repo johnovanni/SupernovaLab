@@ -23,13 +23,72 @@ public class SceneControllerTests
         public bool ShutDown { get; private set; }
         public bool Animating { get; set; }
         public event Action<string>? ContextReady;
-        public event Action<TimeSpan, Size>? Draw;
+        public event Action<TimeSpan, Size>? Draw { add { } remove { } }
         public event Action<Exception>? FrameFailed;
         public void Start() { if (StartFailure is not null) throw StartFailure; }
         public void RequestRender() => Renders++;
-        public void Shutdown(Action release) => ShutDown = true;
+        public bool Shutdown(Action release) { ShutDown = true; return false; }
         public void Fail(Exception e) => FrameFailed?.Invoke(e);
-        public bool HasListeners => ContextReady is not null || Draw is not null;
+
+        /// <summary>A first frame as GlHost runs it: ContextReady inside the frame's try, a throw becomes FrameFailed.</summary>
+        public void FirstFrame(string glInfo)
+        {
+            try { ContextReady?.Invoke(glInfo); }
+            catch (Exception e) { FrameFailed?.Invoke(e); }
+        }
+    }
+
+    [Theory]
+    [InlineData("4.6.0 NVIDIA 551.86", true)]
+    [InlineData("4.1 Metal - 88", true)]
+    [InlineData("4.10", true)]
+    [InlineData("5.0", true)]
+    [InlineData("4.0.0 - Build 10.18", false)]
+    [InlineData("3.3.0 Mesa 23.0", false)]
+    [InlineData("", false)]
+    [InlineData("OpenGL ES 3.2", false)]
+    public void IsSupported_NeedsOpenGl41(string version, bool supported)
+        => Assert.Equal(supported, SceneController.IsSupported(version));
+
+    [Fact]
+    public void ContextBelow41_NamesTheRequirement_AndTheVersionFound()
+    {
+        var host = new FakeHost();
+        var scene = new SceneController(NewViewModel(), () => host);
+        scene.Start();
+        host.FirstFrame("Mesa | llvmpipe | 3.3 (Core Profile) Mesa 23.0");
+        Assert.True(scene.IsFailed);
+        Assert.Contains("OpenGL 4.1", scene.FailureMessage);
+        Assert.Contains("3.3", scene.FailureMessage);
+        Assert.False(scene.IsReady);
+    }
+
+    [Fact]
+    public void FactoryThatThrows_AtStart_LeavesTheTimelineDrivingTheOverlay()
+    {
+        var vm = NewViewModel();
+        var scene = new SceneController(vm, () => throw new InvalidOperationException("WGL: no 4.1 core context"));
+        scene.Start();
+        Assert.True(scene.IsFailed);
+        scene.Zoom(2);
+        scene.Home();
+        vm.Timeline.ObserverTimeS = 100 * PhysicalConstants.Year;
+        Assert.Contains("100 years", scene.TimeText);
+        scene.Dispose();
+    }
+
+    [Fact]
+    public void NewOutcome_RestoresAutoFraming()
+    {
+        // Review M5: a zoom frozen on one outcome's scale would hide the next one.
+        var vm = NewViewModel();
+        var scene = new SceneController(vm, () => new FakeHost());
+        scene.Start();
+        scene.Zoom(3);
+        Assert.False(scene.IsAutoFraming);
+        vm.Lab.SelectedPreset = PresetCatalog.Get("n6946bh1");
+        Assert.True(scene.IsAutoFraming);
+        Assert.Equal(SceneController.AutoDistance, scene.Camera.DistanceMpc, 12);
     }
 
     private static MainViewModel NewViewModel() => new(TestOutcomes.Engine, new FakeWindowService());

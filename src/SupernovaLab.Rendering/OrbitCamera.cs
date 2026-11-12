@@ -7,7 +7,8 @@ namespace SupernovaLab.Rendering;
 /// eye (see <see cref="Split"/>), so precision holds far from the origin.
 /// <para>Copied from Universe3D (spec §7) with the namespace changed and its own vector type replaced by OpenTK's
 /// <see cref="Vector3d"/>. Universe3D measures in Mpc; here the distances are in the 3D view's scene units (the
-/// framing radius is 1), so the "Mpc" names read "scene units".</para>
+/// framing radius is 1), so the "Mpc" names read "scene units". Panning and fly-to, which this view does not use,
+/// are removed.</para>
 /// </summary>
 public sealed class OrbitCamera
 {
@@ -19,14 +20,6 @@ public sealed class OrbitCamera
 
     private double _pitchDeg;
     private double _distanceMpc = 10;
-
-    private Flight? _flight;
-
-    private sealed record Flight(Vector3d FromTarget, double FromDistance, Vector3d ToTarget, double ToDistance,
-                                 double Seconds)
-    {
-        public double Elapsed { get; set; }
-    }
 
     public Vector3d Target { get; set; }
 
@@ -46,12 +39,9 @@ public sealed class OrbitCamera
 
     public double FieldOfViewDeg { get; set; } = 45;
 
-    public bool IsFlying => _flight != null;
-
     /// <summary>Positive notches move closer: the distance is divided by 1.15 per notch.</summary>
     public void Zoom(int notches)
     {
-        _flight = null;
         DistanceMpc /= Math.Pow(ZoomPerNotch, notches);
     }
 
@@ -59,47 +49,6 @@ public sealed class OrbitCamera
     {
         YawDeg = NormalizeDeg(YawDeg - dxPx * DegreesPerPixel);
         PitchDeg += dyPx * DegreesPerPixel;
-    }
-
-    /// <summary>Moves the target so the scene follows the mouse at the target's depth.</summary>
-    public void Pan(double dxPx, double dyPx, double viewportHeightPx)
-    {
-        if (viewportHeightPx <= 0) return;
-        _flight = null;
-        double mpcPerPx = 2 * DistanceMpc * Math.Tan(FovRad / 2) / viewportHeightPx;
-        var (right, up) = ScreenAxes();
-        Target = Target - right * (dxPx * mpcPerPx) + up * (dyPx * mpcPerPx);
-    }
-
-    public void FlyTo(Vector3d target, double distanceMpc, double seconds = 0.8)
-    {
-        double to = Math.Clamp(distanceMpc, MinDistanceMpc, MaxDistanceMpc);
-        if (seconds <= 0)
-        {
-            _flight = null;
-            Target = target;
-            DistanceMpc = to;
-            return;
-        }
-        _flight = new Flight(Target, DistanceMpc, target, to, seconds);
-    }
-
-    /// <summary>Advances a fly-to, eased with smoothstep; distance is interpolated geometrically.</summary>
-    public void Update(double dtSeconds)
-    {
-        if (_flight is not { } f) return;
-        f.Elapsed += dtSeconds;
-        if (f.Elapsed >= f.Seconds - 1e-9)
-        {
-            Target = f.ToTarget;
-            DistanceMpc = f.ToDistance;
-            _flight = null;
-            return;
-        }
-        double t = f.Elapsed / f.Seconds;
-        double s = t * t * (3 - 2 * t);
-        Target = f.FromTarget + (f.ToTarget - f.FromTarget) * s;
-        DistanceMpc = Math.Exp(Math.Log(f.FromDistance) + (Math.Log(f.ToDistance) - Math.Log(f.FromDistance)) * s);
     }
 
     /// <summary>Unit vector from the target toward the eye.</summary>

@@ -7,7 +7,7 @@ using OpenTK.Mathematics;
 namespace SupernovaLab.Rendering;
 
 /// <summary>A linked GL program built from shader sources embedded under <c>Shaders/</c>. Copied from Universe3D (spec §7),
-/// with the namespace changed and its GlMath helper folded in.</summary>
+/// with the namespace changed, its GlMath helper folded in and the setters and stage this app does not use removed.</summary>
 public sealed class ShaderProgram : IDisposable
 {
     private readonly Dictionary<string, int> _uniforms = new();
@@ -78,24 +78,13 @@ public sealed class ShaderProgram : IDisposable
 
     public void Set(string name, float v) => GL.Uniform1(Location(name), v);
     public void Set(string name, int v) => GL.Uniform1(Location(name), v);
-    public void Set(string name, uint v) => GL.Uniform1(Location(name), v);
-    public void Set(string name, Vector2 v) => GL.Uniform2(Location(name), v);
     public void Set(string name, Vector3 v) => GL.Uniform3(Location(name), v);
-    public void Set(string name, Vector4 v) => GL.Uniform4(Location(name), v);
 
     public void Set(string name, Matrix4 m) => GL.UniformMatrix4(Location(name), false, ref m);
 
-    public void Set(string name, Vector3[] values)
-    {
-        var flat = new float[values.Length * 3];
-        for (int i = 0; i < values.Length; i++)
-            (flat[3 * i], flat[3 * i + 1], flat[3 * i + 2]) = (values[i].X, values[i].Y, values[i].Z);
-        GL.Uniform3(Location(name), values.Length, flat);
-    }
-
     /// <summary>
     /// Sets the shared camera uniforms: <c>u_eyeHigh</c>/<c>u_eyeLow</c> (relative-to-eye split of the eye),
-    /// <c>u_viewProj</c> (rotation-only view times projection), <c>u_focalPx</c> and <c>u_viewport</c>.
+    /// <c>u_viewProj</c> (rotation-only view times projection).
     /// </summary>
     public void SetCamera(OrbitCamera cam, Size viewportPx)
     {
@@ -104,8 +93,6 @@ public sealed class ShaderProgram : IDisposable
         Set("u_eyeLow", eyeLow);
         double aspect = viewportPx.Height > 0 ? viewportPx.Width / viewportPx.Height : 1;
         Set("u_viewProj", ToMatrix4(cam.View * cam.Projection(aspect)));
-        Set("u_focalPx", (float)(viewportPx.Height / (2 * Math.Tan(cam.FieldOfViewDeg * Math.PI / 360))));
-        Set("u_viewport", new Vector2((float)viewportPx.Width, (float)viewportPx.Height));
     }
 
     /// <summary>Double-to-single conversion for matrices sent to the GPU (Universe3D's GlMath).</summary>
@@ -118,7 +105,6 @@ public sealed class ShaderProgram : IDisposable
     private static ShaderType TypeOf(string fileName) => Path.GetExtension(fileName) switch
     {
         ".vert" => ShaderType.VertexShader,
-        ".geom" => ShaderType.GeometryShader,
         ".frag" => ShaderType.FragmentShader,
         _ => throw new ArgumentException($"Unknown shader stage for '{fileName}'.", nameof(fileName)),
     };

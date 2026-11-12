@@ -506,6 +506,15 @@ public sealed class GrbModel : ISignalModel
 
     // ---------------------------------------------------------------- the afterglow
 
+    /// <summary>
+    /// Ruling R39: a preset's pinned burst below <see cref="LowLuminosityEnergyErg"/>, such as GRB 980425. Its outflow was
+    /// only mildly relativistic, so the model draws its prompt burst but no afterglow. False when there is no GRB.
+    /// </summary>
+    public bool IsLowLuminosity(Outcome o) => Applies(o) && IsLowLuminosity(Burst.Of(o));
+
+    /// <summary>True when a preset pins the burst's energetics (ruling R36); the classical 5° jet is then not assumed.</summary>
+    public bool IsPinned(Outcome o) => Applies(o) && Burst.Of(o).Pinned;
+
     private static bool IsLowLuminosity(Burst burst) => burst.Pinned && burst.IsotropicEnergyErg < LowLuminosityEnergyErg;
 
     /// <summary>

@@ -9,7 +9,7 @@ namespace SupernovaLab.App;
 /// <summary>
 /// The lab window (spec §5.0). Its code-behind only wires the 3D view: it makes the <see cref="SceneController"/> once
 /// the window is loaded with its <see cref="MainViewModel"/>, passes it the mouse and the Home key, and disposes it when
-/// the window goes away, so the long-lived view model does not keep it alive.
+/// the window closes, so the long-lived view model does not keep it alive.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -24,9 +24,17 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Loaded += OnLoaded;
-        Unloaded += (_, _) => DisposeScene();
+        // GLWpfControl releases its GL context in its own Unloaded handler, which runs before any handler of ours on
+        // the window's Unloaded or Closed. Closing comes first, while the control is still loaded and its context alive,
+        // so the scene's GL objects are deleted there with the context current (Closed is a no-op fallback).
+        Closing += (_, _) => DisposeScene();
         Closed += (_, _) => DisposeScene();
     }
+
+    private GlHost? _glHost;
+
+    /// <summary>Whether the GL control had its context right after Start (--snapshot logs it; see GlHost).</summary>
+    public bool? GlContextExistsAfterStart => _glHost?.ContextExistsAfterStart;
 
     /// <summary>The 3D view's controller, once the window has loaded.</summary>
     public SceneController? Scene { get; private set; }
@@ -34,7 +42,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (Scene is not null || DataContext is not MainViewModel vm) return;
-        Scene = new SceneController(vm, () => new GlHost(GlControl));
+        Scene = new SceneController(vm, () => _glHost = new GlHost(GlControl));
         SceneHost.DataContext = Scene;
         Scene.SetViewSize(new Size(SceneGrid.ActualWidth, SceneGrid.ActualHeight));
         SceneGrid.SizeChanged += OnSceneSizeChanged;

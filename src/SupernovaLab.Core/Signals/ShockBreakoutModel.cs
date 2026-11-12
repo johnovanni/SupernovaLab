@@ -209,6 +209,22 @@ public sealed class ShockBreakoutModel : ISignalModel
     public double BreakoutTimeS(Outcome o) => Breakout.Of(o)?.DelayS ?? double.NaN;
 
     /// <summary>
+    /// When the shock reaches the star's own surface, s after bounce (source time): Kistler et al.'s delay (§3.1), as for
+    /// <see cref="BreakoutTimeS"/>, but also where the breakout itself happens in dense circumstellar gas and is not
+    /// modeled (the shock must cross the star first). NaN when the model does not apply (no exploding envelope).
+    /// </summary>
+    public double ShockAtSurfaceS(Outcome o) => AppliesTo(o) ? SurfaceDelayS(o) : double.NaN;
+
+    /// <summary>Kistler et al.'s delay for an outcome the model applies to, with the envelope's polytrope.</summary>
+    private static double SurfaceDelayS(Outcome o)
+    {
+        var star = o.Star!;
+        double r = star.RadiusCm.Value;
+        double n = IsHydrogenRich(o) && r / RSun >= ConvectiveMinRadiusRsun ? 1.5 : 3;
+        return KistlerDelayS(n, o.ExplosionEnergyErg!.Value, o.EjectaMass!.Value, r / RSun, o.Remnant.Mass?.Value ?? 0);
+    }
+
+    /// <summary>
     /// Kistler, Haxton &amp; Yüksel 2013 Eq. 5 (signals §3.1): the delay (s) from bounce to breakout for a polytrope of
     /// index n = 1.5 (red supergiant) or 3 (blue supergiant, Wolf-Rayet). E in erg, masses in M☉, R in R☉.
     /// </summary>
@@ -336,8 +352,7 @@ public sealed class ShockBreakoutModel : ISignalModel
             bool hRich = IsHydrogenRich(o);
             double n = hRich && r / RSun >= ConvectiveMinRadiusRsun ? 1.5 : 3;
             double kappa = hRich ? KappaHydrogen : KappaHeliumOrHeavier;
-            double remnant = o.Remnant.Mass?.Value ?? 0;
-            double delay = KistlerDelayS(n, e, m, r / RSun, remnant);
+            double delay = SurfaceDelayS(o);
 
             var flash = FlashOf(n, e, m, r, kappa, out double flashS, out double beta);
             double e51 = e / 1e51;

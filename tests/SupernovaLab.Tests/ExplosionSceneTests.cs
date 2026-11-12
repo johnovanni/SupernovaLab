@@ -1,4 +1,6 @@
 using SupernovaLab.Core.Outcomes;
+using SupernovaLab.Core.Presets;
+using SupernovaLab.Core.Progenitors;
 using SupernovaLab.Core.Signals;
 using SupernovaLab.Core.Units;
 using SupernovaLab.Rendering;
@@ -111,6 +113,110 @@ public class ExplosionSceneTests
         Assert.Equal(SceneMarker.Pulsar, late.Marker);
         Assert.Equal(new PulsarModel().Sample(o, Core.Observer.ObserverSetup.Default, 100 * Year, "periodS"), late.PulsarPeriodS);
         Assert.Contains(late.Notes, n => n.Contains("slowed down", StringComparison.Ordinal));
+        // Review I2: the period is the lab's model's, not a measurement.
+        Assert.Contains(late.Notes, n => n.Contains("the lab's model period", StringComparison.Ordinal));
+        Assert.DoesNotContain(late.Notes, n => n.Contains("real period", StringComparison.Ordinal));
+    }
+
+    // ---------------------------------------------------------------- fix round 1
+
+    private static Outcome DenseCsm()
+        => TestOutcomes.Engine.Compute(LabInputs.Default with { DenseCsm = true });
+
+    [Fact]
+    public void GasAroundTheStar_IsShownForDenseCsm_BeforeTheExplosion_AndFramed()
+    {
+        // Review I1 (spec §6): a translucent shell for significant gas around the star, out to the [APPROX] 1e15 cm.
+        var s = new ExplosionScene(DenseCsm()).At(1e-3);
+        Assert.True(s.ShowStar);
+        Assert.True(s.ShowGas);
+        Assert.Equal(ExplosionScene.GasRadiusCm, s.GasRadiusCm);
+        Assert.Equal(ExplosionScene.GasRadiusCm, s.FrameRadiusCm);
+        Assert.Equal(s.StarRadiusCm, s.RadiusCm);
+        Assert.Contains(s.Notes, n => n.StartsWith("Gas around the star (schematic", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GasAroundTheStar_IsShownForAWindTenTimesDenserThanARedSupergiants()
+    {
+        // A_* = (Ṁ / 1e-5 M☉/yr) / (v_w / 1,000 km/s): 1e-4 M☉/yr at 10 km/s is A_* = 1,000, at or above the [APPROX]
+        // threshold of 100; the lab's ordinary red-supergiant wind, 1e-6 M☉/yr at 10 km/s, is A_* = 10 (signals §0.4).
+        var plain = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 3, 0.07, 3e13);
+        Assert.False(new ExplosionScene(TestOutcomes.WithWind(plain, 1e-6, 10)).At(1e-3).ShowGas);
+        Assert.True(new ExplosionScene(TestOutcomes.WithWind(plain, 1e-4, 10)).At(1e-3).ShowGas);
+        // 9.9e-6 M☉/yr at 10 km/s is A_* = 99, just below the threshold.
+        Assert.False(new ExplosionScene(TestOutcomes.WithWind(plain, 9.9e-6, 10)).At(1e-3).ShowGas);
+        Assert.Equal(100, ExplosionScene.DenseWindAStar);
+    }
+
+    [Fact]
+    public void GasAroundTheStar_IsHiddenOnceTheEjectaPassIt()
+    {
+        var o = DenseCsm();
+        double passed = 0;
+        for (double t = 1; t < 1e9; t *= 1.1)
+            if (EjectaKinematics.RadiusCm(o, t) >= ExplosionScene.GasRadiusCm) { passed = t; break; }
+        Assert.True(passed > 0);
+        var scene = new ExplosionScene(o);
+        Assert.True(scene.At(passed / 2).ShowGas);
+        Assert.False(scene.At(passed * 1.2).ShowGas);
+    }
+
+    [Fact]
+    public void OrdinaryStar_HasNoGasShell() => Assert.False(new ExplosionScene(Exploding()).At(1e-3).ShowGas);
+
+    [Fact]
+    public void EjectaRadius_IsLabelledAsTheUniformSphereEdge()
+    {
+        // Review I4: the stated radius is the spec's uniform-density edge; the spectrum's line speeds are faster.
+        var s = new ExplosionScene(Exploding()).At(Day);
+        Assert.Equal("Ejecta radius", s.RadiusLabel);
+        Assert.Contains(s.Notes, n => n.Contains("uniform ball", StringComparison.Ordinal) && n.Contains("spectrum", StringComparison.Ordinal));
+        Assert.DoesNotContain(new ExplosionScene(Exploding()).At(100 * Year).Notes, n => n.Contains("uniform ball", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LowLuminosityBurst_JetsOnlyDuringTheModeledBurst_NoAngleStated()
+    {
+        // Review I3: SN 1998bw's pinned low-luminosity burst. The GRB model draws its prompt burst only (ruling R39).
+        var preset = PresetCatalog.Get("sn1998bw");
+        var o = TestOutcomes.Engine.Compute(preset.Inputs, preset.Pins);
+        var grb = new GrbModel();
+        Assert.True(grb.IsLowLuminosity(o));
+        var scene = new ExplosionScene(o);
+        var during = scene.At(grb.OnsetS(o) + 1);
+        Assert.True(during.ShowJets);
+        Assert.Contains(during.Notes, n => n.Contains("jet geometry schematic", StringComparison.Ordinal));
+        Assert.DoesNotContain(during.Notes, n => n.Contains("°", StringComparison.Ordinal));
+        var after = scene.At(Day);
+        Assert.False(after.ShowJets);
+        Assert.Contains(after.Notes, n => n.Contains("no longer drawn", StringComparison.Ordinal));
+        Assert.False(scene.At(grb.PromptEndS(o) * 1.01).ShowJets);
+    }
+
+    [Fact]
+    public void ClassicalBurst_JetsWhileTheGrbModelIsValid()
+    {
+        var o = TestOutcomes.Collapsar();
+        var grb = new GrbModel();
+        Assert.False(grb.IsLowLuminosity(o));
+        var (start, end) = grb.ValidRange(o);
+        var scene = new ExplosionScene(o);
+        Assert.False(scene.At(start * 0.99).ShowJets);
+        Assert.True(scene.At(end * 0.999).ShowJets);
+        Assert.False(scene.At(end * 1.001).ShowJets);
+        Assert.Contains(scene.At(Day).Notes, n => n.Contains("5° half-angle", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FallbackBlackHole_BeforeItForms_IsLabelled()
+    {
+        // Review M7: the only unlabelled marker. The neutron star collapses to the black hole at t_BH.
+        var o = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 3, 0.07, 3e10, TestOutcomes.BlackHole(5, 1e4));
+        var s = new ExplosionScene(o).At(5e3);
+        Assert.True(s.ShowEjecta);
+        Assert.Equal(SceneMarker.NeutronStar, s.Marker);
+        Assert.Contains(s.Notes, n => n.Contains("black hole", StringComparison.Ordinal));
     }
 
     [Fact]

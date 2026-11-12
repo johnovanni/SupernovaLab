@@ -290,4 +290,15 @@ public class PresetValidationTests
         Assert.Contains("mixing", line);
         Assert.Contains("unabsorbed", PresetCatalog.Get("sn2008d").Facts.Single().Description);
     }
+
+    [Fact]
+    public void Sn1987a_DisclosesThatThe3DViewDrawsAPulsarNoOneHasSeen()
+    {
+        // Task 16 review I2 (ruling R47b): the lab sweeps pulsar beams from 10 yr; no pulsar has been detected in SN 1987A,
+        // though JWST found indirect evidence of a neutron star in 2024 (presets.md §1, Fransson et al. 2024).
+        string summary = PresetCatalog.Get("sn1987a").Summary;
+        Assert.Contains("no pulsar has been seen", summary);
+        Assert.Contains("JWST", summary);
+        Assert.Contains("10 years", summary);
+    }
 }

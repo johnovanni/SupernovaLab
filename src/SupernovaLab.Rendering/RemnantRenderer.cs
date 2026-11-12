@@ -5,7 +5,8 @@ using OpenTK.Mathematics;
 namespace SupernovaLab.Rendering;
 
 /// <summary>
-/// The remnant marker at the centre (spec §6): a small bright point for a neutron star, with two sweeping beam cones
+/// The remnant marker at the centre (spec §6): a small bright point, with a dark outline so it shows against bright
+/// debris, for a neutron star, with two sweeping beam cones
 /// when it is a pulsar; a black disk with a thin bright ring for a black hole; a small white point for a white dwarf.
 /// Sizes are fixed on screen (no remnant is resolvable at these scales). The beams turn about the rotation axis (scene z)
 /// with the magnetic axis tilted 45° from it [schematic], at the phase the caller gives (the real period is slowed
@@ -14,7 +15,7 @@ namespace SupernovaLab.Rendering;
 public sealed class RemnantRenderer : IDisposable
 {
     /// <summary>Marker sizes in device-independent pixels.</summary>
-    private const float NeutronStarDip = 9, WhiteDwarfDip = 7, BlackHoleDip = 22;
+    private const float NeutronStarDip = 13, WhiteDwarfDip = 10, BlackHoleDip = 22;
 
     /// <summary>[schematic] The beams' tilt from the rotation axis, half-opening angle and length (scene units).</summary>
     private const double BeamTiltRad = Math.PI / 4, BeamHalfAngleRad = 10 * Math.PI / 180, BeamLength = 0.9;

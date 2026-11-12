@@ -51,6 +51,22 @@ public class EjectaKinematicsTests
     }
 
     [Fact]
+    public void DenseCsm_StarKeepsItsRadiusUntilTheShockReachesItsSurface()
+    {
+        // The breakout inside dense gas is not modeled, but the shock must still cross the star first: Kistler et al.'s
+        // delay to the star's surface (signals §3.1), not 0.
+        var o = TestOutcomes.Engine.Compute(Core.Progenitors.LabInputs.Default with { DenseCsm = true });
+        Assert.True(double.IsNaN(Breakout.BreakoutTimeS(o)));
+        double surface = Breakout.ShockAtSurfaceS(o);
+        Assert.True(surface > 3600, $"surface arrival {surface} s");
+        Assert.Equal(surface, EjectaKinematics.BreakoutTimeS(o));
+        Assert.Equal(o.Star!.RadiusCm.Value, EjectaKinematics.RadiusCm(o, 0.5 * surface));
+        // Same delay as the modeled breakout of the same star without the dense gas.
+        var plain = TestOutcomes.Engine.Compute(Core.Progenitors.LabInputs.Default);
+        Assert.Equal(Breakout.BreakoutTimeS(plain), surface, surface * 1e-9);
+    }
+
+    [Fact]
     public void RadiusAtOneYear_IsVelocityTimesTime()
     {
         // v·t = 7.5e8 cm/s × 3.156e7 s = 2.367e16 cm (signals §0.4's velocity; by hand).

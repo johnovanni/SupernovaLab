@@ -65,6 +65,8 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                 case "--preset":
                     foreach (string entry in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     {
+                        if (entry.Contains('+') && !entry.EndsWith(DenseCsmFlag, StringComparison.Ordinal))
+                            throw new ArgumentException($"--preset {entry}: the only option after '+' is '{DenseCsmFlag[1..]}'.");
                         if (entry.Contains('@') && SplitPreset(entry).TimeS is null)
                             throw new ArgumentException($"--preset {entry}: the time after '@' must be a positive number of seconds.");
                         presets.Add(entry);
@@ -99,6 +101,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     public static (string? Id, double? TimeS) SplitPreset(string? entry)
     {
         if (entry is null) return (null, null);
+        if (WantsDenseCsm(entry)) entry = entry[..^DenseCsmFlag.Length];
         int at = entry.IndexOf('@');
         if (at < 0) return (entry, null);
         return double.TryParse(entry[(at + 1)..], NumberStyles.Float, CultureInfo.InvariantCulture, out double t) && t > 0
@@ -114,8 +117,18 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     {
         var (id, own) = SplitPreset(entry);
         if (id is null) return "";
-        return own is double t ? $"-{id}-t{t.ToString("0.###", CultureInfo.InvariantCulture)}" : $"-{id}";
+        string suffix = own is double t ? $"-{id}-t{t.ToString("0.###", CultureInfo.InvariantCulture)}" : $"-{id}";
+        return WantsDenseCsm(entry) ? suffix + "-densecsm" : suffix;
     }
+
+    /// <summary>A preset entry's suffix that turns on the lab's dense-gas input after the preset is applied.</summary>
+    public const string DenseCsmFlag = "+densecsm";
+
+    /// <summary>
+    /// True for an entry ending in <see cref="DenseCsmFlag"/>, e.g. "sn2023ixf@0.001+densecsm": no preset sets the lab's
+    /// dense-gas input, so a snapshot of the 3D view's gas shell turns it on (an input edit, so the preset's pins drop).
+    /// </summary>
+    public static bool WantsDenseCsm(string? entry) => entry?.EndsWith(DenseCsmFlag, StringComparison.Ordinal) == true;
 
     private static SnapshotSize ParseSize(string text)
     {
@@ -162,6 +175,7 @@ public static class SnapshotRenderer
             {
                 var (id, own) = SnapshotRequest.SplitPreset(entry);
                 if (id is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
+                if (SnapshotRequest.WantsDenseCsm(entry)) vm.Lab.DenseCsm = true;
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = SnapshotRequest.FileSuffix(entry);
                 await Capture(request, main, windows, suffix, log);
@@ -175,8 +189,29 @@ public static class SnapshotRenderer
         }
         finally
         {
+            LogSceneRelease(main, log);
             File.WriteAllLines(Path.Combine(request.OutDirectory, "snapshot.log"), log);
             Application.Current.Shutdown(exitCode);
+        }
+    }
+
+    /// <summary>
+    /// Closes the main window (as a user would) and logs whether its 3D view deleted its GL objects with the context current,
+    /// and whether the GL control had created its context synchronously in Start (review ⚠️ items).
+    /// </summary>
+    private static void LogSceneRelease(Window main, List<string> log)
+    {
+        if (main is not MainWindow mw || mw.Scene is not { } scene) return;
+        bool? atStart = mw.GlContextExistsAfterStart;
+        try
+        {
+            main.Close();
+            log.Add($"3D view: GL context existed right after Start: {(atStart?.ToString() ?? "no host")}; on closing, " +
+                    (scene.GlReleased ? "its GL objects were deleted with the context current" : "its GL objects were NOT released"));
+        }
+        catch (Exception e)
+        {
+            log.Add($"3D view: closing the main window failed: {e.Message}");
         }
     }
 

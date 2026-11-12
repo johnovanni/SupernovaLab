@@ -28,19 +28,24 @@ public static class UnitFormat
 
     /// <summary>
     /// Chooses the unit after rounding: the first unit whose 3-figure value is below its upper bound.
-    /// A value that rounds up to the bound is shown as 1 of the next unit (e.g. 59.96 s is "1 min").
+    /// A value that rounds up to the bound is shown as 1 of the next unit (e.g. 59.96 s is "1 min"). Exactly 1 of a
+    /// spelled-out plural unit is singular: "1 day", "1 year".
     /// </summary>
     private static string Scaled(double v, Unit[] units)
     {
         for (int i = 0; i < units.Length; i++)
         {
             double r = Round3(v / units[i].Div);
-            if (i == units.Length - 1 || r < units[i].Upper) return $"{Sig(r)} {units[i].Name}";
+            if (i == units.Length - 1 || r < units[i].Upper) return Count(Sig(r), units[i].Name);
             if (Round3(v / units[i + 1].Div) < 1 && r >= units[i].Upper)
-                return $"1 {units[i + 1].Name}";
+                return Count("1", units[i + 1].Name);
         }
         throw new InvalidOperationException();
     }
+
+    /// <summary>"1 day", "2 days": drops a plural unit's final "s" for exactly one (abbreviations such as "s" stay).</summary>
+    private static string Count(string number, string unit)
+        => number == "1" && unit is "days" or "years" or "light-years" ? $"1 {unit[..^1]}" : $"{number} {unit}";
 
     public static string Mass(double msun) => $"{Sig(msun)} M☉";
 
@@ -107,7 +112,7 @@ public static class UnitFormat
         if (Round3(au) < 1) return $"{Sig(cm / 1e5)} km";
         if (Round3(au) < MaxAu) return $"{Sig(cm / PhysicalConstants.Au)} AU";
         double ly = cm / PhysicalConstants.LightYear;
-        return $"{Scaled(cm / PhysicalConstants.Pc, DistanceUnits)} ({Sig(ly)} light-years)";
+        return $"{Scaled(cm / PhysicalConstants.Pc, DistanceUnits)} ({Count(Sig(ly), "light-years")})";
     }
 
     private static string Superscript(int n)
