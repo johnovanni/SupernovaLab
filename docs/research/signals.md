@@ -431,6 +431,9 @@ R5 = R/5 R_sun [SOURCE]:
 - Red supergiant: T_bo of about 25 eV M15^-0.3 R500^-0.65 E51^0.5.
 - Wolf-Rayet: T_bo of about 2 keV M15^-1.7 R5^-1.5 E51^1.8 (strongly non-thermal regime).
 - Breakout energy, red supergiants and blue supergiants: about 3e46 erg in the soft X-ray flash.
+  [CONTROLLER NOTE 2026-11-11: inconsistent with the Waxman & Katz E_BO formula below, which gives about 2e48 erg
+  bolometric for a 500 R_sun, 15 M_sun, 1e51 erg red supergiant (L_peak about 1.6e45 erg/s over R/c). The 3e46 figure is
+  at most the soft-X-ray-band part of a ~25-40 eV flash. The app follows the formula.]
 
 **Energy and velocity** (Waxman & Katz 2017) [SOURCE]:
 
@@ -446,7 +449,8 @@ R5 = R/5 R_sun [SOURCE]:
   About half of E_BO is radiated per log-frequency around the peak.
 
 **Peak luminosity for the app** [DERIVED]: L_peak is about E_BO / max(R/c, t_bo).
-Example: red supergiant E_BO of about 3e46 erg over about 1,200 s gives about 2.5e43 erg/s.
+Example: red supergiant E_BO of about 3e46 erg over about 1,200 s gives about 2.5e43 erg/s. [CONTROLLER NOTE: with the
+formula's E_BO of about 2e48 erg this example becomes about 1.6e45 erg/s; see the note above.]
 Nakar & Sari's planar-phase luminosity at 1 h is about 1e44 erg/s for a red supergiant, so allow
 1e43-1e45 erg/s for red supergiants. [APPROX range]
 
