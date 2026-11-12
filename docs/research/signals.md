@@ -1059,6 +1059,11 @@ p of about 2.5; t_d in days; E52 = E_iso/1e52 erg; n_1 in cm^-3; D28 = D/1e28 cm
   luminosity [DERIVED, H0 = 65, d_L(z=1) = 1.67e28 cm]:
   L_nu,max is about 3.5e32 (eps_B/0.1)^(1/2) E52^(1/2) A_* t_d^(-1/2) erg/s/Hz.
   Then F_nu,max = L_nu,max / (4 pi D^2).
+  [CONTROLLER NOTE 2026-11-11 (ruling R39): the 3.5e32 value is the z = 1 rest-frame luminosity per z = 1 observer
+  day; read literally at z ~ 0 it is 1.41x too bright. The app uses Chevalier & Li 2000 Eq. 11 directly:
+  F_nu,max = 7.0e32 x^(3/2) (eps_B/0.1)^(1/2) E52^(1/2) A_* t_d,obs^(-1/2) / (4 pi d_L^2) (with the paper's
+  redshift factors). These wind formulas assume nu_A < nu_m and a relativistic blast wave; outside that range
+  (e.g. low-luminosity GRB 980425) the app does not draw a GRB afterglow.]
 - Above nu_m (slow cooling): F proportional to t^(-(3p-1)/4).
 - For collapsars, use the wind solution with A_* from the inputs (Mdot, v_w). This is the physically
   consistent choice. Typical eps_e of about 0.1 and eps_B of about 0.01-0.1 [APPROX].
