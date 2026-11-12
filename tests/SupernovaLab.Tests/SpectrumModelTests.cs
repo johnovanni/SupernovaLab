@@ -125,7 +125,7 @@ public class SpectrumModelTests
     }
 
     /// <summary>The width (km/s) of the O I 7774 absorption trough at half its depth, measured in the spectrum itself on the
-    /// flux divided by the blackbody continuum.</summary>
+    /// flux divided by the blackbody continuum, from the line-free continuum at 6000 A and converted at 7774 A.</summary>
     private static double OxygenTroughWidthKmS(Spectrum s)
     {
         const double H = 6.62607015e-27, C = 2.99792458e10, K = 1.380649e-16;
@@ -133,33 +133,98 @@ public class SpectrumModelTests
         var wl = s.WavelengthsAngstrom;
         double[] r = new double[wl.Length];
         for (int i = 0; i < wl.Length; i++) r[i] = s.RelativeFlux[i] / Bb(wl[i]);
-        int lo = Array.FindIndex(wl, w => w >= 6900), hi = Array.FindIndex(wl, w => w >= 7774);
+        int lo = Array.FindIndex(wl, w => w >= 6000), hi = Array.FindIndex(wl, w => w >= 7774);
         int min = lo;
         for (int i = lo; i <= hi; i++) if (r[i] < r[min]) min = i;
-        double baseline = Math.Max(r[lo], r[hi]);
-        double half = r[min] + 0.5 * (baseline - r[min]);
+        double half = r[min] + 0.5 * (r[lo] - r[min]);
         int a = min, b = min;
         while (a > 0 && r[a] < half) a--;
         while (b < wl.Length - 1 && r[b] < half) b++;
-        return CKmS * (wl[b] - wl[a]) / wl[min];
+        return CKmS * (wl[b] - wl[a]) / 7774;
     }
 
     [Fact]
     public void IcBL_lines_are_wider_than_15000_kms()
     {
-        // Hand values: Fe II 16,700 km/s without a GRB, 19,200 with one (Modjaz 2016); FWHM = v/c x lambda = 0.0557 x 7774
-        // = 433 A for O I without a GRB. The width is measured from the spectrum (the O I trough at half its depth over the
-        // blackbody continuum).
+        // Hand values: tracer Fe II 16,700 km/s without a GRB, 19,200 with one (Modjaz 2016); O I is 13,600/11,000 = 1.2364
+        // times faster (Liu 2016), so its FWHM = v/c x lambda gives 20,647 km/s (no GRB) and 23,737 km/s (GRB), i.e. 0.0689 x
+        // 7774 = 535 A and 0.0792 x 7774 = 616 A. The width is measured from the spectrum (the O I trough at half its depth
+        // over the blackbody continuum); one grid step is 10 A = 386 km/s at 7774 A, and the red-side emission adds a little.
         foreach (bool grb in new[] { false, true })
         {
             var o = Custom(SupernovaType.IcBL, grb);
             var s = Model.At(o, Curves.PeakTimeS(o));
-            Assert.Equal(grb ? 19200 : 16700, s.PhotosphereVelocityKmS, 6);
-            Assert.True(OxygenTroughWidthKmS(s) > 15000, $"width {OxygenTroughWidthKmS(s)}");
+            double tracer = grb ? 19200 : 16700;
+            Assert.Equal(tracer, s.PhotosphereVelocityKmS, 6);
+            double width = OxygenTroughWidthKmS(s);
+            Assert.True(width > 15000, $"width {width}");
+            Assert.InRange(width, tracer * 13600.0 / 11000 - 1500, tracer * 13600.0 / 11000 + 1500);
         }
-        // A plain Ic (11,000 km/s) is narrower.
+        // A plain Ic (O I at 13,600 km/s) is narrower than 15,000 km/s.
         var ic = Custom(SupernovaType.Ic);
-        Assert.True(OxygenTroughWidthKmS(Model.At(ic, Curves.PeakTimeS(ic))) < 15000);
+        double icWidth = OxygenTroughWidthKmS(Model.At(ic, Curves.PeakTimeS(ic)));
+        Assert.InRange(icWidth, 13600 - 1500, 13600 + 1500);
+    }
+
+    [Fact]
+    public void IIP_Fe_II_5169_moves_at_about_half_the_Halpha_velocity()
+    {
+        // Hand values (R45b): Fe II/Halpha = 3,700/7,300 = 0.5068 (signals 10.2). At 30 d (after the day-15 hold),
+        // Halpha v = 7300 x 0.6^-0.46 = 7300 x exp(0.46 x 0.510826 = 0.234980) = 7300 x 1.26480 = 9,233 km/s,
+        // so Fe II v = 4,680 km/s and its minimum is 5169 x (1 - 0.015611) = 5088.3 A (grid step 10 A = 580 km/s).
+        var s = Model.At(RedSupergiant16, 30 * Day);
+        double vFe = CKmS * (5169 - MinimumIn(s, 4950, 5169)) / 5169;
+        double vHa = CKmS * (6563 - MinimumIn(s, 6150, 6563)) / 6563;
+        Assert.InRange(vFe, 4680 - 700, 4680 + 700);
+        Assert.InRange(vFe / vHa, 0.4, 0.62);
+    }
+
+    [Fact]
+    public void IIb_Halpha_moves_faster_than_the_Fe_II_tracer()
+    {
+        // Hand value (R45b): Halpha 12,500 over Fe II 8,400 (Liu 2016) = 1.488 at V maximum.
+        var o = Custom(SupernovaType.IIb);
+        var s = Model.At(o, Curves.PeakTimeS(o));
+        double vHa = CKmS * (6563 - MinimumIn(s, 6000, 6563)) / 6563;
+        Assert.InRange(vHa / s.PhotosphereVelocityKmS, 1.25, 1.75);
+    }
+
+    [Fact]
+    public void Iax_is_slow_5000_kms()
+    {
+        // R45c: outcomes 3.2 gives 2,000-8,000 km/s; the middle, 5,000 km/s, held to the V peak.
+        var o = Custom(SupernovaType.Iax);
+        Assert.Equal(5000, Model.At(o, Curves.PeakTimeS(o)).PhotosphereVelocityKmS, 6);
+        Assert.Equal(5000, Model.At(o, 2 * Day).PhotosphereVelocityKmS, 6);
+    }
+
+    [Fact]
+    public void Hydrogen_velocity_is_held_before_day_15()
+    {
+        // R45d: the V peak of the 16 M-sun II-P is at 8.5 d, earlier than 15 d, so the hold is at 15 d:
+        // 7300 x (15/50)^-0.46 = 7300 x exp(0.46 x 1.203973 = 0.553828) = 7300 x 1.73990 = 12,701 km/s.
+        Assert.True(Curves.PeakTimeS(RedSupergiant16) < 15 * Day);
+        double v5 = Model.At(RedSupergiant16, 5 * Day).PhotosphereVelocityKmS;
+        double v15 = Model.At(RedSupergiant16, 15 * Day).PhotosphereVelocityKmS;
+        Assert.Equal(v15, v5, 9);
+        Assert.InRange(v15, 12699, 12703);
+    }
+
+    [Fact]
+    public void Interacting_types_keep_narrow_Halpha_in_the_nebular_phase()
+    {
+        var iin = TestOutcomes.Custom(SupernovaType.IIn, 1e51, 10, 0.05, 500 * PhysicalConstants.RSun);
+        var early = Model.At(iin, 30 * Day);
+        Assert.True(Has(early, "Hα"));
+        var neb = Model.At(iin, 300 * Day);
+        Assert.True(neb.Nebular);
+        Assert.True(Has(neb, "Hα"));
+        Assert.True(Has(neb, "[O I] 6300"));
+        // Narrow: 1,000 km/s FWHM = 22 A at 6563 A, so the line is a one-to-three point spike.
+        int i0 = Array.FindIndex(neb.WavelengthsAngstrom, w => w >= 6500), n = 0;
+        for (int i = i0; i < neb.WavelengthsAngstrom.Length && neb.WavelengthsAngstrom[i] <= 6630; i++)
+            if (neb.RelativeFlux[i] > 0.5 * neb.RelativeFlux.Max()) n++;
+        Assert.InRange(n, 1, 4);
     }
 
     [Fact]
