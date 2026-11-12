@@ -94,7 +94,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                     break;
                 case "--bench":
                     if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double b) || !(b > 0) || b > 600)
-                        throw new ArgumentException($"--bench needs a number of seconds between 0 and 600, not '{value}'.");
+                        throw new ArgumentException($"--bench needs a number of seconds above 0 and at most 600, not '{value}'.");
                     bench = b;
                     break;
                 case "--sweep":

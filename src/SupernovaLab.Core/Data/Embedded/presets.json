@@ -92,7 +92,7 @@
     {
       "id": "sn2011fe",
       "name": "SN 2011fe",
-      "summary": "A Type Ia supernova in the Pinwheel Galaxy (M101), caught within a day of exploding. The closest Type Ia in decades and the best observed: a white dwarf that blew itself apart completely.",
+      "summary": "A Type Ia supernova in the Pinwheel Galaxy (M101), caught within a day of exploding. The closest Type Ia in decades and the best observed: a white dwarf that blew itself apart completely. The lab does not detect its gamma-ray lines with INTEGRAL/SPI, as observed (Isern et al. 2013), but only just: its best signal is 0.76 of SPI's threshold for lines this broad, and the margin depends on the assumed instrument resolution and the 0.53 solar masses of nickel.",
       "whatWasSeen": "It was found about 11 hours after first light and peaked near magnitude 10 some 18 days later. Pre-explosion images showed the star was far too faint to be a giant, and no radio or X-rays were seen, so its surroundings were clean.",
       "inputs": { "kind": "WhiteDwarf", "iaChannel": "NearChandrasekhar" },
       "observer": {

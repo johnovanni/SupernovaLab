@@ -61,6 +61,10 @@ public class UnitsTests
         Assert.Equal("1 year", UnitFormat.Time(3.156e7));
         Assert.Equal("364 days", UnitFormat.Time(364 * 86400));   // clearly under a year stays in days
         Assert.Equal("1.5 years", UnitFormat.Time(1.5 * 3.156e7));
+        // Both sides of the boundary: 0.9995 yr (3.15442e7 s, 365.1 days) is the lowest value that rounds to 1 yr.
+        Assert.Equal("365 days", UnitFormat.Time(365 * 86400));
+        Assert.Equal("365 days", UnitFormat.Time(3.1543e7));      // just below the 0.05% band
+        Assert.Equal("1 year", UnitFormat.Time(365.1 * 86400));
     }
 
     [Fact]

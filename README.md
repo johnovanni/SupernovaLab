@@ -135,8 +135,8 @@ away. Each is also stated in that preset's own summary in the app.
 
 | Preset | What was observed | What the lab gives | Why |
 |---|---|---|---|
-| SN 2008D | An X-ray flash of about 400 s and 2e46 erg. Swift caught it. | A bare-star flash of about 2 s and about 100x less energy. The lab's Swift does not catch it. | The real breakout was most likely through a dense wind. The lab does not model that. |
-| SN 1998bw | Radio of 45 mJy at 4.8 GHz on day 12 (Kulkarni et al. 1998) | About 3.7 mJy at 5 GHz on day 12, 9 to 12 times too faint | The lab's shock formulas are Newtonian, capped at the speed of light. The real shock was mildly relativistic. |
+| SN 2008D | An X-ray flash of about 400 s and 2e46 erg. Swift caught it. | A bare-star flash of about 2 s and about 200x less energy. The lab's Swift does not catch it. | The real breakout was most likely through a dense wind. The lab does not model that. |
+| SN 1998bw | Radio of 45 mJy at 4.8 GHz on day 12 (Kulkarni et al. 1998) | About 3.7 mJy at 5 GHz on day 12, 9 to 12 times too faint | The lab's shock formulas are Newtonian, capped at the speed of light. The real shock was mildly relativistic (E ~1e50 erg in ejecta at Γβ ~1 to 2; Kulkarni et al. 1998, Nature 395, 663, via `docs/research/presets.md`). |
 | SN 1998bw | Peak V 13.62 near day 16 (Galama et al. 1998) | V 14.1 on day 23 | A one-zone (Arnett) light curve over all 10.9 solar masses of ejecta. |
 | SN 1987A | Radio peaked near 130 mJy at 843 MHz within days, and faded below detection after September 1987 | About 350 mJy at 1.4 GHz near day 18, still about 90 mJy on day 100 | The research has no wind for a blue supergiant. The lab uses a Wolf-Rayet-like wind and a red-supergiant shock speed. No single paper giving both was verified, so nothing is pinned. |
 | SN 1987A | 847 keV line of 1.0e-3 ph/cm²/s over days 159-250 (SMM) | 4.6e-5 over the same days, about 22 times too faint | The lab has no outward mixing of the cobalt. |
@@ -204,7 +204,7 @@ SupernovaLab.App.exe --snapshot <out-dir> [--preset <list>] [--time <seconds>] [
 - `--sweep <steps>`: loads every preset in the catalog and steps the timeline through that many log-spaced times from
   1 ms to 1,000 years (2 to 2000), with the 3D view and Instruments window running. Any exception, panel "Model error"
   or 3D-view failure goes to `sweep.log`. The exit code is 1 if there was a problem.
-- `--bench <seconds>`: plays the whole timeline once over that many seconds (1 to 600) with the main and Instruments
+- `--bench <seconds>`: plays the whole timeline once over that many seconds (above 0, at most 600) with the main and Instruments
   windows open. It writes the frame rate, the 3D view's frame rate and the GPU name to `bench.log`.
 
 An example, one launch for several checks:
