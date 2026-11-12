@@ -21,7 +21,7 @@
       },
       "facts": [
         { "messenger": "Neutrinos", "channelId": "cumulative@kamiokande-ii", "sourceTimeS": 12.439, "value": 11, "unit": "events",
-          "description": "Kamiokande-II recorded 11 neutrino events above its threshold within 12.4 s.",
+          "description": "Kamiokande-II recorded 11 neutrino events above its threshold within 12.4 s (Hirata et al. 1987; some later tables list 12).",
           "source": { "citation": "Hirata et al. 1987, PRL 58, 1490 (event table as compiled by Vissani 2015, J. Phys. G 42, 013001)", "researchRef": "signals §1.5; presets §1" } },
         { "messenger": "Neutrinos", "channelId": "cumulative@imb", "sourceTimeS": 5.582, "value": 8, "unit": "events",
           "description": "IMB recorded 8 neutrino events within 5.6 s.",
@@ -175,7 +175,7 @@
     {
       "id": "sn2008d",
       "name": "SN 2008D",
-      "summary": "A Type Ib supernova in NGC 2770, the first caught at the moment its shock broke out of the star, by chance, while Swift was watching another supernova in the same galaxy. The lab misses that flash: its breakout from the bare star lasts about 2 seconds and carries about 100 times less energy than the observed one, which most likely broke out through a dense stellar wind the lab does not model, so the lab's Swift does not catch it.",
+      "summary": "A Type Ib supernova in NGC 2770, the first caught at the moment its shock broke out of the star, by chance, while Swift was watching another supernova in the same galaxy. The lab misses that flash: its breakout from the bare star lasts about 2 seconds and carries about 200 times less energy than the observed one, which most likely broke out through a dense stellar wind the lab does not model, so the lab's Swift does not catch it.",
       "whatWasSeen": "Swift's X-ray telescope recorded a flash lasting about 400 seconds, peaking near 6 × 10⁴³ erg/s. The supernova itself brightened over the following weeks; its spectrum looked broad-lined at first and then showed helium.",
       "inputs": { "kind": "MassiveStar", "initialMass": 30, "stripping": "Full" },
       "observer": {
@@ -184,7 +184,7 @@
       },
       "pins": {
         "explosionEnergyErg": 6e51, "ejectaMass": 7, "nickelMass": 0.09, "radiusCm": 7e10,
-        "source": { "citation": "Mazzali et al. 2008, Science 321, 1185 (E ≈ 6 × 10⁵¹ erg, M_ej ≈ 7 M☉, ⁵⁶Ni ≈ 0.09 M☉); progenitor radius R* ≈ 7 × 10¹⁰ cm from the early UV/optical cooling-envelope emission (Soderberg et al. 2008, Nature 453, 469; the X-rays give a breakout radius of at least 7 × 10¹¹ cm, in the wind). Two papers' values, accepted under ruling R47c", "researchRef": "presets §8; presets-verification" }
+        "source": { "citation": "Mazzali et al. 2008, Science 321, 1185 (E ≈ 6 × 10⁵¹ erg, M_ej ≈ 7 M☉, ⁵⁶Ni ≈ 0.09 M☉); progenitor radius R* ≈ 7 × 10¹⁰ cm from the early UV/optical cooling-envelope emission (Soderberg et al. 2008, Nature 453, 469; the X-rays give a breakout radius of at least 7 × 10¹¹ cm, in the wind). Two papers' values combined, because no single paper gives all four", "researchRef": "presets §8; presets-verification" }
       },
       "facts": [
         { "messenger": "XRaysUv", "channelId": "flux@swift-xrt", "sourceTimeS": null, "value": 6.9e-10, "unit": "erg cm⁻² s⁻¹",
