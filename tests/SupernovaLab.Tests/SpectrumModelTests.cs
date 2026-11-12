@@ -28,19 +28,26 @@ public class SpectrumModelTests
     }
 
     [Fact]
-    public void IIP_at_20_days_has_Halpha_absorption_blueshifted_6000_to_10000_kms()
+    public void IIP_at_20_days_has_Halpha_absorption_blueshifted_6000_to_12000_kms()
     {
-        // Hand check. H-alpha is anchored at 7,300 km/s at day 50 (signals 10.2, Gutierrez 2017) and held before day 50
-        // (class remarks), so v = 7,300 km/s at day 20. (Extrapolating the t^-0.46 law back would give
-        // 7300 x (20/50)^-0.46 = 7300 x exp(0.46 x 0.91629) = 11,130 km/s, outside 6,000-10,000.)
-        // Absorption minimum: 6563 x (1 - 7300/299792.458) = 6563 x (1 - 0.024350) = 6403.2 A. The accepted 6,000-10,000 km/s
-        // band is 6563 x (1 - 0.033356) = 6344.1 A to 6563 x (1 - 0.020014) = 6431.7 A.
+        // Hand check (ruling R43). H-alpha is anchored at 7,300 km/s at day 50 (signals 10.2, Gutierrez 2017) and follows
+        // v = 7300 (t/50 d)^-0.46 back to the V peak, so at day 20 (after the peak):
+        // 7300 x (20/50)^-0.46 = 7300 x exp(0.46 x 0.916291 = 0.421494) = 7300 x 1.52424 = 11,127 km/s (about 11,130).
+        // Absorption minimum: 6563 x (1 - 11127/299792.458) = 6563 x (1 - 0.037118) = 6319.4 A. The accepted 6,000-12,000
+        // km/s band is 6563 x (1 - 0.040028) = 6300.3 A to 6563 x (1 - 0.020014) = 6431.7 A.
         var s = Model.At(RedSupergiant16, 20 * Day);
         Assert.True(Has(s, "Hα"));
         double lambdaMin = MinimumIn(s, 6150, 6563);
         double v = CKmS * (6563 - lambdaMin) / 6563;
-        Assert.InRange(v, 6000, 10000);
-        Assert.Equal(7300, s.PhotosphereVelocityKmS, 6);
+        Assert.InRange(v, 6000, 12000);
+        Assert.Equal(11127, s.PhotosphereVelocityKmS, 0);
+    }
+
+    [Fact]
+    public void Halpha_velocity_falls_with_time()
+    {
+        Assert.True(Model.At(RedSupergiant16, 20 * Day).PhotosphereVelocityKmS
+                    > Model.At(RedSupergiant16, 50 * Day).PhotosphereVelocityKmS);
     }
 
     [Fact]

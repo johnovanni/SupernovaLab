@@ -25,7 +25,8 @@ public sealed record Spectrum(double[] WavelengthsAngstrom, double[] RelativeFlu
 /// §10.2 value at V maximum: Ia Si II 6355 10,600 km/s (Wang et al. 2009); IIb Fe II 8,400; Ib Fe II 9,100; Ic Fe II
 /// 11,000 (Liu et al. 2016); Ic-BL Fe II 16,700 without a GRB and 19,200 with one (Modjaz et al. 2016; the value that
 /// excludes SN 2010bh, whose peculiar 23,800 ± 9,500 average is poorly constrained). Hydrogen-rich types (II-P, II-L, II-n,
-/// SLSN-II) anchor Hα at the day-50 median 7,300 km/s (Gutiérrez et al. 2017), t_ref = 50 d. <b>Before t_ref the velocity
+/// SLSN-II) anchor Hα at the day-50 median 7,300 km/s (Gutiérrez et al. 2017) and follow the law back to the V peak
+/// (ruling R43), holding the value there only before the peak. <b>For the other types, before t_ref the velocity
 /// is held at v_ref</b> [APPROX]: the research gives the law only after maximum, and extrapolated back it diverges
 /// (an Ia at 1 d would reach 40,000 km/s). Holding underestimates early velocities.</item>
 /// <item><b>Line width</b> (§10.2): FWHM = (v / c) λ. For an Ic-BL the lines are therefore wider than 15,000 km/s at
@@ -261,7 +262,15 @@ public sealed class SpectrumModel
     private static double VelocityKmS(Outcome o, Family f, LightCurveModel lc, double sourceTimeS)
     {
         double vRef = ReferenceVelocityKmS(o, f);
-        double tRef = UsesHydrogenClock(o, f) ? HydrogenReferenceDays * Day : lc.PeakTimeS(o);
+        if (UsesHydrogenClock(o, f))
+        {
+            // Ruling R43: the law v = 7,300 (t / 50 d)^-0.46 holds back to the light curve's V peak and the velocity is
+            // held at its value there only before the peak.
+            double peak = lc.PeakTimeS(o);
+            double t = double.IsFinite(peak) ? Math.Max(sourceTimeS, peak) : sourceTimeS;
+            return vRef * Math.Max(VelocityFloor, Math.Pow(t / (HydrogenReferenceDays * Day), -VelocityExponent));
+        }
+        double tRef = lc.PeakTimeS(o);
         if (!(sourceTimeS > tRef)) return vRef;
         return vRef * Math.Max(VelocityFloor, Math.Pow(sourceTimeS / tRef, -VelocityExponent));
     }
