@@ -338,4 +338,26 @@ public class MainViewModelFixTests
         Assert.NotSame(before, vm.Timeline.MarkerLabels);
         Assert.Contains(vm.Timeline.MarkerLabels, l => l.Marker.GlossaryKey == "GammaRayBurst");
     }
+
+    // ---------------------------------------------------------------- Task 15 review M6: keyboard re-select
+
+    /// <summary>
+    /// Task 15 M6: choosing the selected preset again from the keyboard (Enter on its highlighted item) restores its
+    /// published observer after an observer edit, exactly as a mouse click does; other keys do nothing.
+    /// </summary>
+    [Fact]
+    public void ReselectingThePresetWithEnter_RestoresItsObserver()
+    {
+        Assert.True(SupernovaLab.App.Views.LabPanel.IsChooseKey(System.Windows.Input.Key.Enter));
+        Assert.False(SupernovaLab.App.Views.LabPanel.IsChooseKey(System.Windows.Input.Key.Down));
+        Assert.False(SupernovaLab.App.Views.LabPanel.IsChooseKey(System.Windows.Input.Key.Escape));
+
+        var vm = WithPreset("sn2011fe");
+        var preset = vm.Lab.SelectedPreset!;
+        vm.Lab.DistancePc = 1e9;
+        Assert.True(SupernovaLab.App.Views.LabPanel.RestoreIfSelected(preset, vm));
+        Assert.Equal(preset.Observer.DistancePc, vm.Lab.DistancePc);
+        // Another preset's item is not a re-selection.
+        Assert.False(SupernovaLab.App.Views.LabPanel.RestoreIfSelected(PresetCatalog.Get("sn2014j"), vm));
+    }
 }

@@ -45,6 +45,7 @@ public static class PanelPlot
             axis.Label.Bold = false;
         }
         plot.Axes.Right.IsVisible = false;
+        plot.Axes.Right.MinimumSize = 0;
         plot.Axes.Top.IsVisible = false;
     }
 
@@ -309,9 +310,15 @@ public static class PanelPlot
     private static void DrawSpectrum(Plot plot, InstrumentPanelViewModel vm, List<LegendEntry> legend)
     {
         plot.Axes.Bottom.Label.Text = "Rest-frame wavelength (Å)";
+        // The last tick label is centred on 10,000 Å near the right edge, where the hidden right axis leaves it no room:
+        // show that axis bare (no ticks, no frame) with a minimum width, as padding.
+        plot.Axes.Right.IsVisible = true;
+        plot.Axes.Right.TickGenerator = new ScottPlot.TickGenerators.NumericManual();
+        plot.Axes.Right.FrameLineStyle.Width = 0;
+        plot.Axes.Right.MinimumSize = RightPaddingPx;
         if (vm.Spectrum is not { } s)
         {
-            plot.Axes.SetLimits(3000, 10000, 0, 1.1);
+            plot.Axes.SetLimits(2850, 10150, 0, 1.1);
             return;
         }
         var line = plot.Add.ScatterLine(s.WavelengthsAngstrom, s.RelativeFlux);
@@ -339,6 +346,9 @@ public static class PanelPlot
         // A little room either side, so the end labels (3,000 and 10,000 Å) are not cut.
         plot.Axes.SetLimits(2850, 10150, 0, 1.22);
     }
+
+    /// <summary>Room kept right of the spectrum's data area for its last tick label, "10,000", px.</summary>
+    private const float RightPaddingPx = 24;
 
     private static string ShortLabel(string label)
     {

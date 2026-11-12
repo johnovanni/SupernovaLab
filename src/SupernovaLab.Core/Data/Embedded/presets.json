@@ -106,7 +106,10 @@
       "facts": [
         { "messenger": "VisibleLight", "channelId": "appV", "sourceTimeS": 1679616, "value": 9.98, "unit": "mag",
           "description": "Peak brightness V = 9.98, 19.4 days after the estimated explosion.",
-          "source": { "citation": "Pereira et al. 2013, A&A 554, A27", "researchRef": "presets §4; presets-verification" } }
+          "source": { "citation": "Pereira et al. 2013, A&A 554, A27", "researchRef": "presets §4; presets-verification" } },
+        { "messenger": "GammaRays", "channelId": "line847", "sourceTimeS": 5745600, "value": 1.39e-4, "unit": "photons cm⁻² s⁻¹",
+          "description": "Not detected: INTEGRAL/SPI's 2σ upper limit on the 847 keV cobalt line (830–875 keV) is 1.39 × 10⁻⁴ photons cm⁻² s⁻¹ over days 45–88 (2.95 Ms). None of the lines was seen; the team put it down to their 20–40 keV width, which a narrow-line sensitivity does not allow for.",
+          "source": { "citation": "Isern et al. 2013, A&A 552, A97 (arXiv:1302.3381); the post-maximum SPI limits in Isern et al. 2011, ATel 3822", "researchRef": "signals §5.4; presets-verification; ruling R52" } }
       ]
     },
     {

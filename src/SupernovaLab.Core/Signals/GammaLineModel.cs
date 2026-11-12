@@ -141,6 +141,11 @@ public sealed class GammaLineModel : ISignalModel
         new("⁴⁴Ti mass = 2×10⁻³ × ⁵⁶Ni mass for core-collapse supernovae [APPROX], from SN 1987A and Cas A, unless a preset " +
             "pins it; not modeled for Type Ia/Iax or pair-instability supernovae (not in the research)",
             "signals §5.3; ruling R35"),
+        new("Line width (ruling R52 [APPROX]): the narrow-line limits are raised by √max(1, ΔE_line / ΔE_instr), the line's " +
+            "FWHM from SN 2014J's ≈4,100 km/s rms for Type Ia (× 2.355) or the ejecta velocity √(10E/3M) otherwise, against " +
+            "SPI's ≈2 keV and COSI's 6–9 keV resolution; NuSTAR's ⁴⁴Ti lines are taken as narrow. INTEGRAL saw none of " +
+            "SN 2011fe's lines (Isern et al. 2013; 830–875 keV < 1.39e-4, 2σ, days 45–88, ATel 3822), which its authors " +
+            "put down to the lines' 20–40 keV width", "signals §5.3, §5.4; ruling R52"),
         new("INTEGRAL/SPI 3e-5 for 10⁶ s (Roques et al. 2003; operations ended 2025), its 1 MeV sensitivity used for every " +
             "line [APPROX]; COSI 3.0e-6 for its 2-yr survey " +
             "(Tomsick et al. 2023, projected), used for every line; NuSTAR 2e-6 for 2.6 Ms, anchored to its Cas A and " +
@@ -189,10 +194,16 @@ public sealed class GammaLineModel : ISignalModel
         string scaled = Math.Abs(best.WindowObsS - reference) < 1e-6 * reference
             ? "approximate"
             : $"its {FormatFlux(detector.Threshold)} for {UnitFormat.Time(reference)} scaled as 1/√time; approximate";
+        string broad = best.WidthFactor > 1
+            ? $", raised {best.WidthFactor.ToString("0.0", CultureInfo.InvariantCulture)}-fold because the line is broad: the " +
+              $"expanding ejecta smear it over about {best.LineWidthKeV.ToString("0", CultureInfo.InvariantCulture)} keV, " +
+              $"against the instrument's {InstrumentResolutionKeV(detector.Id, best.Line.KeV).ToString("0.#", CultureInfo.InvariantCulture)} keV " +
+              "resolution, so it stands on more background"
+            : "";
         string reason =
             $"{detector.Name}'s best line is {best.Line.Name}: {FormatFlux(best.AverageFlux)} photons cm⁻² s⁻¹ on average " +
             $"over the last {UnitFormat.Time(best.WindowObsS)} of observing, against the {FormatFlux(best.Limit)} a 3σ " +
-            $"detection needs in that time ({scaled}). " +
+            $"detection needs in that time ({scaled}{broad}). " +
             (status == DetectionStatus.Detected ? "Enough to detect it. " : "Too faint. ") +
             $"{Percent(escape)} of the line photons escape the ejecta now.";
         if (!Modeled(outcome, Lines.First(l => l.Isotope == Isotope.Ti44)) && LinesSeenBy(detector.Id).Any(l => l.Isotope == Isotope.Ti44))
@@ -202,6 +213,49 @@ public sealed class GammaLineModel : ISignalModel
     }
 
     // ---------------------------------------------------------------- public formulas (tested against signals §5)
+
+    private const double SpeedOfLightKmS = PhysicalConstants.C / 1e5;
+
+    /// <summary>
+    /// Ruling R52 [APPROX]: a Type Ia's line FWHM, km/s: SN 2014J's ≈4,100 km/s rms line width (Churazov et al. 2014;
+    /// signals §5.3) × 2.355.
+    /// </summary>
+    public const double ThermonuclearLineFwhmKmS = 4100 * 2.355;
+
+    /// <summary>
+    /// Ruling R52 [APPROX]: the γ-ray line FWHM, km/s. Type Ia/Iax: <see cref="ThermonuclearLineFwhmKmS"/>. Otherwise the
+    /// outcome's ejecta velocity scale v_ej = √(10 E / 3 M_ej) (signals §0.4), taken as the FWHM. NaN without ejecta.
+    /// </summary>
+    public static double LineFwhmKmS(Outcome o)
+    {
+        if (Thermonuclear(o)) return ThermonuclearLineFwhmKmS;
+        if (o.EjectaMass is not { Value: > 0 } m || o.ExplosionEnergyErg is not { Value: > 0 } e) return double.NaN;
+        return Math.Sqrt(10 * e.Value / (3 * m.Value * PhysicalConstants.MSun)) / 1e5;
+    }
+
+    /// <summary>
+    /// The instrument's energy resolution (FWHM, keV) at a line energy (§5.4): SPI about 2 keV at 1 MeV, used at every
+    /// energy [APPROX]; COSI 6.0 keV at 511 keV and 9.0 keV at 1,157 keV, linear between and held outside [APPROX]. NaN for
+    /// NuSTAR, whose ⁴⁴Ti lines keep the narrow-line figure (ruling R52).
+    /// </summary>
+    public static double InstrumentResolutionKeV(string detectorId, double lineKeV) => detectorId switch
+    {
+        "spi" => 2.0,
+        "cosi" => 6.0 + 3.0 * Math.Clamp((lineKeV - 511) / (1157 - 511), 0, 1),
+        _ => double.NaN,
+    };
+
+    /// <summary>
+    /// Ruling R52 [APPROX, Speculative]: the factor by which a broad line raises the narrow-line, background-limited
+    /// threshold, √max(1, ΔE_line / ΔE_instr), with ΔE_line = E × FWHM / c. 1 for NuSTAR (its ⁴⁴Ti lines are taken as
+    /// narrow) and for a line no wider than the instrument's resolution.
+    /// </summary>
+    public static double LineWidthFactor(string detectorId, double lineKeV, double fwhmKmS)
+    {
+        double resolution = InstrumentResolutionKeV(detectorId, lineKeV);
+        if (!double.IsFinite(resolution) || !(fwhmKmS > 0)) return 1;
+        return Math.Sqrt(Math.Max(1, lineKeV * fwhmKmS / SpeedOfLightKmS / resolution));
+    }
 
     /// <summary>§5.2: ⁵⁶Ni decays per second, N0 e^(−t/τ_Ni) / τ_Ni, N0 = M_Ni / (56 m_u). M in M☉, t in s.</summary>
     public static double NickelDecayRate(double nickelMsun, double timeS)
@@ -323,7 +377,8 @@ public sealed class GammaLineModel : ISignalModel
         return sum * h / 3 / (toS - fromS);
     }
 
-    private sealed record LineVerdict(Line Line, double AverageFlux, double Limit, double WindowObsS)
+    private sealed record LineVerdict(Line Line, double AverageFlux, double Limit, double WindowObsS, double WidthFactor,
+        double LineWidthKeV)
     {
         public double Ratio => AverageFlux / Limit;
     }
@@ -331,19 +386,21 @@ public sealed class GammaLineModel : ISignalModel
     /// <summary>
     /// §5.4: for each line the instrument covers, the flux averaged over the observing window that ends now (in observer
     /// time; shorter while the supernova is younger than the window) against the sensitivity scaled to that window,
-    /// S = S_ref (T_ref / T_obs)^(1/2). The line with the best ratio; null when the instrument sees no modeled line.
+    /// S = S_ref (T_ref / T_obs)^(1/2), raised for a broad line by <see cref="LineWidthFactor"/> (ruling R52). The line
+    /// with the best ratio; null when the instrument sees no modeled line.
     /// </summary>
     private static LineVerdict? BestLine(Outcome o, ObserverSetup obs, double t, string detectorId)
     {
         var detector = Detectors.Get(detectorId);
-        double z1 = obs.TimeDilation;
+        double z1 = obs.TimeDilation, fwhm = LineFwhmKmS(o);
         LineVerdict? best = null;
         foreach (var l in LinesSeenBy(detectorId).Where(l => Modeled(o, l)))
         {
             double windowObs = Math.Min(ObservingWindowS(detectorId, l.Isotope == Isotope.Ti44), t * z1);
             double from = t - windowObs / z1;
-            double limit = detector.Threshold * Math.Sqrt(ReferenceExposureS(detectorId) / windowObs);
-            var v = new LineVerdict(l, Average(o, obs, l, from, t), limit, windowObs);
+            double width = LineWidthFactor(detectorId, l.KeV, fwhm);
+            double limit = detector.Threshold * Math.Sqrt(ReferenceExposureS(detectorId) / windowObs) * width;
+            var v = new LineVerdict(l, Average(o, obs, l, from, t), limit, windowObs, width, l.KeV * fwhm / SpeedOfLightKmS);
             if (best is null || v.Ratio > best.Ratio) best = v;
         }
         return best;

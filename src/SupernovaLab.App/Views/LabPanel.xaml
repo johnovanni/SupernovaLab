@@ -23,6 +23,7 @@
                     <ComboBox.ItemContainerStyle>
                         <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
                             <EventSetter Event="PreviewMouseLeftButtonUp" Handler="OnPresetItemClicked"/>
+                            <EventSetter Event="PreviewKeyDown" Handler="OnPresetItemKey"/>
                         </Style>
                     </ComboBox.ItemContainerStyle>
                 </ComboBox>

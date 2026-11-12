@@ -628,6 +628,32 @@ public class InstrumentPanelTests
     }
 
     /// <summary>
+    /// Task 15 re-review N1: past the GRB model's own end (about 180 days after onset) the trigger is judged at the end of
+    /// the prompt burst, so a year and ten years on, SN 1998bw's panel and tile still say GBM detected it.
+    /// </summary>
+    [Theory]
+    [InlineData(Year)]
+    [InlineData(10 * Year)]
+    public void Sn1998bw_GammaBadge_LongAfterTheModelEnds_StillSaysItWasDetected(double observerTimeS)
+    {
+        var vm = WithPreset("sn1998bw");
+        vm.Timeline.ObserverTimeS = observerTimeS;
+        var gamma = Panel<GammaPanelViewModel>(vm);
+        Assert.Equal("gbm", gamma.SelectedInstrument.Id);
+        Assert.Equal("Over: it was detected", gamma.DetectionText);
+        Assert.Equal("Over: detected", Assert.Single(vm.Tiles, t => t.Messenger == Messenger.GammaRays).BadgeText);
+        Assert.Contains("The burst is over", gamma.CurrentDetection.Reason);
+    }
+
+    /// <summary>Task 15 re-review N2: restating a verdict never indexes into an empty reason.</summary>
+    [Fact]
+    public void LowerFirst_HandlesAnEmptyReason()
+    {
+        Assert.Equal("", GammaPanelViewModel.LowerFirst(""));
+        Assert.Equal("fermi GBM receives", GammaPanelViewModel.LowerFirst("Fermi GBM receives"));
+    }
+
+    /// <summary>
     /// Ruling R50 / review I2: the afterglow is judged on the curve and limit the panel draws. A classical collapsar
     /// (30 M☉, Z 0.1, H and He gone, Extreme rotation) at 1 Gpc on day 3: the reviewer's probe gave afterglowX ≈ 3.0e-12
     /// erg cm⁻² s⁻¹ against Swift XRT's drawn 1e-13, so the badge must say Detected.

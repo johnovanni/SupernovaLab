@@ -1,5 +1,6 @@
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
+using SupernovaLab.Core.Presets;
 using SupernovaLab.Core.Progenitors;
 using SupernovaLab.Core.Signals;
 using SupernovaLab.Core.Units;
@@ -108,18 +109,73 @@ public class GammaLineModelTests
     // ---------------------------------------------------------------- detection
 
     [Fact]
-    public void TypeIa_IsSeenBySpiNearby_AndByCosiToAbout20Mpc()
+    public void TypeIa_IsSeenBySpiNearby_AndByCosiFarther()
     {
-        // Signals §11: SPI (3e-5 in 10⁶ s) sees an Ia with 0.6 M☉ of Ni to about 5–10 Mpc; COSI sees ⁵⁶Co from an Ia
-        // at about 20 Mpc (Tomsick et al. 2023). SPI's 11.6-day pointing ends near the 847 keV peak (day 75); COSI's
-        // 100-day survey window ends at day 135, so it spans days 35–135 around the peak. (The model's horizons are
-        // about 11.5 Mpc for SPI and 20.8 Mpc for COSI with the R37 line escape.)
+        // Signals §11: SPI (3e-5 in 10⁶ s) sees an Ia with 0.6 M☉ of Ni to about 5–10 Mpc; COSI (narrow-line 3e-6) sees
+        // ⁵⁶Co from an Ia at about 20 Mpc (Tomsick et al. 2023). Ruling R52 raises both limits for the broad Ia lines
+        // (SPI ×3.69, COSI ×1.90 at 847 keV), so the model's horizons shrink to about 5.9 Mpc (SPI) and 15 Mpc (COSI).
+        // SPI's 11.6-day pointing ends near the 847 keV peak (day 75); COSI's 100-day window ends at day 135.
         var o = PinnedIa(0.6);
         double spiT = 75 * Day, cosiT = 135 * Day;
-        Assert.Equal(DetectionStatus.Detected, Model.Detect(o, At(5e6), spiT, Detectors.Get("spi")).Status);
-        Assert.Equal(DetectionStatus.TooFaint, Model.Detect(o, At(20e6), spiT, Detectors.Get("spi")).Status);
-        Assert.Equal(DetectionStatus.Detected, Model.Detect(o, At(20e6), cosiT, Detectors.Get("cosi")).Status);
-        Assert.Equal(DetectionStatus.TooFaint, Model.Detect(o, At(40e6), cosiT, Detectors.Get("cosi")).Status);
+        Assert.Equal(DetectionStatus.Detected, Model.Detect(o, At(4e6), spiT, Detectors.Get("spi")).Status);
+        Assert.Equal(DetectionStatus.TooFaint, Model.Detect(o, At(10e6), spiT, Detectors.Get("spi")).Status);
+        Assert.Equal(DetectionStatus.Detected, Model.Detect(o, At(12e6), cosiT, Detectors.Get("cosi")).Status);
+        Assert.Equal(DetectionStatus.TooFaint, Model.Detect(o, At(25e6), cosiT, Detectors.Get("cosi")).Status);
+    }
+
+    // ---------------------------------------------------------------- ruling R52: broad lines
+
+    [Fact]
+    public void LineWidthFactor_ScalesTheNarrowLineLimit()
+    {
+        // Ruling R52: limit × √max(1, ΔE_line / ΔE_instr). A Type Ia line: SN 2014J's 4,100 km/s rms × 2.355 = 9,655.5
+        // km/s FWHM, so at 846.77 keV ΔE = 846.77 × 9,655.5 / 299,792.458 = 27.2722 keV.
+        // SPI (≈2 keV): √(27.2722 / 2) = 3.69271. COSI, interpolated between 6.0 keV at 511 and 9.0 keV at 1,157 keV:
+        // 6.0 + 3.0 × 335.77/646 = 7.55930 keV, √(27.2722 / 7.55930) = 1.89941. NuSTAR keeps the narrow-line figure (1).
+        // A line narrower than the instrument's resolution keeps 1.
+        Assert.Equal(3.69271, GammaLineModel.LineWidthFactor("spi", 846.77, 9655.5), 4);
+        Assert.Equal(1.89941, GammaLineModel.LineWidthFactor("cosi", 846.77, 9655.5), 4);
+        Assert.Equal(1.0, GammaLineModel.LineWidthFactor("nustar", 67.87, 9655.5));
+        Assert.Equal(1.0, GammaLineModel.LineWidthFactor("spi", 846.77, 500));
+        // Type Ia: 9,655.5 km/s (R52). Core collapse: v_ej = √(10E / 3M) (signals §0.4); the default 16 M☉ star,
+        // E 1.25537e51 erg and M_ej 11.59828 M☉: 4,259.03 km/s.
+        Assert.Equal(9655.5, GammaLineModel.LineFwhmKmS(TestOutcomes.TypeIa()), 6);
+        Assert.Equal(4259.03, GammaLineModel.LineFwhmKmS(TestOutcomes.Star(16)), 0.01);
+    }
+
+    private static (Outcome Outcome, ObserverSetup Observer) FromPreset(string id)
+    {
+        var p = PresetCatalog.Get(id);
+        return (TestOutcomes.Engine.Compute(p.Inputs, p.Pins), p.Observer);
+    }
+
+    [Fact]
+    public void Sn2014J_StaysDetectedBySpi_WithItsBroadLines()
+    {
+        // Churazov et al. 2014 detected the 847 keV line (about 3σ). Preset: 0.6 M☉ Ni at 3.53 Mpc. At day 75 the SPI
+        // pointing (days 63.4–75) averages ≈3.2e-4 against 3e-5 × 3.69 = 1.11e-4.
+        var (o, obs) = FromPreset("sn2014j");
+        var d = Model.Detect(o, obs, 75 * Day, Detectors.Get("spi"));
+        Assert.Equal(DetectionStatus.Detected, d.Status);
+        Assert.Contains("broad", d.Reason);
+    }
+
+    [Fact]
+    public void Sn2011fe_IsNotDetectedBySpi_AtAnyTime()
+    {
+        // INTEGRAL/SPI saw none of SN 2011fe's lines (Isern et al. 2013, A&A 552, A97; days 45–88: 830–875 keV
+        // < 1.39e-4 photons cm⁻² s⁻¹, 2σ, ATel 3822), which its authors put down to the lines' 20–40 keV width. Preset:
+        // 0.53 M☉ Ni at 6.43 Mpc. Before R52 the lab "detected" the 847 keV line at 6.8e-5 against the narrow-line 3e-5.
+        var (o, obs) = FromPreset("sn2011fe");
+        var spi = Detectors.Get("spi");
+        for (double day = 5; day <= 400; day += 1)
+            Assert.NotEqual(DetectionStatus.Detected, Model.Detect(o, obs, day * Day, spi).Status);
+        Assert.Contains("broad", Model.Detect(o, obs, 75 * Day, spi).Reason);
+        // The lab's line stays below the published upper limit over the same days.
+        Assert.True(Model.AverageFlux(o, obs, "line847", 45 * Day, 88 * Day) < 1.39e-4);
+        var fact = PresetCatalog.Get("sn2011fe").Facts.Single(f => f.ChannelId == "line847");
+        Assert.Equal(1.39e-4, fact.Value);
+        Assert.Contains("upper limit", fact.Description);
     }
 
     [Fact]

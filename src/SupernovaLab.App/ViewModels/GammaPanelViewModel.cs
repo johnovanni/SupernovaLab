@@ -78,26 +78,37 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
 
     /// <summary>
     /// Ruling R50: GBM and BAT trigger on the prompt burst. Once it is over (the drawn prompt curve ends three T90 after
-    /// onset), their verdict is a past event: "Over", with whether it triggered, never a current "Detected".
+    /// onset), their verdict is a past event: "Over", with whether it triggered, never a current "Detected". The trigger
+    /// is judged at the end of the prompt burst, not now, so the verdict stands after the model's own end (Task 15
+    /// re-review N1).
     /// </summary>
     protected override Detection VerdictNow(ISignalModel model, Detector instrument, double sourceTimeS)
     {
-        var d = base.VerdictNow(model, instrument, sourceTimeS);
-        if (!ReferenceEquals(model, _grb) || !GrbModel.DetectorIds.Contains(instrument.Id) || !BurstIsOver(sourceTimeS)
-            || d.Status is not (DetectionStatus.Detected or DetectionStatus.TooFaint))
+        if (!ReferenceEquals(model, _grb) || !GrbModel.DetectorIds.Contains(instrument.Id) || !BurstIsOver(sourceTimeS))
+            return base.VerdictNow(model, instrument, sourceTimeS);
+        var d = TriggerAtPromptEnd(model, instrument);
+        if (d.Status is not (DetectionStatus.Detected or DetectionStatus.TooFaint))
             return d;
         return new Detection(DetectionStatus.NotModeled,
             $"The burst is over: it lasted about {Core.Units.UnitFormat.Time(_grb.T90S(Outcome) * Observer.TimeDilation)} (T90). " +
-            $"At its peak, {char.ToLowerInvariant(d.Reason[0])}{d.Reason[1..]}");
+            $"At its peak, {LowerFirst(d.Reason)}");
     }
+
+    /// <summary>The text with its first letter in lower case; empty stays empty (Task 15 re-review N2).</summary>
+    public static string LowerFirst(string text)
+        => string.IsNullOrEmpty(text) ? "" : char.ToLowerInvariant(text[0]) + text[1..];
 
     protected override (string Full, string Short) Badge(ISignalModel model, Detection d)
     {
         if (ReferenceEquals(model, _grb) && GrbModel.DetectorIds.Contains(SelectedInstrument.Id) && BurstIsOver(SourceTimeS)
             && d.Status == DetectionStatus.NotModeled && Observer.BeamTowardEarth)
-            return OverWords(base.VerdictNow(model, SelectedInstrument, SourceTimeS).Status == DetectionStatus.Detected);
+            return OverWords(TriggerAtPromptEnd(model, SelectedInstrument).Status == DetectionStatus.Detected);
         return base.Badge(model, d);
     }
+
+    /// <summary>The trigger verdict at the end of the drawn prompt burst (Task 15 re-review N1).</summary>
+    private Detection TriggerAtPromptEnd(ISignalModel model, Detector instrument)
+        => base.VerdictNow(model, instrument, _grb.PromptEndS(Outcome));
 
     private bool BurstIsOver(double sourceTimeS) => _grb.PromptEndS(Outcome) is var end && double.IsFinite(end) && sourceTimeS > end;
 
@@ -122,8 +133,9 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
         if (!GammaLineModel.DetectorIds.Contains(d.Id))
             return $"{d.Name} watches for bursts, not lines; pick INTEGRAL/SPI, COSI or NuSTAR to see a line limit.";
         if (d.Id == "nustar" && !ti44) return "NuSTAR sees only the ⁴⁴Ti lines at 68 and 78 keV.";
-        return "The dashed limit is for an average over a long observation; the badge compares the line's average over " +
-               "that time with it.";
+        return "The dashed limit is for a narrow line averaged over a long observation. A supernova's lines are broadened by " +
+               "its expanding ejecta, which raises the real limit (several-fold for INTEGRAL/SPI); the badge compares the " +
+               "line's average over that time with the raised limit.";
     }
 
     private static string Parenthetical(string unit)
