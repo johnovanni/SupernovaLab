@@ -20,9 +20,10 @@ public class LightCurveModelTests
     private static readonly Outcome RoundIIP = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 10, 0.05, 500 * RSun);
 
     /// <summary>Task 5's magnetar SLSN-I: 20 M☉, Full stripping, fast rotation, strong core field.</summary>
+    // Ruling R53: 30 M☉, above outcomes §5.3's 20 M☉ (20 M☉ before R53).
     private static readonly Outcome MagnetarSlsn = TestOutcomes.Engine.Compute(LabInputs.Default with
     {
-        InitialMass = 20, Stripping = Stripping.Full, Rotation = Rotation.Fast, Field = CoreField.Strong,
+        InitialMass = 30, Stripping = Stripping.Full, Rotation = Rotation.Fast, Field = CoreField.Strong,
     });
 
     /// <summary>
@@ -225,16 +226,17 @@ public class LightCurveModelTests
     }
 
     [Fact]
-    public void MagnetarStar16_FastAndStrongField_DrawsTheSuperluminousPeakItsLabelSays()
+    public void MagnetarStar16_FastAndStrongField_DrawsTheEnginePeak_ButIsNotSuperluminous()
     {
         // Rulings R32/R33a: the 16 M☉ fast-spinning, strong-field star. Its engine peak (1.3370e44 erg/s by hand, see
         // OutcomeEngineExtremeTests) is the light curve's magnetar part; the drawn peak adds only the diffused ⁵⁶Ni and
-        // the faint plateau, and it is labeled SLSN-II.
+        // the faint plateau. Ruling R53: a 16 M☉ star is not above outcomes §5.3's 20 M☉, so it stays a magnetar-boosted
+        // II-P (SLSN-II before R53).
         var o = TestOutcomes.Engine.Compute(LabInputs.Default with
         {
             InitialMass = 16, Rotation = Rotation.Fast, Field = CoreField.Strong,
         });
-        Assert.Equal(SupernovaType.SlsnII, o.Type);
+        Assert.Equal(SupernovaType.IIP, o.Type);
         double drawn = DrawnPeak(o);
         Assert.InRange(drawn / o.PeakLuminosityErgS!.Value, 1, 1.05);
         Assert.True(drawn >= 7e43);
@@ -244,7 +246,8 @@ public class LightCurveModelTests
     public void SuperluminousLabel_AgreesWithTheDrawnPeak()
     {
         // Ruling R32: for every magnetar-powered outcome, the label is SLSN-I/II exactly when the drawn bolometric peak
-        // is ≥ 7e43 erg/s (R22's cut), and the engine's stated peak is the drawn magnetar part: the drawn peak is at
+        // is ≥ 7e43 erg/s (R22's cut) and outcomes §5.3's conditions hold (ruling R53: initial mass above 20 M☉, at least
+        // 2.2 M☉ of ejecta), and the engine's stated peak is the drawn magnetar part: the drawn peak is at
         // least it and at most 5% more (⁵⁶Ni, plateau and cooling add the rest). Outcomes without a magnetar are never
         // labeled superluminous. Not covered by R22: a magnetorotational hypernova (7e51 erg) in a red supergiant, e.g.
         // 30 M☉ at Z☉ with fast rotation and a strong field, keeps its II-P label although its first days of shock
@@ -273,7 +276,8 @@ public class LightCurveModelTests
                 continue;
             }
             magnetars++;
-            Assert.True(superluminous == drawn >= 7e43, what);
+            bool conditions = o.Inputs.InitialMass > 20 && o.EjectaMass!.Value >= 2.2;
+            Assert.True(superluminous == (drawn >= 7e43 && conditions), what);
             Assert.InRange(drawn / o.PeakLuminosityErgS!.Value, 1 - 1e-6, 1.05);
         }
         Assert.True(magnetars >= 20, $"only {magnetars} magnetar outcomes");

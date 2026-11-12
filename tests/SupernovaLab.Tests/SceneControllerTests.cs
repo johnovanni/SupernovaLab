@@ -84,6 +84,21 @@ public class SceneControllerTests
     }
 
     [Fact]
+    public void SceneModelError_IsShownInTheView_AndDoesNotEndTheApp()
+    {
+        // Review M1 (spec §9): the scene's models run inside a catch; a failure shows in the view's notes.
+        var vm = NewViewModel();
+        var scene = new SceneController(vm, () => new FakeHost(),
+            (_, _) => throw new InvalidOperationException("model broke"));
+        Assert.Contains("3D view: model error", scene.NotesText);
+        Assert.Contains("model broke", scene.NotesText);
+        vm.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");   // a new outcome rebuilds the scene: no throw
+        vm.Timeline.ObserverTimeS = 10 * PhysicalConstants.Day;  // a new time restates it: no throw
+        Assert.Contains("3D view: model error", scene.NotesText);
+        scene.Dispose();
+    }
+
+    [Fact]
     public void NewOutcome_RestoresAutoFraming()
     {
         // Review M5: a zoom frozen on one outcome's scale would hide the next one.

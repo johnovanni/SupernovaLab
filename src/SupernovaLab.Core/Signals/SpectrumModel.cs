@@ -34,6 +34,15 @@ public sealed record Spectrum(double[] WavelengthsAngstrom, double[] RelativeFlu
 /// (an Ia at 1 d would reach 40,000 km/s). Holding underestimates early velocities.</item>
 /// <item><b>Per-line velocities</b> (ruling R45b): each line's v is the tracer's times the §10.2 ratio (II Fe II/Hα 0.51; IIb
 /// Hα 1.49, He I 0.88 of Fe II; Ib He I 1.10; Ic and Ic-BL O I 1.24).</item>
+/// <item><b>Energy per mass</b> (ruling R53) [APPROX, Speculative]: v_ref is the type's typical value scaled by
+/// √((E/M_ej) / (E/M_ej)_ref), with the type references II (and IIn, SLSN-II, hydrogen-rich PISN) 1e51 erg / 10 M☉; IIb,
+/// Ib, Ic, Ibn, Icn, SLSN-I and hydrogen-free PISN 1e51 erg / 3 M☉; Ia 1.3e51 erg / 1.4 M☉; and, because the Ic-BL
+/// velocities are those of hypernovae, Ic-BL without a GRB at Taddia et al. 2019's mean 7e51 erg / 4 M☉ and with one at
+/// Cano et al. 2017's 2.5e52 erg / 6 M☉ (outcomes §5.1–§5.2). It is clamped to the §10.2 observed ranges (II Hα day 50
+/// 1,500–9,600; IIb Fe II 7,000–9,800; Ib 7,500–10,700; Ic 7,300–14,700; Ic-BL 14,000–19,400 and with a GRB 16,300–22,100,
+/// the ±1σ ranges; Ia 10,200–12,000, the normal group's low 1σ end to the high-velocity group). Type Iax keeps its
+/// 5,000 km/s, already the value for its weak deflagrations. A weak explosion such as SN 1054's thus moves its lines in the
+/// same direction as the 3D view's ejecta.</item>
 /// <item><b>Line width</b> (§10.2): FWHM = (v / c) λ with the line's own v. For an Ic-BL the lines are therefore wider than 15,000 km/s at
 /// peak. Interacting types (II-n, Ib-n, Ic-n) show narrow emission lines of 1,000 km/s FWHM [APPROX] instead.</item>
 /// <item><b>P-Cygni shape</b> [APPROX]: continuum × Π(1 − a G(λ; λ₀(1 − v/c))) × (1 + Σ e G(λ; λ₀)), Gaussians of FWHM
@@ -78,6 +87,11 @@ public sealed class SpectrumModel
     /// <summary>[APPROX] The hydrogen-rich law is held before max(V peak, 15 d) (ruling R45d).</summary>
     public const double HydrogenHoldDays = 15;
 
+    /// <summary>Ruling R53 (I6): the spectrum caption's sentence on where the line velocities come from.</summary>
+    public const string VelocityCaption =
+        "Line velocities are typical values for this type of supernova, scaled by this explosion's energy per unit mass " +
+        "and kept inside the observed range (an approximation).";
+
     private static readonly LightCurveModel Curves = new();
 
     public Confidence Confidence => Confidence.Speculative;
@@ -93,7 +107,11 @@ public sealed class SpectrumModel
             "before the reference time; hydrogen-rich types follow it from the day-50 anchor back to the V peak or day 15, " +
             "whichever is later, and hold the value before that [APPROX]; Type Iax 5,000 km/s [APPROX, middle of the 2,000–" +
             "8,000 km/s of outcomes §3.2]. FWHM = v/c × λ; velocities are Δλ/λ₀ = v/c, not relativistic (the " +
-            "published values used the relativistic form: +3% at 19,000 km/s)", "signals §10.2; outcomes §3.2"),
+            "published values used the relativistic form: +3% at 19,000 km/s). " + VelocityCaption + " The reference " +
+            "velocity is scaled by √((E/M_ej) / (E/M_ej)_ref) with type references II 1e51 erg / 10 M☉, IIb/Ib/Ic 1e51 erg / " +
+            "3 M☉, Ia 1.3e51 erg / 1.4 M☉, Ic-BL 7e51 erg / 4 M☉ (Taddia et al. 2019) and with a GRB 2.5e52 erg / 6 M☉ " +
+            "(Cano et al. 2017), clamped to the §10.2 ranges (II Hα 1,500–9,600 km/s at day 50; the others ±1σ; Ia " +
+            "10,200–12,000) [APPROX]; Iax unscaled", "signals §10.2; outcomes §3.2, §5.1, §5.2; ruling R53"),
         new("Schematic P-Cygni profile (Gaussian absorption blueshifted by v, emission at rest), the nebular switch times " +
             "(150 d core collapse, 200 d Type Ia) and the nebular continuum are [APPROX]. The Nugent templates are not used " +
             "(no license stated)", "signals §10.3, §11"),
@@ -254,7 +272,10 @@ public sealed class SpectrumModel
         return new Spectrum(wl, flux, lines.Select(l => l.Line).ToArray(), vKmS, temperature, nebular);
     }
 
-    /// <summary>The §10.2 reference velocity v_ref (km/s) for this outcome, before the time law.</summary>
+    /// <summary>
+    /// The reference velocity v_ref (km/s) for this outcome, before the time law: the §10.2 type value scaled by the
+    /// explosion's energy per mass and clamped to the observed range (ruling R53).
+    /// </summary>
     public static double ReferenceVelocityKmS(Outcome o) => ReferenceVelocityKmS(o, FamilyOf(o));
 
     // ---------------------------------------------------------------- internals
@@ -279,15 +300,39 @@ public sealed class SpectrumModel
         };
     }
 
-    private static double ReferenceVelocityKmS(Outcome o, Family f) => f switch
+    /// <summary>
+    /// A type's §10.2 velocity (km/s), the energy per ejecta mass it stands for (erg per M☉, ruling R53) and the observed
+    /// range it is clamped to (km/s).
+    /// </summary>
+    private readonly record struct TypeVelocity(double KmS, double EnergyPerMass, double LowKmS, double HighKmS);
+
+    // Ruling R53's type references (erg per M☉): II 1e51 / 10, Ib/c 1e51 / 3, Ia 1.3e51 / 1.4. [APPROX] Ic-BL: T19's mean
+    // 7e51 / 4 and, with a GRB, Cano 2017's 2.5e52 / 6 (outcomes §5.1–§5.2), the explosions their velocities describe.
+    private const double HydrogenRichPerMass = 1e51 / 10, StrippedPerMass = 1e51 / 3, IaPerMass = 1.3e51 / 1.4;
+    private const double IcBLPerMass = 7e51 / 4, GrbIcBLPerMass = 2.5e52 / 6;
+
+    private static readonly TypeVelocity HydrogenDay50 = new(HydrogenDay50KmS, HydrogenRichPerMass, 1_500, 9_600);
+    private static readonly TypeVelocity IcFeII = new(11_000, StrippedPerMass, 11_000 - 3_700, 11_000 + 3_700);
+
+    private static TypeVelocity TypeVelocityOf(Outcome o, Family f) => f switch
     {
-        Family.Ia => o.Type == SupernovaType.Iax ? IaxKmS : 10_600,
-        Family.IIb => 8_400,
-        Family.Ib => 9_100,
-        Family.HydrogenRich => HydrogenDay50KmS,
-        Family.Interacting => o.Type == SupernovaType.IIn ? HydrogenDay50KmS : 11_000,
-        _ => o.Type == SupernovaType.IcBL ? (o.HasGrb ? 19_200 : 16_700) : 11_000,
+        Family.Ia => new(10_600, IaPerMass, 10_200, 12_000),
+        Family.IIb => new(8_400, StrippedPerMass, 8_400 - 1_400, 8_400 + 1_400),
+        Family.Ib => new(9_100, StrippedPerMass, 9_100 - 1_600, 9_100 + 1_600),
+        Family.HydrogenRich => HydrogenDay50,
+        Family.Interacting => o.Type == SupernovaType.IIn ? HydrogenDay50 : IcFeII,
+        _ => o.Type != SupernovaType.IcBL ? IcFeII
+            : o.HasGrb ? new(19_200, GrbIcBLPerMass, 19_200 - 2_900, 19_200 + 2_900)
+            : new(16_700, IcBLPerMass, 16_700 - 2_700, 16_700 + 2_700),
     };
+
+    private static double ReferenceVelocityKmS(Outcome o, Family f)
+    {
+        if (o.Type == SupernovaType.Iax) return IaxKmS;
+        var tv = TypeVelocityOf(o, f);
+        if (o.ExplosionEnergyErg is not { Value: > 0 } e || o.EjectaMass is not { Value: > 0 } m) return tv.KmS;
+        return Math.Clamp(tv.KmS * Math.Sqrt(e.Value / m.Value / tv.EnergyPerMass), tv.LowKmS, tv.HighKmS);
+    }
 
     private static double VelocityKmS(Outcome o, Family f, LightCurveModel lc, double sourceTimeS)
     {

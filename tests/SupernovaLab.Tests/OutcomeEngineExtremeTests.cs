@@ -78,11 +78,14 @@ public class OutcomeEngineExtremeTests
     // ---------------------------------------------------------------- step 7b: magnetar
 
     [Fact]
-    public void StrongField_FastRotation_FullStripped20_IsAMagnetarPoweredSlsnI()
+    public void StrongField_FastRotation_FullStripped20_IsAMagnetarBoostedIb_NotSuperluminous()
     {
+        // Ruling R53 (outcomes §5.3): the superluminous class needs a star of more than 20 M☉, so this 20 M☉ star keeps its
+        // base class (Ib) as a magnetar-boosted supernova; its spin-down still powers the light. 30 M☉ is SLSN-I (see
+        // OutcomeConsistencyTests). Before R53 this case was SLSN-I.
         var o = Compute(20, stripping: Stripping.Full, rotation: Rotation.Fast, field: CoreField.Strong);
         Assert.Equal(Fate.Supernova, o.Fate);
-        Assert.Equal(SupernovaType.SlsnI, o.Type);
+        Assert.Equal(SupernovaType.Ib, o.Type);
         Assert.Equal(RemnantKind.Magnetar, o.Remnant.Kind);
         Assert.InRange(o.Remnant.SpinPeriodS!.Value, 1e-3, 5e-3);
         Assert.Equal(2.4e-3, o.Remnant.SpinPeriodS.Value, 9);            // N17 median for fast rotation (step 7b)
@@ -98,9 +101,9 @@ public class OutcomeEngineExtremeTests
         // E_K ≈ E_SN + E_p = 0.88e51 (Sch21) + 3.4722e51 = 4.3522e51, inside N17's 1.9–9.8 B.
         Assert.Equal(4.3522e51, o.ExplosionEnergyErg!.Value, 0.0001e51);
         Assert.True(o.PeakLuminosityErgS!.Value > 1e43);
-        Assert.Contains(o.Notes, n => n.Contains("magnetar"));
-        // Ruling R22: the superluminous class replaces the base class (Ib here), so its sentence is gone.
-        Assert.DoesNotContain(o.Notes, n => n.Contains("Type Ib"));
+        Assert.Contains(o.Notes, n => n.Contains("magnetar-boosted"));
+        // The base class stays, so its sentence stays.
+        Assert.Contains(o.Notes, n => n.Contains("Type Ib"));
     }
 
     [Fact]
@@ -112,7 +115,9 @@ public class OutcomeEngineExtremeTests
         Assert.Equal(1.2e-3, o.Remnant.SpinPeriodS!.Value, 9);           // step 7b: extreme = 1–2 ms (N17 1σ low end 1.2)
         // KB10: E_p = 2e52 / 1.2² = 1.3889e52 erg.
         Assert.Equal(1.3889e52, o.MagnetarEnergyErg!.Value, 0.0001e52);
-        Assert.Equal(SupernovaType.SlsnI, o.Type);
+        // Ruling R53: not above 20 M☉, so not superluminous (before R53: SLSN-I).
+        Assert.NotEqual(SupernovaType.SlsnI, o.Type);
+        Assert.Contains(o.Notes, n => n.Contains("magnetar-boosted"));
         // E_K = 0.88e51 + 13.889e51 = 14.77e51, capped at N17's 9.8 B.
         Assert.Equal(9.8e51, o.ExplosionEnergyErg!.Value);
 
@@ -125,8 +130,10 @@ public class OutcomeEngineExtremeTests
     }
 
     [Fact]
-    public void StrongField_FastRotation_HydrogenRich16_IsAboveTheSuperluminousCut_SoSlsnII()
+    public void StrongField_FastRotation_HydrogenRich16_IsAboveTheCut_ButTooLightAStar_SoAMagnetarBoostedIIP()
     {
+        // Ruling R53 (outcomes §5.3): the superluminous classes need a star of more than 20 M☉, so this 16 M☉ star stays
+        // II-P although its peak passes R22's cut (before R53: SLSN-II).
         // Ruling R22 with R32's peak: SLSN-II if the diffused spin-down power peaks at ≥ 7e43 erg/s. 16 M☉ at Z☉:
         // M_ej 11.59828 M☉, M_H,env 8.38164 M☉, E_K = 1.25537e51 + 3.47222e51 = 4.72759e51 erg. Ruling R33a's opacity:
         // X̄ = 0.6 × 8.38164 / 11.59828 = 0.433597, κ = 0.2 × 1.433597 = 0.286719; v = √(10 E / 3M) = 8.2650e8 cm/s,
@@ -134,12 +141,12 @@ public class OutcomeEngineExtremeTests
         // 1.3370e44 erg/s near 70.6 d, above the cut. (Task 5's L_p(t_d) gave 6.18e43 and kept it II-P; with κ = 0.2
         // the peak was 1.584e44.)
         var o = Compute(16, rotation: Rotation.Fast, field: CoreField.Strong);
-        Assert.Equal(SupernovaType.SlsnII, o.Type);
+        Assert.Equal(SupernovaType.IIP, o.Type);
         Assert.Equal(RemnantKind.Magnetar, o.Remnant.Kind);
         Assert.Equal(4.72759e51, o.ExplosionEnergyErg!.Value, 0.00001e51);
         Assert.Equal(1.3370e44, o.PeakLuminosityErgS!.Value, 0.002 * 1.3370e44);
-        Assert.Contains(o.Notes, n => n.Contains("superluminous supernova with hydrogen lines"));
-        Assert.DoesNotContain(o.Notes, n => n.Contains("Type II-P"));
+        Assert.Contains(o.Notes, n => n.Contains("magnetar-boosted"));
+        Assert.Contains(o.Notes, n => n.Contains("Type II-P"));
     }
 
     [Fact]
@@ -169,13 +176,14 @@ public class OutcomeEngineExtremeTests
     [Fact]
     public void StrongField_FastRotation_HydrogenRich_AboveTheSuperluminousCut_IsSlsnII()
     {
-        // 12 M☉ at Z☉ has a lighter envelope (M_ej 9.37 M☉), so its peak passes the 7e43 cut (Task 5's L_p(t_d) gave
-        // 7.43e43; ruling R32's diffused peak is higher still).
-        var o = Compute(12, rotation: Rotation.Fast, field: CoreField.Strong);
+        // Ruling R53 replaced the 12 M☉ case (not above 20 M☉): 25 M☉, partly stripped (it keeps some hydrogen), M_ej
+        // about 5.8 M☉ ≥ 2.2, and a peak above R22's 7e43 cut.
+        var o = Compute(25, stripping: Stripping.Partial, rotation: Rotation.Fast, field: CoreField.Strong);
+        Assert.True(o.Star!.HydrogenEnvelopeMass.Value > 0);
         Assert.Equal(SupernovaType.SlsnII, o.Type);
         Assert.True(o.PeakLuminosityErgS!.Value >= 7e43);
         Assert.Equal(Confidence.Speculative, o.PeakLuminosityErgS.Confidence);
-        Assert.DoesNotContain(o.Notes, n => n.Contains("Type II-P"));
+        Assert.Contains(o.Notes, n => n.Contains("superluminous supernova with hydrogen lines"));
     }
 
     [Fact]
@@ -379,46 +387,39 @@ public class OutcomeEngineExtremeTests
     }
 
     [Fact]
-    public void NearChandrasekhar_PhillipsOutputs()
+    public void NearChandrasekhar_PeakBEstimate()
     {
         // Ruling R21, step 9. L_peak = 1.2e43 erg/s: M_B ≈ M_bol = 4.74 − 2.5 log10(1.2e43 / 3.828e33)
-        // = 4.74 − 2.5 × 9.496211 = −19.0005. Inverted Phillips 1999 (B: a 0.786, b 0.633, M_B,0 −19.3): ΔM = 0.2995,
-        // u = (−0.786 + √(0.617796 + 4 × 0.633 × 0.2995)) / 1.266 = (−0.786 + 1.173090) / 1.266 = 0.305758,
-        // Δm15 = 1.1 + 0.305758 = 1.4058.
+        // = 4.74 − 2.5 × 9.496211 = −19.0005. (Ruling R53: the inverted-Phillips Δm15(B) of 1.4058 that came with it is
+        // gone; Δm15(B) is measured on the drawn curve, see SignalConsistencyTests.)
         var o = TypeIa(TypeIaChannel.NearChandrasekhar);
         Assert.Equal(-19.0005, o.PeakAbsoluteMagB!.Value, 0.0005);
-        Assert.Equal(1.4058, o.DeclineRateDm15B!.Value, 0.0005);
         Assert.Equal(Confidence.Speculative, o.PeakAbsoluteMagB.Confidence);
     }
 
     [Fact]
-    public void Bright91TLike_PhillipsOutputs()
+    public void Bright91TLike_PeakBEstimate()
     {
-        // M_Ni 0.8: L = 1.6e43; M_B = 4.74 − 2.5 log10(4.179728e9) = 4.74 − 24.05285 = −19.3129. ΔM = −0.0129,
-        // u = (−0.786 + √(0.617796 − 0.032663)) / 1.266 = (−0.786 + 0.764940) / 1.266 = −0.016635, Δm15 = 1.0834.
+        // M_Ni 0.8: L = 1.6e43; M_B = 4.74 − 2.5 log10(4.179728e9) = 4.74 − 24.05285 = −19.3129.
         var o = TypeIa(TypeIaChannel.SubChandrasekhar, 1.15);
         Assert.Equal(-19.3129, o.PeakAbsoluteMagB!.Value, 3);
-        Assert.Equal(1.0834, o.DeclineRateDm15B!.Value, 3);
     }
 
     [Fact]
-    public void Faint91bgLike_DeclineRateIsClampedWithANote()
+    public void Faint91bgLike_PeakBEstimate_AndNoPhillipsNote()
     {
-        // M_Ni 0.013904: L = 2.7808e41; M_B = 4.74 − 2.5 log10(7.26437e7) = 4.74 − 19.65302 = −14.913, far fainter than
-        // the relation's faint end (Δm15 = 1.7 ⇔ M_B = −19.3 + 0.786 × 0.6 + 0.633 × 0.36 = −18.6005), so Δm15 = 1.7.
+        // M_Ni 0.013904: L = 2.7808e41; M_B = 4.74 − 2.5 log10(7.26437e7) = 4.74 − 19.65302 = −14.913. Ruling R53: no
+        // inverted Phillips relation, so no clamping note.
         var o = TypeIa(TypeIaChannel.SubChandrasekhar, 0.85);
         Assert.Equal(-14.913, o.PeakAbsoluteMagB!.Value, 2);
-        Assert.Equal(1.7, o.DeclineRateDm15B!.Value);
-        Assert.Contains("[APPROX]", o.DeclineRateDm15B.Source.Citation);
-        Assert.Contains(o.Notes, n => n.Contains("Phillips relation"));
+        Assert.DoesNotContain(o.Notes, n => n.Contains("Phillips relation"));
     }
 
     [Fact]
-    public void CoreCollapse_HasNoPhillipsOutputs()
+    public void CoreCollapse_HasNoPeakBEstimate()
     {
         var o = Compute(16);
         Assert.Null(o.PeakAbsoluteMagB);
-        Assert.Null(o.DeclineRateDm15B);
     }
 
     [Fact]

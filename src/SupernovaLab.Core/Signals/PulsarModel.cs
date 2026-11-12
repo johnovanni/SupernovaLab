@@ -237,11 +237,15 @@ public sealed class PulsarModel : ISignalModel
 
     private static bool InRange(double t) => t >= EmergenceYears * Year && t <= EndS;
 
-    /// <summary>S = L_1400 / D², mJy, with D in kpc and the preset's measured luminosity, else the median (R41).</summary>
+    /// <summary>
+    /// S = (1 + z) L_1400 / D_L², mJy, with D_L the luminosity distance in kpc (as every other model uses) and the preset's
+    /// measured luminosity, else the median (R41). [APPROX] A flat spectrum is assumed for the k-correction; at z = 0 (below
+    /// 50 Mpc, where any pulsar could be seen) it is L / D².
+    /// </summary>
     private static double FluxMjy(Outcome o, ObserverSetup obs)
     {
-        double dKpc = obs.DistancePc / 1000;
-        return (o.PulsarRadioLuminosityMjyKpc2?.Value ?? MedianLuminosityMjyKpc2) / (dKpc * dKpc);
+        double dKpc = obs.LuminosityDistanceCm / PhysicalConstants.Kpc;
+        return obs.TimeDilation * (o.PulsarRadioLuminosityMjyKpc2?.Value ?? MedianLuminosityMjyKpc2) / (dKpc * dKpc);
     }
 
     /// <summary>The n = 3 spin-down of one remnant: birth period P0 (s) and spin-down time τ0 (s).</summary>

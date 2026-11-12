@@ -114,8 +114,21 @@ public sealed class LightCurveModel : ISignalModel
             "per visit, in their own bands, compared with V here [APPROX]", "signals §4.7, §11"),
         new("Circumstellar interaction (Type IIn, Ibn, Icn) and the transients of pulsational pair instability are not " +
             "modeled: an interacting supernova is drawn without the collision's light (IIn mean peak M_B −18.6, II-P " +
-            "−16.8; Richardson et al. 2014, AJ 147, 118)", "signals §4.6; outcomes §2.3"),
+            "−16.8; Richardson et al. 2014, AJ 147, 118) and with an ordinary photosphere's colour (6,000 K with " +
+            "hydrogen), redder than the hot, blue early spectra of interacting supernovae", "signals §4.6; outcomes §2.3"),
     };
+
+    /// <summary>
+    /// Review M10: the <see cref="Sources"/> behind this outcome's drawn curve: the heating, diffusion, colour and
+    /// magnitude sources always; the plateau's only with a plateau, the magnetar's only with a magnetar, and the
+    /// interaction caveat only for an interacting supernova. All of them when the outcome has no modeled curve.
+    /// </summary>
+    public IReadOnlyList<Source> SourcesFor(Outcome o)
+    {
+        if (LightCurve.Of(o) is not { } c) return Sources;
+        bool[] keep = { true, true, c.Plateau, c.HasMagnetar, true, true, c.Interacting };
+        return Sources.Where((_, i) => keep[i]).ToList();
+    }
 
     public bool Applies(Outcome outcome) => LightCurve.Of(outcome) is not null || IsUnmodeledTransient(outcome);
 
@@ -147,9 +160,21 @@ public sealed class LightCurveModel : ISignalModel
         double z1 = observer.TimeDilation;
         string origin = c.Thermonuclear ? "ignition" : "core collapse";
         if (!(sourceTimeS >= c.StartS))
-            return new Detection(DetectionStatus.NotYet,
-                $"The light curve starts {UnitFormat.Time(c.StartS * z1)} after {origin}" +
-                (c.Thermonuclear ? "." : ", when the shock has broken out through the star's surface."));
+        {
+            if (c.Thermonuclear || !double.IsFinite(c.BreakoutS))
+                return new Detection(DetectionStatus.NotYet, $"The light curve starts {UnitFormat.Time(c.StartS * z1)} after {origin}.");
+            // Ruling R53 (I4): before breakout nothing has reached the surface; between breakout and the start of the
+            // cooling formulas the star already shines, but that light is not modeled here.
+            if (sourceTimeS < c.BreakoutS)
+                return new Detection(DetectionStatus.NotYet,
+                    $"The shock has not yet broken out through the star's surface: that happens {UnitFormat.Time(c.BreakoutS * z1)} " +
+                    $"after {origin}, and the visible light curve is drawn from {UnitFormat.Time(c.StartS * z1)}.");
+            return new Detection(DetectionStatus.NotModeled,
+                $"The shock broke out through the star's surface {UnitFormat.Time(c.BreakoutS * z1)} after {origin}, so the star " +
+                "is already shining, but its visible light in the first hours and days after breakout is not modeled here: " +
+                $"the cooling formulas the light curve uses apply from {UnitFormat.Time(c.StartS * z1)}. See the X-ray & UV " +
+                "panel for the breakout flash and the early ultraviolet.");
+        }
         if (sourceTimeS > EndS)
             return new Detection(DetectionStatus.NotModeled,
                 $"The light-curve model ends {UnitFormat.Time(EndS * z1)} after {origin}; later light comes from the remnant " +
@@ -199,6 +224,13 @@ public sealed class LightCurveModel : ISignalModel
     /// modeled light curve.
     /// </summary>
     public double ColourTemperatureK(Outcome o, double sourceTimeS) => LightCurve.Of(o)?.ColourTemperatureK(sourceTimeS) ?? double.NaN;
+
+    /// <summary>
+    /// Ruling R53 (I5): a Type Ia's (Ia, Iax, 91T- and 91bg-like) decline rate Δm15(B), mag, measured on the drawn light
+    /// curve: absolute B (the drawn V plus the curve's own B−V) 15 days after B maximum less B at maximum, source time.
+    /// NaN for other outcomes and when there is no modeled light curve.
+    /// </summary>
+    public double DeclineRateDm15B(Outcome o) => LightCurve.Of(o) is { Thermonuclear: true } c ? c.DeclineRateDm15B : double.NaN;
 
     /// <summary>
     /// The end of the plateau t_p (Goldberg et al. 2019), s after bounce in source time, for the timeline marker. Null
@@ -272,9 +304,14 @@ public sealed class LightCurveModel : ISignalModel
         string text = "";
         if (c.Interacting)
             text += " The collision with the dense gas around the star adds light that this model does not include, so it " +
-                    "is probably brighter than shown (Type IIn average about −18.6 at peak against −16.8 for II-P).";
+                    "is probably brighter than shown (Type IIn average about −18.6 at peak against −16.8 for II-P), and " +
+                    "bluer: early interacting spectra are hot and blue, while the lab colours it like an ordinary " +
+                    "supernova's photosphere (6,000 K under a hydrogen envelope), too red.";
         if (c.HasMagnetar)
             text += " The magnetar's power is assumed fully trapped, so the late light is overestimated.";
+        if (c.HasMagnetar && c.PeakLuminosityErgS > MagnetarModel.BrightestObservedSupernovaErgS)
+            text += " Its peak is brighter than any supernova ever observed (ASASSN-15lh, about 2 × 10⁴⁵ erg/s; Dong et " +
+                    "al. 2016): full trapping of the fast-spinning magnetar's spin-down power is assumed.";
         if (c.PairInstability)
             text += " A pair-instability supernova is drawn as a nickel-powered light curve; no such explosion has been " +
                     "seen for certain.";

@@ -4,30 +4,29 @@ using SupernovaLab.Core.Units;
 namespace SupernovaLab.Core.Outcomes;
 
 /// <summary>
-/// Preset pins (spec §2.3; rulings R35, R36, R41, R44, R46): published values put in place of the model's own, the notes
-/// when a pin does not fit the outcome, and ruling R22's class judged again on the pinned values.
+/// Preset pins (spec §2.3; rulings R35, R36, R41, R44, R46, R53): published values put in place of the model's own, the
+/// notes when a pin does not fit the outcome, the notes that state a pinned value rewritten with it, the mass budget, and
+/// the superluminous class judged again on the pinned values.
 /// </summary>
 public sealed partial class OutcomeEngine
 {
     /// <summary>
-    /// What ruling R22 needs to re-judge a hydrogen-rich, superluminous-energy magnetar after pins: its base class and that
-    /// class's note, the spin-down sentence that starts the class note, and the class note now in the notes.
-    /// </summary>
-    private sealed record HydrogenRichMagnetar(SupernovaType BaseType, string BaseTypeNote, string Pours, string ClassNote);
-
-    /// <summary>
-    /// The outcome's values after a preset's pins (rulings R35, R36, R41, R44, R46): the star (with its pinned radius), the
-    /// class (R22 re-judged), the explosion values, ⁴⁴Ti when pinned, the GRB, pulsar and ring pins, and whether any pin
-    /// was applied.
+    /// The outcome's values after a preset's pins (rulings R35, R36, R41, R44, R46, R53): the star (with its pinned radius),
+    /// the class (R22/R53 re-judged; a Type Ia's subtype from a pinned ⁵⁶Ni), the explosion values, the remnant (with a
+    /// pinned black-hole mass), ⁴⁴Ti when pinned, the GRB, pulsar and ring pins, and whether any pin was applied.
     /// </summary>
     private sealed record Pinned(PresupernovaStar Star, SupernovaType Type, Quantity? Energy, Quantity? Ejecta,
-        Quantity? Nickel, Quantity? Ti44, Quantity? GrbEnergy, Quantity? GrbPeak, Quantity? GrbT90, Quantity? PulsarRadio,
-        bool Ring, bool Published);
+        Quantity? Nickel, Remnant Remnant, Quantity? Ti44, Quantity? GrbEnergy, Quantity? GrbPeak, Quantity? GrbT90,
+        Quantity? PulsarRadio, bool Ring, bool Published);
+
+    /// <summary>Ruling R53 (I2): a pinned ejecta and remnant may exceed the star's final mass by this much (M☉) unremarked.</summary>
+    private const double MassBudgetTolerance = 0.01;
 
     private static Pinned ApplyPins(LabInputs x, Draft d, PresupernovaStar star, List<string> notes, PresetPins? pins)
     {
         var (energy, ejecta, nickel) = (d.Energy, d.Ejecta, d.Nickel);
         var type = d.Type;
+        var remnant = d.Remnant;
         bool published = false;
         // A preset's values are one author's published fit to the real event (presets.md), so ModelDependent; their
         // Source is the preset's citation (ruling R44).
@@ -57,7 +56,27 @@ public sealed partial class OutcomeEngine
             {
                 if (pins.ExplosionEnergyErg is double e) energy = Pin(e, "erg");
                 if (pins.EjectaMass is double ej) ejecta = Pin(ej, MSun);
-                if (pins.NickelMass is double ni) nickel = Pin(ni, MSun);
+                if (pins.NickelMass is double ni)
+                {
+                    nickel = Pin(ni, MSun);
+                    type = WithPinnedIaNickel(x, d, type, ni, notes);
+                }
+                // Ruling R53 (I2): a published black-hole mass (the same author set as the ejecta).
+                if (pins.RemnantMass is double rm)
+                {
+                    if (remnant.Kind == RemnantKind.BlackHole)
+                    {
+                        // The momentum-scaled kick follows the mass; a direct collapse keeps its zero kick.
+                        var kick = remnant.KickKmS is { Value: > 0 } ? RemnantModel.BlackHoleKick(rm, directCollapse: false)
+                            : remnant.KickKmS;
+                        remnant = remnant with { Mass = Pin(rm, MSun), KickKmS = kick };
+                    }
+                    else notes.Add("The published remnant mass is not used: in the lab this explosion leaves no black hole.");
+                }
+                if (d.RemnantNote is { } rn && d.RemnantNoteFor is { } noteFor && notes.IndexOf(rn) is var at and >= 0 &&
+                    (pins.EjectaMass is not null || pins.RemnantMass is not null) &&
+                    ejecta is not null && remnant.Mass is not null)
+                    notes[at] = noteFor(ejecta.Value, remnant.Mass.Value);
                 if (pins.Ti44Mass is double t)
                 {
                     if (coreCollapse) ti44 = Pin(t, MSun);
@@ -99,15 +118,58 @@ public sealed partial class OutcomeEngine
                     nickel is not null && ejecta is { Value: > 0 })
                     nickel = CapNickel(nickel, ejecta.Value);
                 NoteNickelCapBroken(x, pins, ejecta, nickel, notes);
+                if (pins.EjectaMass is not null || pins.RemnantMass is not null)
+                    NoteMassBudget(pins, star, ejecta, remnant, notes);
             }
         }
 
-        // Ruling R44: a hydrogen-rich magnetar's SLSN-II / luminous-II class is judged again on the pinned E and M_ej.
-        if (d.R22 is { } r22 && explosion && (pins?.ExplosionEnergyErg is not null || pins?.EjectaMass is not null) &&
+        // Rulings R44 and R53: a superluminous-energy magnetar's class is judged again on the pinned E and M_ej.
+        if (d.Slsn is { } candidate && explosion && (pins?.ExplosionEnergyErg is not null || pins?.EjectaMass is not null) &&
             ejecta is { Value: > 0 } && energy is { Value: > 0 } && d.MagnetarEnergy is { } mep && d.MagnetarTimescale is { } mtp)
-            type = RejudgeHydrogenRichMagnetar(x, r22, type, star, mep.Value, mtp.Value, energy.Value, ejecta.Value, notes);
+            type = RejudgeMagnetar(x, candidate, type, star, mep.Value, mtp.Value, energy.Value, ejecta.Value, notes);
 
-        return new Pinned(star, type, energy, ejecta, nickel, ti44, grbEnergy, grbPeak, grbT90, pulsarRadio, ring, published);
+        return new Pinned(star, type, energy, ejecta, nickel, remnant, ti44, grbEnergy, grbPeak, grbT90, pulsarRadio, ring,
+            published);
+    }
+
+    /// <summary>
+    /// Ruling R53 (I1): a pinned ⁵⁶Ni on a Type Ia (not Iax) sets its subtype by the model's own rule (step 9) and rewrites
+    /// the ⁵⁶Ni sentence with the published value. Returns the class.
+    /// </summary>
+    private static SupernovaType WithPinnedIaNickel(LabInputs x, Draft d, SupernovaType type, double nickel, List<string> notes)
+    {
+        if (x.Kind != StarKind.WhiteDwarf || type == SupernovaType.Iax || d.IaNickelNote is not { } old) return type;
+        var (subtype, note) = TypeIaModel.Subtype(nickel, published: true);
+        int at = notes.IndexOf(old);
+        if (at >= 0) notes[at] = note;
+        else notes.Add(note);
+        return subtype;
+    }
+
+    /// <summary>
+    /// Ruling R53 (I2): when the pinned ejecta and the remnant together weigh more than the lab's star at death, the
+    /// published values are kept and a note says the real star was heavier than the lab's model of it. The remnant's
+    /// shown mass is used (gravitational for a neutron star, lighter than its baryonic mass), so only a real excess counts.
+    /// </summary>
+    private static void NoteMassBudget(PresetPins pins, PresupernovaStar star, Quantity? ejecta, Remnant remnant,
+        List<string> notes)
+    {
+        if (ejecta is null || remnant.Mass is not { } rem) return;
+        double mf = star.FinalMass.Value, total = ejecta.Value + rem.Value;
+        if (total <= mf + MassBudgetTolerance) return;
+        string ejectaWho = pins.EjectaMass is not null ? "published" : "model's";
+        string remnantWho = rem.Published ? "published" : "model's";
+        string kind = remnant.Kind switch
+        {
+            RemnantKind.BlackHole => "black hole",
+            RemnantKind.Magnetar => "magnetar",
+            RemnantKind.NeutronStar => "neutron star",
+            _ => "remnant",
+        };
+        notes.Add($"The {ejectaWho} ejecta ({UnitFormat.Mass(ejecta.Value)}) and the {remnantWho} {kind} " +
+                  $"({UnitFormat.Mass(rem.Value)}) add up to {UnitFormat.Mass(total)}, more than the lab's star holds when it " +
+                  $"dies ({UnitFormat.Mass(mf)}): the real star was heavier than the lab's model of it. The published values " +
+                  "are kept.");
     }
 
     /// <summary>Whether the pins hold any value that needs an explosion (ruling R44): every pin but the radius.</summary>
@@ -115,7 +177,7 @@ public sealed partial class OutcomeEngine
         => p.ExplosionEnergyErg is not null || p.EjectaMass is not null || p.NickelMass is not null || p.Ti44Mass is not null ||
            p.GrbEisoErg is not null || p.GrbEpKeV is not null || p.GrbT90S is not null || p.NsSpinPeriodS is not null ||
            p.NsFieldG is not null || p.PulsarRadioLumMjyKpc2 is not null || p.EquatorialRing == true ||
-           p.NsGravitationalMass is not null;
+           p.NsGravitationalMass is not null || p.RemnantMass is not null;
 
     /// <summary>
     /// Ruling R44: pinned values are trusted, so the model's cap (⁵⁶Ni ≤ 0.5 M_ej for core-collapse and pair-instability
@@ -138,25 +200,29 @@ public sealed partial class OutcomeEngine
     }
 
     /// <summary>
-    /// Ruling R44 with R22 and R32: the class of a hydrogen-rich magnetar supernova whose energy or ejecta mass a preset
-    /// pinned, judged on the one magnetar peak with those values. When the class changes, its note changes with it, and
-    /// the base-class sentence is removed (SLSN-II) or put back (base class).
+    /// Rulings R44, R22, R32 and R53: the class of a superluminous-energy magnetar supernova whose energy or ejecta mass a
+    /// preset pinned, judged on outcomes §5.3's conditions with the pinned ejecta and, with hydrogen, on the one magnetar
+    /// peak with those values. When the judgement changes, its note changes with it, and the base-class sentence is
+    /// removed (superluminous) or put back (base class).
     /// </summary>
-    private static SupernovaType RejudgeHydrogenRichMagnetar(LabInputs x, HydrogenRichMagnetar r22, SupernovaType type,
+    private static SupernovaType RejudgeMagnetar(LabInputs x, SuperluminousCandidate c, SupernovaType type,
         PresupernovaStar star, double spinDownEnergy, double spinDownTime, double kineticEnergy, double ejecta, List<string> notes)
     {
-        double peak = MagnetarModel.PeakLuminosityErgS(spinDownEnergy, spinDownTime, ejecta, kineticEnergy,
-            MagnetarModel.EjectaOpacity(x.InitialMass, star.HydrogenEnvelopeMass.Value, ejecta));
-        var (slsn, note) = HydrogenRichMagnetarClass(r22.Pours, peak);
-        var judged = slsn ?? r22.BaseType;
-        if (x.DenseCsm) judged = SpectralTyper.WithDenseCsm(judged);
-        if (judged == type) return type;
+        double peak = c.Hydrogen
+            ? MagnetarModel.PeakLuminosityErgS(spinDownEnergy, spinDownTime, ejecta, kineticEnergy,
+                MagnetarModel.EjectaOpacity(x.InitialMass, star.HydrogenEnvelopeMass.Value, ejecta))
+            : double.NaN;
+        var (slsn, note) = MagnetarClass(c.Pours, c.Hydrogen, x.InitialMass, ejecta, peak);
+        if (note == c.ClassNote) return type;
 
-        int at = notes.IndexOf(r22.ClassNote);
+        var judged = slsn ?? c.BaseType;
+        if (x.DenseCsm) judged = SpectralTyper.WithDenseCsm(judged);
+        bool wasSuperluminous = type is SupernovaType.SlsnI or SupernovaType.SlsnII;
+        int at = notes.IndexOf(c.ClassNote);
         if (at >= 0) notes[at] = note + " (Judged with the published explosion values.)";
         else notes.Add(note);
-        if (slsn is null) notes.Insert(Math.Max(at, 0), r22.BaseTypeNote);
-        else notes.Remove(r22.BaseTypeNote);
+        if (wasSuperluminous && slsn is null) notes.Insert(Math.Max(at, 0), c.BaseTypeNote);
+        else if (!wasSuperluminous && slsn is not null) notes.Remove(c.BaseTypeNote);
         return judged;
     }
 

@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using OpenTK.Graphics.OpenGL4;
 using SupernovaLab.App.ViewModels;
+using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Units;
 using SupernovaLab.Rendering;
 
@@ -40,10 +41,13 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     private readonly MainViewModel _vm;
     private readonly Func<IRenderHost> _hostFactory;
+    private readonly Func<Outcome, double, ExplosionScene> _sceneFactory;
     private readonly Stopwatch _wall = Stopwatch.StartNew();
     private IRenderHost? _host;
-    private ExplosionScene _scene;
-    private SceneState _state;
+    private ExplosionScene? _scene;
+    private SceneState _state = new();
+    /// <summary>Review M1: the 3D view's model error, shown in place of its notes; null when the scene is fine.</summary>
+    private string? _modelError;
     private StarRenderer? _star;
     private EjectaRenderer? _ejecta;
     private JetRenderer? _jets;
@@ -53,12 +57,16 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private TaskCompletionSource<BitmapSource?>? _readback;
     private bool _disposed;
 
-    public SceneController(MainViewModel vm, Func<IRenderHost> hostFactory)
+    /// <param name="sceneFactory">Builds the scene of an outcome at a time dilation; null for <see cref="ExplosionScene"/>'s
+    /// own constructor (tests pass one that fails, review M1).</param>
+    public SceneController(MainViewModel vm, Func<IRenderHost> hostFactory,
+        Func<Outcome, double, ExplosionScene>? sceneFactory = null)
     {
         _vm = vm ?? throw new ArgumentNullException(nameof(vm));
         _hostFactory = hostFactory ?? throw new ArgumentNullException(nameof(hostFactory));
-        _scene = new ExplosionScene(vm.CurrentOutcome, vm.CurrentObserver.TimeDilation);
-        _state = _scene.At(SourceTimeS);
+        _sceneFactory = sceneFactory ?? ((o, z1) => new ExplosionScene(o, z1));
+        BuildScene();
+        ComputeState();
         vm.OutcomeChanged += OnOutcomeChanged;
         vm.Timeline.PropertyChanged += OnTimelineChanged;
         UpdateOverlay();
@@ -177,7 +185,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// outcome's scale could hide the next one).</summary>
     private void OnOutcomeChanged(object? sender, EventArgs e)
     {
-        _scene = new ExplosionScene(_vm.CurrentOutcome, _vm.CurrentObserver.TimeDilation);
+        BuildScene();
         _frozenUnitCm = null;
         Camera.DistanceMpc = AutoDistance;
         Camera.Target = default;
@@ -192,7 +200,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     private void Restate()
     {
-        _state = _scene.At(SourceTimeS);
+        ComputeState();
         UpdateOverlay();
         if (_host is not null && !IsFailed) _host.Animating = _state.Marker == SceneMarker.Pulsar;
         RequestRender();
@@ -204,8 +212,46 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         RadiusText = double.IsFinite(_state.RadiusCm) && _state.RadiusCm > 0
             ? $"{_state.RadiusLabel}: {UnitFormat.Distance(_state.RadiusCm)}"
             : "";
-        NotesText = string.Join(Environment.NewLine, _state.Notes);
+        NotesText = _modelError ?? string.Join(Environment.NewLine, _state.Notes);
         UpdateScaleBar();
+    }
+
+    /// <summary>
+    /// Review M1 (spec §9): the scene's models run inside a catch. A model error keeps the last drawn state and shows a
+    /// message in the view's notes instead of ending the app; the panels are unaffected.
+    /// </summary>
+    private void BuildScene()
+    {
+        try
+        {
+            _scene = _sceneFactory(_vm.CurrentOutcome, _vm.CurrentObserver.TimeDilation);
+            _modelError = null;
+        }
+        catch (Exception e)
+        {
+            _scene = null;
+            _modelError = ModelErrorText(e);
+        }
+    }
+
+    private void ComputeState()
+    {
+        if (_scene is null) return;
+        try
+        {
+            _state = _scene.At(SourceTimeS);
+            _modelError = null;
+        }
+        catch (Exception e)
+        {
+            _modelError = ModelErrorText(e);
+        }
+    }
+
+    private static string ModelErrorText(Exception e)
+    {
+        Trace.TraceError($"3D view: {e}");
+        return $"3D view: model error ({e.GetType().Name}: {e.Message}). The panels are unaffected.";
     }
 
     private void UpdateScaleBar()

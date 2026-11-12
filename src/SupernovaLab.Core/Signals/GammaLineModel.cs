@@ -236,7 +236,7 @@ public sealed class GammaLineModel : ISignalModel
         if (o.Type == SupernovaType.Iax) return SpectrumModel.IaxKmS;
         if (Thermonuclear(o)) return ThermonuclearLineFwhmKmS;
         if (o.EjectaMass is not { Value: > 0 } m || o.ExplosionEnergyErg is not { Value: > 0 } e) return double.NaN;
-        return Math.Sqrt(10 * e.Value / (3 * m.Value * PhysicalConstants.MSun)) / 1e5;
+        return ArnettDiffusion.EjectaVelocityCmS(e.Value, m.Value) / 1e5;
     }
 
     /// <summary>

@@ -39,8 +39,8 @@ public sealed class RemnantEvolutionModel : ISignalModel
     /// <summary>[APPROX] Ambient density, H atoms per cm³: n0 = 1, the research's reference value.</summary>
     public const double AmbientDensity = 1;
 
-    /// <summary>Proton mass, g (signals §0.2); ρ0 = n0 m_p as Leahy &amp; Williams write it (§7.1).</summary>
-    private const double ProtonMass = 1.6726e-24;
+    /// <summary>Proton mass, g (<see cref="PhysicalConstants.ProtonMass"/>); ρ0 = n0 m_p as Leahy &amp; Williams write it (§7.1).</summary>
+    private const double ProtonMass = PhysicalConstants.ProtonMass;
 
     /// <summary>§7.2 n = 0 constants (Leahy &amp; Williams 2017, Tables 1 and 3, s = 0).</summary>
     private const double LambdaB = 2.01, Xi = 2.026, Alpha = 1.25;

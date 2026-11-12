@@ -13,9 +13,9 @@ public sealed partial class OutcomeEngine
 {
     private const string MSun = "M☉";
 
-    // Step 3 (outcomes §2.3): the He-core masses at which pulsational and full pair instability set in, as in
+    // Step 3 (outcomes §2.3): the He-core masses at which pulsational and full pair instability set in, defined once in
     // ProgenitorModel.
-    private const double PpisnHeCore = 35, PisnHeCore = 64;
+    private const double PpisnHeCore = ProgenitorModel.PpisnHeCore, PisnHeCore = ProgenitorModel.PisnHeCore;
     // Step 3: M_BH ≈ min(M_He,final, ~45) after pulsational pair instability (F19; APPROXIMATION for the shape).
     private const double PpisnMaxBlackHole = 45;
     // Below 0.01 M☉ of pulse ejecta the PPISN is shown without an interacting transient (Task 4 review).
@@ -77,6 +77,8 @@ public sealed partial class OutcomeEngine
             if (heBefore < PpisnHeCore && star.HeCoreMass.Value >= PpisnHeCore)
             {
                 early = EarlyFate.PulsationalPairInstability;
+                // Ruling R53 (I1): step 3's "the iron core … collapses" no longer describes this star.
+                notes.Remove(ProgenitorModel.CoreCollapseNote(x.InitialMass));
                 notes.Add($"Its enlarged helium core of {UnitFormat.Mass(star.HeCoreMass.Value)} reaches the pulsational " +
                           "pair-instability range (about 35–64 M☉): pulses throw off mass before the core collapses to a " +
                           "black hole.");
@@ -114,8 +116,19 @@ public sealed partial class OutcomeEngine
         public Quantity? MagnetarEnergy { get; init; }
         public Quantity? MagnetarTimescale { get; init; }
         public Step7 Branch { get; init; }
-        /// <summary>A hydrogen-rich magnetar's ruling R22 inputs, for re-judging its class after pins (ruling R44).</summary>
-        public HydrogenRichMagnetar? R22 { get; init; }
+        /// <summary>
+        /// A magnetar with superluminous spin-down energy: what rulings R22 and R53 need to judge its class again after
+        /// pins (ruling R44).
+        /// </summary>
+        public SuperluminousCandidate? Slsn { get; init; }
+        /// <summary>
+        /// Ruling R53 (I1): the note that states the black hole's mass (collapsar, magnetorotational, pulsational pair
+        /// instability), and how to write it for other ejecta and black-hole masses (M☉), so a pin can rewrite it.
+        /// </summary>
+        public string? RemnantNote { get; init; }
+        public Func<double, double, string>? RemnantNoteFor { get; init; }
+        /// <summary>Ruling R53 (I1): a Type Ia's ⁵⁶Ni sentence, rewritten when a preset pins the ⁵⁶Ni.</summary>
+        public string? IaNickelNote { get; init; }
     }
 
     private static Outcome Finish(LabInputs x, Draft d, PresupernovaStar star, List<string> notes, PresetPins? pins)
@@ -125,19 +138,30 @@ public sealed partial class OutcomeEngine
         star = pinned.Star;
         bool coreCollapse = x.Kind == StarKind.MassiveStar && d.Fate == Fate.Supernova;
         var peak = PeakLuminosity(x, d, star, energy, ejecta, nickel);
-        // Step 9 / ruling R21: the Phillips outputs for Type Ia outcomes.
-        Quantity? magB = null, dm15 = null;
-        if (x.Kind == StarKind.WhiteDwarf && peak is not null)
-        {
-            magB = TypeIaModel.PeakAbsoluteMagB(peak);
-            dm15 = TypeIaModel.DeclineRateDm15B(magB, notes);
-        }
+        if (d.Peak == PeakRule.Magnetar && peak is { Value: > MagnetarModel.BrightestObservedSupernovaErgS })
+            notes.Add(BrighterThanEverObservedNote(peak.Value, pinned.Remnant));
+        // Step 9 / ruling R21: a Type Ia's peak B magnitude from the engine's peak luminosity. Ruling R53: Δm15(B) is
+        // measured on the drawn light curve instead (LightCurveModel.DeclineRateDm15B).
+        Quantity? magB = x.Kind == StarKind.WhiteDwarf && peak is not null ? TypeIaModel.PeakAbsoluteMagB(peak) : null;
         // Ruling R35: ⁴⁴Ti for core-collapse supernovae with ⁵⁶Ni only (Type Ia yields are not in the research).
         if (ti44 is null && coreCollapse && nickel is { Value: > 0 } ejectedNickel)
             ti44 = new Quantity(Ti44PerNickel * ejectedNickel.Value, MSun, Confidence.Speculative, Ti44Source);
-        return new Outcome(x, d.Fate, pinned.Type, d.HasGrb, d.Remnant, star, energy, ejecta, nickel, peak,
-            d.MagnetarEnergy, d.MagnetarTimescale, notes, pinned.Published, magB, dm15, ti44, pinned.GrbEnergy,
+        return new Outcome(x, d.Fate, pinned.Type, d.HasGrb, pinned.Remnant, star, energy, ejecta, nickel, peak,
+            d.MagnetarEnergy, d.MagnetarTimescale, notes, pinned.Published, magB, ti44, pinned.GrbEnergy,
             pinned.GrbPeak, pinned.GrbT90, pinned.PulsarRadio, pinned.Ring);
+    }
+
+    /// <summary>
+    /// Ruling R53 (I3): the disclosure when a magnetar's full-trapping peak (erg/s) outshines the brightest supernova ever
+    /// observed (<see cref="MagnetarModel.BrightestObservedSupernovaErgS"/>).
+    /// </summary>
+    private static string BrighterThanEverObservedNote(double peakErgS, Remnant magnetar)
+    {
+        string spin = magnetar.SpinPeriodS is { } p ? $" spinning every {UnitFormat.Time(p.Value)}" : "";
+        return $"Its light peaks near {UnitFormat.Scientific(peakErgS, "erg/s")}, brighter than any supernova ever " +
+               "observed (the record, ASASSN-15lh, reached about 2 × 10⁴⁵ erg/s; Dong et al. 2016). The lab assumes the " +
+               $"ejecta trap all of the magnetar's spin-down power; for a magnetar{spin} in light ejecta much of it " +
+               "would escape, so this peak is an overestimate.";
     }
 
     /// <summary>
@@ -240,6 +264,7 @@ public sealed partial class OutcomeEngine
         // Step 3: an optional interacting transient, IIn-like with hydrogen, Ibn / Icn-like without [MODEL-DEPENDENT].
         // With (almost) nothing ejected there is no transient to show.
         SupernovaType type;
+        Func<double, double, string>? noteFor = null;
         if (ejecta.Value < PpisnMinEjecta)
         {
             type = SupernovaType.None;
@@ -248,13 +273,18 @@ public sealed partial class OutcomeEngine
         }
         else
         {
-            type = SpectralTyper.WithDenseCsm(SpectralTyper.Classify(star, x.InitialMass, x.Stripping, x.Mixing).Type);
-            notes.Add($"The pulses throw off {UnitFormat.Mass(mf - mbh)} and leave a black hole of {UnitFormat.Mass(mbh)}. " +
-                      $"Colliding shells can shine as an interacting transient like a Type {type} supernova (model-dependent).");
+            var shown = type = SpectralTyper.WithDenseCsm(SpectralTyper.Classify(star, x.InitialMass, x.Stripping, x.Mixing).Type);
+            noteFor = (ej, bh) => $"The pulses throw off {UnitFormat.Mass(ej)} and leave a black hole of {UnitFormat.Mass(bh)}. " +
+                                  $"Colliding shells can shine as an interacting transient like a Type {shown} supernova " +
+                                  "(model-dependent).";
+            notes.Add(noteFor(mf - mbh, mbh));
         }
         var remnant = RemnantModel.BlackHole(mass, RemnantModel.DirectCollapseTime(null),
             RemnantModel.BlackHoleKick(mbh, directCollapse: true));
-        return new Draft(Fate.PulsationalPairInstability, type, remnant, Ejecta: ejecta);
+        return new Draft(Fate.PulsationalPairInstability, type, remnant, Ejecta: ejecta)
+        {
+            RemnantNote = noteFor is null ? null : notes[^1], RemnantNoteFor = noteFor,
+        };
     }
 
     private static Draft AbovePairInstability(PresupernovaStar star)
@@ -296,7 +326,10 @@ public sealed partial class OutcomeEngine
     private static Draft TypeIa(LabInputs x, List<string> notes)
     {
         var ia = TypeIaModel.Explode(x, notes);
-        return new Draft(Fate.Supernova, ia.Type, ia.Remnant, ia.Energy, ia.Ejecta, ia.Nickel, PeakRule.Arnett);
+        return new Draft(Fate.Supernova, ia.Type, ia.Remnant, ia.Energy, ia.Ejecta, ia.Nickel, PeakRule.Arnett)
+        {
+            IaNickelNote = ia.SubtypeNote,
+        };
     }
 
     // ---------------------------------------------------------------- step 4: does the core explode?
@@ -318,6 +351,12 @@ public sealed partial class OutcomeEngine
         public bool FixedNickel { get; init; }
         public bool SmallKick { get; init; }
         public double? Compactness { get; init; }
+        /// <summary>
+        /// Ruling R53 (I1): step 4's note when it says neutrinos explode the core and leave a neutron star, and the sentence
+        /// that replaces it when a step 7 branch makes a black hole instead.
+        /// </summary>
+        public string? NeutronStarVerdict { get; init; }
+        public string? OverriddenVerdict { get; init; }
         public bool Explodes => Energy is not null;
     }
 
@@ -404,9 +443,13 @@ public sealed partial class OutcomeEngine
                 };
                 break;
             default:
-                notes.Add($"{who} explodes in this model: neutrinos from the newborn neutron star restart the stalled shock.");
+                string verdict = $"{who} explodes in this model: neutrinos from the newborn neutron star restart the stalled shock.";
+                notes.Add(verdict);
                 c = new Collapse(conf)
                 {
+                    NeutronStarVerdict = verdict,
+                    OverriddenVerdict = $"On neutrinos alone, {char.ToLowerInvariant(who[0])}{who[1..]} would explode in " +
+                                        "this model (Sukhbold et al. 2016), but its rotation decides the outcome instead.",
                     Energy = Q(row.ExplosionEnergyErg, "erg", conf, src),
                     Nickel = Q(row.NickelMass, MSun, conf, src),
                     RemnantBaryonic = Q(row.RemnantBaryonicMass, MSun, conf, src),
@@ -464,12 +507,16 @@ public sealed partial class OutcomeEngine
             return new Collapse(Confidence.ModelDependent);
         }
 
-        notes.Add($"Stripped by a companion, a star of {mass} has a core that neutrinos can explode (Schneider et al. " +
-                  "2021), leaving a neutron star.");
+        string verdict = $"Stripped by a companion, a star of {mass} has a core that neutrinos can explode (Schneider et al. " +
+                         "2021), leaving a neutron star.";
+        notes.Add(verdict);
         // Sch21: Ib/c explosion energies 0.88 ± 0.31 B, mean ⁵⁶Ni 0.059 M☉, stripped NS average 1.42 M☉.
         const double nsMass = 1.42;
         return new Collapse(Confidence.ModelDependent)
         {
+            NeutronStarVerdict = verdict,
+            OverriddenVerdict = $"Stripped by a companion, a star of {mass} has a core that neutrinos alone could explode " +
+                                "(Schneider et al. 2021), but its rotation decides the outcome instead.",
             Energy = Q(0.88e51, "erg", Confidence.ModelDependent, Sch21, 0.57e51, 1.19e51),
             Nickel = Q(0.059, MSun, Confidence.ModelDependent, Sch21),
             NeutronStarMass = Q(nsMass, MSun, Confidence.ModelDependent, Sch21),
@@ -576,7 +623,7 @@ public sealed partial class OutcomeEngine
         bool peakSpeculative = x.DenseCsm || baseType == SupernovaType.IIL;
         Quantity? spinDownEnergy = null, spinDownTime = null;
         var branch = Step7.None;
-        HydrogenRichMagnetar? r22 = null;
+        SuperluminousCandidate? slsnCandidate = null;
         // Rulings R41 and R46: a preset's published mass, spin and field replace the neutron star's (a magnetar's spin
         // and field again in Magnetar).
         if (remnant.Kind == RemnantKind.NeutronStar) remnant = WithSpinPins(remnant, pins);
@@ -591,8 +638,9 @@ public sealed partial class OutcomeEngine
                 peak = PeakRule.Magnetar;
                 peakSpeculative = true;
             }
-            if (mag.HydrogenRichPours is { } pours)
-                r22 = new HydrogenRichMagnetar(baseType, typeNote, pours, mag.ClassNote!);
+            if (mag.Pours is { } pours)
+                slsnCandidate = new SuperluminousCandidate(baseType, typeNote, pours, mag.ClassNote!,
+                    star.HydrogenEnvelopeMass.Value > 0);
             if (mag.Superluminous is { } slsn)
             {
                 // Ruling R22: the superluminous class replaces the base class, so its sentence goes.
@@ -604,7 +652,7 @@ public sealed partial class OutcomeEngine
 
         return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, peak, peakSpeculative)
         {
-            MagnetarEnergy = spinDownEnergy, MagnetarTimescale = spinDownTime, Branch = branch, R22 = r22,
+            MagnetarEnergy = spinDownEnergy, MagnetarTimescale = spinDownTime, Branch = branch, Slsn = slsnCandidate,
         };
     }
 

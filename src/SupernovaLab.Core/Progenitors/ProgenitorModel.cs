@@ -19,8 +19,9 @@ public static class ProgenitorModel
     private const double EcsnLow = 9.0, EcsnHigh = 9.25;
     private const double IfmrMistTop = 7.2;
 
-    // Step 3 He-core boundaries at death (outcomes §2.3, §8.2 step 3), ±5 M☉.
-    private const double PpisnHeCore = 35, PisnHeCore = 64, PisnTopHeCore = 133;
+    // Step 3 He-core boundaries at death (outcomes §2.3, §8.2 step 3), ±5 M☉. The outcome engine uses the same two.
+    internal const double PpisnHeCore = 35, PisnHeCore = 64;
+    private const double PisnTopHeCore = 133;
     // Ruling R12, outcomes §2.3: a PISN from an H-rich very massive star needs Z ≲ Z☉/3 (Langer et al. 2007). A stripped
     // (WC-type) progenitor needs "much lower Z"; no number is given. [APPROX] We take 0.1 Z☉, the metallicity below which
     // §2.2 step 4 has stars stay compact and keep their mass, an order of magnitude below the H-rich ceiling.
@@ -132,6 +133,12 @@ public static class ProgenitorModel
         >= PpisnHeCore => EarlyFate.PulsationalPairInstability,
         _ => EarlyFate.CoreCollapse,
     };
+
+    /// <summary>
+    /// The step 3 note for an ordinary core collapse of a star of initial mass <paramref name="m"/> (M☉), so the engine can
+    /// take it back when a later step (7d raising the He core into the PPISN range) changes that fate.
+    /// </summary>
+    internal static string CoreCollapseNote(double m) => FateNote(EarlyFate.CoreCollapse, m, 0);
 
     private static string FateNote(EarlyFate fate, double m, double heCore)
     {

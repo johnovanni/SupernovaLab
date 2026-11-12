@@ -100,6 +100,9 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            <!-- Review M3: the 30 M☉ model switch, in plain words; the full note is the tooltip (and on every segment). -->
+            <TextBlock Text="A change just above 30 M☉ may come from a switch in the lab's star models there." Style="{StaticResource Muted}"
+                       FontSize="10.5" Margin="0,1,0,0" ToolTip="{Binding MapNote}" TextWrapping="Wrap"/>
             <TextBlock Text="The map shows massive stars; a white dwarf's explosion is not on it." Style="{StaticResource Muted}"
                        Margin="0,2,0,0"
                        Visibility="{Binding IsMapForThisStar, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>

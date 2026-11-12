@@ -161,7 +161,8 @@ public sealed partial class MainViewModel : ObservableObject
         var outcome = _engine.Compute(Lab.Inputs, Lab.Pins);
         var observer = Lab.Observer;
         Outcome.Update(outcome, observer);
-        Timeline.Update(EventMarkers.For(outcome, observer), observer, OutcomeTexts.TimeOrigin(outcome));
+        Timeline.Update(EventMarkers.Guarded(() => EventMarkers.For(outcome, observer)), observer,
+            OutcomeTexts.TimeOrigin(outcome));
         return outcome;
     }
 }

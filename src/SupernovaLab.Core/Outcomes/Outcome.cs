@@ -28,7 +28,8 @@ public enum Fate
 /// leaves a neutron star or magnetar only) are the birth spin period in s, the surface dipole field in G and the pulsar's
 /// 1.4 GHz radio luminosity in mJy kpc², and (ruling R46) the neutron star's gravitational mass in M☉, which sets its
 /// neutrino binding energy. <see cref="EquatorialRing"/> (ruling R41) gives the supernova SN 1987A's
-/// equatorial ring, whose X-rays <c>CsmInteractionModel</c> then draws. A null value keeps the model's value.
+/// equatorial ring, whose X-rays <c>CsmInteractionModel</c> then draws. <see cref="RemnantMass"/> (ruling R53) is a
+/// published black-hole mass in M☉, for an outcome that leaves a black hole. A null value keeps the model's value.
 /// <para>Ruling R44: pins are published values and are trusted. The explosion pins (E, M_ej, ⁵⁶Ni, ⁴⁴Ti, the GRB and
 /// neutron-star pins, the ring) are ignored, with a note, when the outcome has no explosion (or no GRB, no neutron star)
 /// to apply them to; the radius pin always applies. The ⁵⁶Ni ≤ 0.5 M_ej cap is not applied to pinned values, but a pin
@@ -37,14 +38,15 @@ public enum Fate
 public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
     double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null,
     double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null,
-    double? NsGravitationalMass = null);
+    double? NsGravitationalMass = null, double? RemnantMass = null);
 
 /// <summary>
 /// The lab's result (spec §3). <see cref="Inputs"/> are the inputs as used, held inside their slider ranges.
 /// Energies in erg, masses in M☉, luminosity in erg/s, times in s. Quantities that do not apply are null.
 /// <see cref="UsesPublishedValues"/> is true when preset pins replaced any model value.
-/// <see cref="PeakAbsoluteMagB"/> (mag) and <see cref="DeclineRateDm15B"/> (Δm15(B), mag) are the outcomes §8.2 step 9
-/// Phillips outputs, set for Type Ia (including Iax) only (ruling R21).
+/// <see cref="PeakAbsoluteMagB"/> (mag) is outcomes §8.2 step 9's peak B magnitude, estimated from the engine's peak
+/// luminosity with BC_B ≈ 0, set for Type Ia (including Iax) only (ruling R21). It does not shape the light curve. Ruling
+/// R53: the decline rate Δm15(B) is measured on the drawn light curve (<c>LightCurveModel.DeclineRateDm15B</c>), not here.
 /// <see cref="Ti44Mass"/> is the initial ⁴⁴Ti mass (M☉) of a core-collapse supernova with ⁵⁶Ni (ruling R35): a preset's
 /// pin, else 2×10⁻³ × the ⁵⁶Ni mass [APPROX, Speculative]; null for every other outcome, Type Ia included.
 /// <see cref="GrbIsotropicEnergyErg"/> (erg), <see cref="GrbPeakEnergyKeV"/> (rest-frame E_p,i, keV) and
@@ -58,6 +60,6 @@ public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bo
     PresupernovaStar? Star, Quantity? ExplosionEnergyErg, Quantity? EjectaMass, Quantity? NickelMass,
     Quantity? PeakLuminosityErgS, Quantity? MagnetarEnergyErg, Quantity? MagnetarTimescaleS,
     IReadOnlyList<string> Notes, bool UsesPublishedValues,
-    Quantity? PeakAbsoluteMagB = null, Quantity? DeclineRateDm15B = null, Quantity? Ti44Mass = null,
+    Quantity? PeakAbsoluteMagB = null, Quantity? Ti44Mass = null,
     Quantity? GrbIsotropicEnergyErg = null, Quantity? GrbPeakEnergyKeV = null, Quantity? GrbT90S = null,
     Quantity? PulsarRadioLuminosityMjyKpc2 = null, bool HasEquatorialRing = false);

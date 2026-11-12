@@ -100,6 +100,12 @@ public class OutcomeSweepTests
                     $"no field note at {where}");
             }
 
+            // Ruling R53 (I2): with no pins, the ejecta and the remnant never weigh more than the star at death (the
+            // remnant's shown mass: gravitational for a neutron star, so a little lighter than what it took).
+            if (o.EjectaMass is { } ejected && o.Remnant.Mass is { } left && o.Star is { } star)
+                Assert.True(ejected.Value + left.Value <= star.FinalMass.Value + 0.01,
+                    $"M_ej {ejected.Value} + remnant {left.Value} > M_f {star.FinalMass.Value} at {where}");
+
             // Rulings R15 / R17: ⁵⁶Ni never exceeds half the ejecta in core-collapse and pair-instability explosions;
             // thermonuclear ones (Ia, Iax) keep the published yields, bounded only by Ni < M_ej.
             if (o.NickelMass is { } ni && o.EjectaMass is { } ej)
@@ -116,19 +122,14 @@ public class OutcomeSweepTests
                 Assert.NotNull(o.ExplosionEnergyErg);
             }
 
-            // Ruling R21: the Phillips outputs exist for Type Ia only; a magnitude can be negative.
+            // Ruling R21: the peak B estimate exists for Type Ia only; a magnitude can be negative. (Ruling R53: Δm15(B) is
+            // measured on the drawn light curve, not carried on the outcome.)
             if (x.Kind == StarKind.WhiteDwarf)
             {
                 Assert.True(o.PeakAbsoluteMagB is { } mb && double.IsFinite(mb.Value), $"M_B at {where}");
-                Assert.InRange(o.DeclineRateDm15B!.Value, 0.85, 1.7);
-                Assert.False(string.IsNullOrWhiteSpace(o.DeclineRateDm15B.Source.Citation));
                 Assert.False(string.IsNullOrWhiteSpace(o.PeakAbsoluteMagB!.Source.Citation));
             }
-            else
-            {
-                Assert.Null(o.PeakAbsoluteMagB);
-                Assert.Null(o.DeclineRateDm15B);
-            }
+            else Assert.Null(o.PeakAbsoluteMagB);
 
             if (o.HasGrb) Assert.Equal(SupernovaType.IcBL, o.Type);
             if (o.Remnant.Kind == RemnantKind.Magnetar)

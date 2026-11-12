@@ -179,8 +179,8 @@ public static class OutcomeTexts
     /// <summary>
     /// Every non-null quantity of the outcome, in display order, with its group, label and glossary key: the explosion,
     /// the gamma-ray burst, the remnant and the star. Ruling R34: <see cref="Outcome.PeakLuminosityErgS"/> is labelled
-    /// as the engine's classification estimate, and the Phillips peak as the relation's value, never as the peak
-    /// brightness (which comes from the drawn light curve).
+    /// as the engine's classification estimate, and the Type Ia peak B magnitude as an estimate from it (ruling R53), never
+    /// as the peak brightness (which comes from the drawn light curve, as does Δm15(B)).
     /// </summary>
     public static IReadOnlyList<OutcomeQuantity> Quantities(Outcome o)
     {
@@ -198,9 +198,8 @@ public static class OutcomeTexts
         Add(ex, ClassificationLuminosityLabel(o), nameof(Glossary.ClassificationLuminosity), o.PeakLuminosityErgS);
         Add(ex, "Magnetar spin energy", nameof(Glossary.MagnetarEnergy), o.MagnetarEnergyErg);
         Add(ex, "Magnetar spin-down time", nameof(Glossary.MagnetarTimescale), o.MagnetarTimescaleS);
-        Add(ex, "Peak absolute B magnitude from the Phillips relation (shapes the light curve)",
-            nameof(Glossary.PhillipsRelation), o.PeakAbsoluteMagB);
-        Add(ex, "Decline rate Δm15(B)", nameof(Glossary.DeclineRate), o.DeclineRateDm15B);
+        Add(ex, "Peak absolute B magnitude, estimated from the engine's peak luminosity (BC_B ≈ 0; it does not shape the " +
+                "light curve)", nameof(Glossary.PhillipsRelation), o.PeakAbsoluteMagB);
 
         const string grb = BurstGroup;
         Add(grb, "Isotropic-equivalent energy", nameof(Glossary.GrbIsotropicEnergy), o.GrbIsotropicEnergyErg);

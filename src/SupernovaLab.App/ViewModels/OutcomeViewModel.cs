@@ -89,14 +89,22 @@ public sealed record MapLegendItem(Fate Fate, string Label)
 public sealed partial class OutcomeViewModel : ObservableObject
 {
     private static readonly LightCurveModel LightCurve = new();
-    // The drawn curve's provenance (ruling R34) followed by the light-curve model's own literature sources.
-    private static readonly Source DrawnCurveSource = new(
-        "Read off the light curve drawn in the visible-light panel (LightCurveModel), not the engine's classification " +
-        "estimate (ruling R34). The curve's sources: " + string.Join("; ", LightCurve.Sources.Select(s => s.Citation)),
-        string.Join("; ", LightCurve.Sources.Select(s => s.ResearchRef).Distinct()));
 
-    /// <summary>The drawn light curve's source, given once under its heading in the details window.</summary>
-    public string CurveSourceText { get; } = $"Source: {DrawnCurveSource.Citation} ({DrawnCurveSource.ResearchRef})";
+    /// <summary>
+    /// The drawn curve's provenance (ruling R34) followed by the light-curve model's literature sources that apply to
+    /// this outcome (review M10).
+    /// </summary>
+    private static Source DrawnCurveSource(Outcome o)
+    {
+        var sources = LightCurve.SourcesFor(o);
+        return new Source(
+            "Read off the light curve drawn in the visible-light panel (LightCurveModel), not the engine's classification " +
+            "estimate (ruling R34). The curve's sources: " + string.Join("; ", sources.Select(s => s.Citation)),
+            string.Join("; ", sources.Select(s => s.ResearchRef).Distinct()));
+    }
+
+    /// <summary>The drawn light curve's source for this outcome, given once under its heading in the details window.</summary>
+    [ObservableProperty] private string _curveSourceText = "";
 
     private readonly OutcomeEngine _engine;
     private readonly LabViewModel _lab;
@@ -149,9 +157,11 @@ public sealed partial class OutcomeViewModel : ObservableObject
 
         var details = OutcomeTexts.Quantities(o).Select(QuantityRow.From).ToList();
         DetailRows = details;
-        CurveRows = DrawnCurveRows(o, obs);
+        var curveSource = DrawnCurveSource(o);
+        CurveSourceText = $"Source: {curveSource.Citation} ({curveSource.ResearchRef})";
+        CurveRows = DrawnCurveRows(o, obs, curveSource);
         KeyNumbers = ChooseKeyNumbers(o, details, CurveRows);
-        Notes = o.Notes;
+        Notes = BrightPlateauNote(o, CurveRows) is { } bright ? o.Notes.Append(bright).ToList() : o.Notes;
         InputNotes = o.Notes.Where(OutcomeTexts.IsInputNote).ToList();
 
         UpdateMap(o.Inputs);
@@ -159,8 +169,25 @@ public sealed partial class OutcomeViewModel : ObservableObject
 
     // ---------------------------------------------------------------- the drawn light curve (ruling R34)
 
-    /// <summary>The peak of the drawn V-band light curve: absolute, as seen from here, and when (observer time).</summary>
-    private static IReadOnlyList<QuantityRow> DrawnCurveRows(Outcome o, ObserverSetup obs)
+    /// <summary>
+    /// The peak of the drawn V-band light curve (absolute, as seen from here, and when, in observer time) and, for a Type
+    /// Ia, the decline rate Δm15(B) measured on the drawn curve (ruling R53). Review M1: a model error here leaves the rows
+    /// empty instead of ending the app; the visible-light panel reports the error itself.
+    /// </summary>
+    private static IReadOnlyList<QuantityRow> DrawnCurveRows(Outcome o, ObserverSetup obs, Source source)
+    {
+        try
+        {
+            return ReadDrawnCurve(o, obs, source);
+        }
+        catch (Exception e)
+        {
+            System.Diagnostics.Trace.TraceError($"Drawn light-curve rows: {e}");
+            return Array.Empty<QuantityRow>();
+        }
+    }
+
+    private static IReadOnlyList<QuantityRow> ReadDrawnCurve(Outcome o, ObserverSetup obs, Source source)
     {
         double tPeak = LightCurve.PeakTimeS(o);
         if (!double.IsFinite(tPeak)) return Array.Empty<QuantityRow>();
@@ -173,16 +200,42 @@ public sealed partial class OutcomeViewModel : ObservableObject
         var rows = new List<QuantityRow>
         {
             new(group, "Peak brightness (absolute V)", nameof(Glossary.PeakBrightness),
-                new Quantity(absV, "mag", conf, DrawnCurveSource), $"M_V {OutcomeTexts.Magnitude(absV)}") { SharedSource = true },
+                new Quantity(absV, "mag", conf, source), $"M_V {OutcomeTexts.Magnitude(absV)}") { SharedSource = true },
         };
         if (double.IsFinite(appV))
             rows.Add(new(group, "Peak brightness seen from here (V, with dust)", nameof(Glossary.ApparentMagnitude),
-                new Quantity(appV, "mag", conf, DrawnCurveSource),
+                new Quantity(appV, "mag", conf, source),
                 $"m_V {OutcomeTexts.Magnitude(appV)}: {Comparisons.ForApparentMagnitude(appV)}") { SharedSource = true });
         double tObs = tPeak * obs.TimeDilation;
         rows.Add(new(group, "Time of the peak, as seen from here", nameof(Glossary.ObserverTime),
-            new Quantity(tObs, "s", conf, DrawnCurveSource), UnitFormat.Time(tObs)) { SharedSource = true });
+            new Quantity(tObs, "s", conf, source), UnitFormat.Time(tObs)) { SharedSource = true });
+        double dm15 = LightCurve.DeclineRateDm15B(o);
+        if (double.IsFinite(dm15))
+            rows.Add(new(group, "Decline rate Δm15(B): B-band fading in the 15 days after the B peak", nameof(Glossary.DeclineRate),
+                new Quantity(dm15, "mag", conf, source),
+                $"{dm15.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} mag") { SharedSource = true });
         return rows;
+    }
+
+    // Richardson et al. 2014 (AJ 147, 118), signals §4.6: observed II-P mean peak M_B −16.80, σ 0.97. A red supergiant
+    // counts as large above 500 R☉ (outcomes §4.3's RSG radii run from a few hundred to over 1,000 R☉) [APPROX].
+    private const double IIPMeanPeak = -16.80, IIPPeakSigma = 0.97, LargeStarRsun = 500;
+
+    /// <summary>
+    /// Review M11: a II-P whose drawn peak is more than one σ brighter than the observed II-P mean gets a note saying
+    /// why, when the reason is the large star (the Rabinak–Waxman cooling and G19 plateau both brighten with radius).
+    /// Null otherwise.
+    /// </summary>
+    private static string? BrightPlateauNote(Outcome o, IReadOnlyList<QuantityRow> curve)
+    {
+        if (o.Type != SupernovaType.IIP || o.Star is not { } star) return null;
+        double radiusRsun = star.RadiusCm.Value / PhysicalConstants.RSun;
+        var peak = curve.FirstOrDefault(r => r.GlossaryKey == nameof(Glossary.PeakBrightness));
+        if (peak is null || !(peak.Value < IIPMeanPeak - IIPPeakSigma) || radiusRsun < LargeStarRsun) return null;
+        return $"Bright for a Type II-P: its drawn peak, M_V {OutcomeTexts.Magnitude(peak.Value)}, is more than one standard " +
+               "deviation brighter than the observed II-P average (M_B −16.8 ± 1.0 in the B band; Richardson et al. 2014). " +
+               $"The reason is the star's size ({UnitFormat.Number(radiusRsun)} R☉): a larger red supergiant has a brighter " +
+               "early cooling glow and a brighter plateau (Rabinak & Waxman 2011; Goldberg et al. 2019).";
     }
 
     /// <summary>
@@ -227,6 +280,17 @@ public sealed partial class OutcomeViewModel : ObservableObject
         .Select(m => new AxisLabel(m.ToString(System.Globalization.CultureInfo.InvariantCulture), (Math.Log(m) - LogMin) / LogSpan))
         .ToList();
 
+    /// <summary>
+    /// Review M3 (deferred T3/T4/T5): at 30 M☉ the lab changes its star models and rules (Sukhbold et al. 2016's per-mass
+    /// results up to 30 M☉, outcomes §8.2 step 4's M &gt; 30 rules and Woosley 2019's stripped-star fits above), so the
+    /// cores jump there. Shown under the map and on every segment's tooltip; no physics is changed.
+    /// </summary>
+    public string MapNote { get; } =
+        "At 30 M☉ the lab switches star models and rules (Sukhbold et al. 2016's results up to 30 M☉; the rules for heavier " +
+        "stars and Woosley 2019's stripped-star fits above), so the helium and carbon-oxygen cores jump there, by up to a " +
+        "third for stripped stars. An outcome that changes just above 30 M☉, such as a short neutron-star island, may be an " +
+        "artefact of that switch, not a real feature.";
+
     /// <summary>Recomputes the strip only when an input other than the initial mass changed; always moves the marker.</summary>
     private void UpdateMap(LabInputs inputs)
     {
@@ -249,7 +313,7 @@ public sealed partial class OutcomeViewModel : ObservableObject
             string remnant = first.Remnant == RemnantKind.None ? "no remnant" : OutcomeTexts.RemnantName(first.Remnant).ToLowerInvariant();
             segments.Add(new MapSegment(from, to, first.Fate, first.Remnant,
                 $"{UnitFormat.Mass(first.InitialMass)} – {UnitFormat.Mass(last.InitialMass)}: " +
-                $"{OutcomeTexts.FateName(first.Fate)}, {remnant}"));
+                $"{OutcomeTexts.FateName(first.Fate)}, {remnant}{Environment.NewLine}{Environment.NewLine}{MapNote}"));
             start = i;
         }
         MapSegments = segments;

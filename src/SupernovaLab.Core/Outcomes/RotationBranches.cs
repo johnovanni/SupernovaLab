@@ -48,12 +48,23 @@ public sealed partial class OutcomeEngine
         if (x.Rotation == Rotation.Extreme)
         {
             string? missing = CollapsarMissing(x, star, blackHoleCore);
-            if (missing is null) return Collapsar(x, star, c, notes);
+            if (missing is null) return Collapsar(x, star, c, WithoutNeutronStarVerdict(c, notes));
             notes.Add($"Extreme rotation alone does not make a collapsar and a gamma-ray burst here: {missing}.");
         }
         if (x.Rotation != Rotation.Slow && x.Field == CoreField.Strong && blackHoleCore)
-            return Magnetorotational(x, star, notes);
+            return Magnetorotational(x, star, WithoutNeutronStarVerdict(c, notes));
         return null;
+    }
+
+    /// <summary>
+    /// Ruling R53 (I1): a step 7 branch that makes a black hole replaces step 4's "… leaving a neutron star" verdict with a
+    /// sentence that does not contradict it.
+    /// </summary>
+    private static List<string> WithoutNeutronStarVerdict(Collapse c, List<string> notes)
+    {
+        if (c.NeutronStarVerdict is { } verdict && notes.IndexOf(verdict) is var at and >= 0)
+            notes[at] = c.OverriddenVerdict!;
+        return notes;
     }
 
     /// <summary>The first step 7a condition this star misses, in plain words; null when it meets them all.</summary>
@@ -86,14 +97,17 @@ public sealed partial class OutcomeEngine
         var nickel = CapNickel(Q(CollapsarNickel, MSun, md, Cano17,
             CollapsarNickel - CollapsarNickelSigma, CollapsarNickel + CollapsarNickelSigma), ejecta.Value);
 
-        notes.Add("With extreme rotation at low metal content the collapsing core spins fast enough to form a black hole " +
-                  $"of {UnitFormat.Mass(bh.Value)} wrapped in a disk that launches jets: a collapsar. The jets drill out of " +
-                  "the hydrogen-free star as a long gamma-ray burst, and the explosion is a broad-lined Type Ic supernova. " +
-                  "The conditions are model-dependent and the rotation needed is speculative.");
+        static string NoteFor(double _, double blackHole)
+            => "With extreme rotation at low metal content the collapsing core spins fast enough to form a black hole " +
+               $"of {UnitFormat.Mass(blackHole)} wrapped in a disk that launches jets: a collapsar. The jets drill out of " +
+               "the hydrogen-free star as a long gamma-ray burst, and the explosion is a broad-lined Type Ic supernova. " +
+               "The conditions are model-dependent and the rotation needed is speculative.";
+        string note = NoteFor(ejecta.Value, bh.Value);
+        notes.Add(note);
         var type = WithDenseCsm(x, SupernovaType.IcBL, notes);
         return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, PeakRule.Arnett)
         {
-            HasGrb = true, Branch = Step7.Collapsar,
+            HasGrb = true, Branch = Step7.Collapsar, RemnantNote = note, RemnantNoteFor = NoteFor,
         };
     }
 
@@ -116,10 +130,13 @@ public sealed partial class OutcomeEngine
         var energy = Q(MrEnergy, "erg", sp, T19IcBL, MrEnergy - MrEnergySigma, MrEnergy + MrEnergySigma);
         var nickel = CapNickel(Q(MrNickel, MSun, sp, T19IcBL, MrNickel - MrNickelSigma, MrNickel + MrNickelSigma), ejecta.Value);
 
-        notes.Add("Its fast rotation winds up the strong magnetic field of the collapsing core into jets that blow the star " +
-                  "apart even though neutrinos alone could not: a magnetorotational explosion, a hypernova of about " +
-                  $"{UnitFormat.Energy(MrEnergy)}. What is left forms a black hole of {UnitFormat.Mass(bh.Value)}. Such " +
-                  "explosions are speculative.");
+        static string NoteFor(double _, double blackHole)
+            => "Its fast rotation winds up the strong magnetic field of the collapsing core into jets that blow the star " +
+               "apart even though neutrinos alone could not: a magnetorotational explosion, a hypernova of about " +
+               $"{UnitFormat.Energy(MrEnergy)}. What is left forms a black hole of {UnitFormat.Mass(blackHole)}. Such " +
+               "explosions are speculative.";
+        string remnantNote = NoteFor(ejecta.Value, bh.Value);
+        notes.Add(remnantNote);
         SupernovaType type;
         if (envelope > 0)
         {
@@ -136,7 +153,7 @@ public sealed partial class OutcomeEngine
         type = WithDenseCsm(x, type, notes);
         return new Draft(Fate.Supernova, type, remnant, energy, ejecta, nickel, peak, PeakSpeculative: true)
         {
-            Branch = Step7.Magnetorotational,
+            Branch = Step7.Magnetorotational, RemnantNote = remnantNote, RemnantNoteFor = NoteFor,
         };
     }
 
@@ -165,15 +182,56 @@ public sealed partial class OutcomeEngine
     /// <summary>
     /// What step 7b makes of a newborn neutron star: the magnetar remnant, the kinetic energy, the spin-down energy and
     /// time when they change the light (<see cref="PowersLight"/>), and the superluminous class when they power one. For a
-    /// hydrogen-rich magnetar with superluminous energy, <see cref="HydrogenRichPours"/> and <see cref="ClassNote"/> keep
-    /// what ruling R22 needs to judge the class again after pins (ruling R44).
+    /// magnetar with superluminous energy, <see cref="Pours"/> and <see cref="ClassNote"/> keep what rulings R22 and R53
+    /// need to judge the class again after pins (ruling R44).
     /// </summary>
     private sealed record MagnetarOutcome(Remnant Remnant, Quantity Energy, Quantity? SpinDownEnergy, Quantity? SpinDownTime,
         SupernovaType? Superluminous)
     {
         public bool PowersLight => SpinDownEnergy is not null;
-        public string? HydrogenRichPours { get; init; }
+        public string? Pours { get; init; }
         public string? ClassNote { get; init; }
+    }
+
+    /// <summary>
+    /// A magnetar with superluminous spin-down energy (step 7b), for judging its class again after pins: its base class and
+    /// that class's note, the spin-down sentence that starts the class note, the class note now in the notes, and whether
+    /// the star keeps hydrogen (ruling R22's peak cut then applies).
+    /// </summary>
+    private sealed record SuperluminousCandidate(SupernovaType BaseType, string BaseTypeNote, string Pours, string ClassNote,
+        bool Hydrogen);
+
+    // Ruling R53 / outcomes §5.3: the SLSN-I magnetar fits of N17 have M_ej in 2.2–12.9 M☉ (1σ), and the progenitors need
+    // "M > 20 M☉". The superluminous classes require M_ej ≥ 2.2 M☉ and an initial mass above 20 M☉.
+    private const double SlsnMinEjecta = 2.2, SlsnMinInitialMass = 20;
+
+    /// <summary>
+    /// Rulings R22 and R53: the class of a magnetar supernova with superluminous spin-down energy (step 7b). Outcomes §5.3's
+    /// conditions come first: an initial mass above 20 M☉ and at least 2.2 M☉ of ejecta; outside them it keeps its base
+    /// class (null) as a magnetar-boosted supernova. Then a hydrogen-poor star is SLSN-I, and a hydrogen-rich one SLSN-II
+    /// only if its peak (erg/s, ruling R32's) reaches R22's 7×10⁴³. Returns the class and the note that follows
+    /// <paramref name="pours"/>.
+    /// </summary>
+    internal static (SupernovaType? Class, string Note) MagnetarClass(string pours, bool hydrogen, double initialMass,
+        double ejectaMsun, double peakErgS)
+    {
+        bool heavy = initialMass > SlsnMinInitialMass, enough = ejectaMsun >= SlsnMinEjecta;
+        if (!heavy || !enough)
+        {
+            string why = (heavy, enough) switch
+            {
+                (false, false) => $"this star starts at {UnitFormat.Mass(initialMass)} and throws off only {UnitFormat.Mass(ejectaMsun)}",
+                (false, _) => $"this star starts at only {UnitFormat.Mass(initialMass)}",
+                _ => $"this explosion throws off only {UnitFormat.Mass(ejectaMsun)}",
+            };
+            return (null, $"{pours} It is not counted as superluminous, though: the magnetar-powered superluminous " +
+                          "supernovae that have been fitted come from stars of more than 20 M☉ that threw off at least " +
+                          $"2.2 M☉ (Nicholl et al. 2017), and {why}. It keeps its ordinary class as a magnetar-boosted, " +
+                          "unusually luminous supernova (speculative).");
+        }
+        if (hydrogen) return HydrogenRichMagnetarClass(pours, peakErgS);
+        return (SupernovaType.SlsnI, $"{pours} That makes a superluminous supernova without hydrogen (Type I). The step " +
+                                     "from the star to its spin and field is speculative.");
     }
 
     private static MagnetarOutcome Magnetar(LabInputs x, PresupernovaStar star, Remnant neutronStar, Quantity energy,
@@ -212,20 +270,17 @@ public sealed partial class OutcomeEngine
         string pours = $"{born}, and as it slows it pours about {UnitFormat.Energy(ep.Value)} into the ejecta over about " +
                        $"{UnitFormat.Time(tp.Value)}.";
 
-        if (star.HydrogenEnvelopeMass.Value <= 0)
-        {
-            notes.Add($"{pours} That makes a superluminous supernova without hydrogen (Type I). The step from the star to " +
-                      "its spin and field is speculative.");
-            return new MagnetarOutcome(remnant, kinetic, ep, tp, SupernovaType.SlsnI);
-        }
-
-        // Ruling R22 [APPROX]: hydrogen-rich events count as SLSN-II only above the usual superluminous cut, judged on the
-        // one magnetar peak (ruling R32, with R33a's opacity) that the light curve also draws.
-        double peak = MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, kinetic.Value,
-            MagnetarModel.EjectaOpacity(x.InitialMass, star.HydrogenEnvelopeMass.Value, ejecta.Value));
-        var (slsn, note) = HydrogenRichMagnetarClass(pours, peak);
+        // Rulings R22 and R53: the class, judged on outcomes §5.3's conditions and, for hydrogen-rich events, on the one
+        // magnetar peak (ruling R32, with R33a's opacity) that the light curve also draws. Outside the conditions the
+        // light curve still carries the spin-down power, and E_K stays E_SN + E_p.
+        bool hydrogen = star.HydrogenEnvelopeMass.Value > 0;
+        double peak = hydrogen
+            ? MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, kinetic.Value,
+                MagnetarModel.EjectaOpacity(x.InitialMass, star.HydrogenEnvelopeMass.Value, ejecta.Value))
+            : double.NaN;
+        var (slsn, note) = MagnetarClass(pours, hydrogen, x.InitialMass, ejecta.Value, peak);
         notes.Add(note);
-        return new MagnetarOutcome(remnant, kinetic, ep, tp, slsn) { HydrogenRichPours = pours, ClassNote = note };
+        return new MagnetarOutcome(remnant, kinetic, ep, tp, slsn) { Pours = pours, ClassNote = note };
     }
 
     /// <summary>

@@ -17,11 +17,19 @@ public static class ArnettDiffusion
     /// <summary>The kernel's weight exp((t'² − t²)/τ²) is cut below e^−40.</summary>
     private const double KernelCutoff = 40;
 
-    /// <summary>§4.2: τ_m = (2κM / (β c v))^(1/2), v = √(10E / 3M), β = 13.8; s.</summary>
+    /// <summary>
+    /// The ejecta velocity scale v = √(10E / 3M), cm/s, for kinetic energy E (erg) in M (M☉) of ejecta (signals §0.4,
+    /// §4.2: 1e51 erg and 3 M☉ give 7.5e8 cm/s). The one definition the diffusion time, the 3D view's edge and the
+    /// gamma-ray line widths share (review M8).
+    /// </summary>
+    public static double EjectaVelocityCmS(double energyErg, double ejectaMsun)
+        => Math.Sqrt(10 * energyErg / (3 * ejectaMsun * PhysicalConstants.MSun));
+
+    /// <summary>§4.2: τ_m = (2κM / (β c v))^(1/2), v = √(10E / 3M) (<see cref="EjectaVelocityCmS"/>), β = 13.8; s.</summary>
     public static double DiffusionTimeS(double opacity, double ejectaMsun, double energyErg)
     {
         double m = ejectaMsun * PhysicalConstants.MSun;
-        double v = Math.Sqrt(10 * energyErg / (3 * m));
+        double v = EjectaVelocityCmS(energyErg, ejectaMsun);
         return Math.Sqrt(2 * opacity * m / (Beta * PhysicalConstants.C * v));
     }
 

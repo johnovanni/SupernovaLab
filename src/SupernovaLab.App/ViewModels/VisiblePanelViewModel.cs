@@ -107,7 +107,7 @@ public sealed class VisiblePanelViewModel : InstrumentPanelViewModel
         Spectrum = new SpectrumView(s.WavelengthsAngstrom, s.RelativeFlux, s.Lines, s.PhotosphereVelocityKmS,
             $"Schematic spectrum at {UnitFormat.Time(TimeS)}: a blackbody at {s.ColorTemperatureK.ToString("N0", inv)} K with " +
             $"the identifying lines{(s.Nebular ? " of the nebular phase" : "")}; {velocity}. Drawn from the line list, not a " +
-            "measured spectrum; line strengths are approximate.");
+            $"measured spectrum; line strengths are approximate. {SpectrumModel.VelocityCaption}");
     }
 
     protected override string? InstantViewNote()

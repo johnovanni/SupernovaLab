@@ -29,6 +29,8 @@ public static class PhysicalConstants
     public const double KeV = 1.602177e-9;
     /// <summary>Atomic mass unit m_u, g.</summary>
     public const double AtomicMassUnit = 1.6605e-24;
+    /// <summary>Proton mass, g (CODATA 2018 1.67262192e-24, to five figures). Not in signals §0.2's list.</summary>
+    public const double ProtonMass = 1.6726e-24;
     /// <summary>Solar luminosity, erg/s (IAU 2015 B3).</summary>
     public const double LSun = 3.828e33;
     /// <summary>M_bol zero-point luminosity, erg/s (IAU 2015 B2); M_bol = -2.5 log10(L / this).</summary>

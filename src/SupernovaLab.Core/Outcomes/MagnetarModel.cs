@@ -17,6 +17,13 @@ public static class MagnetarModel
     public const double Opacity = 0.2;
 
     /// <summary>
+    /// Ruling R53 (I3): the brightest supernova ever observed, erg/s: ASASSN-15lh, L_bol = (2.2 ± 0.2) × 10⁴⁵ erg/s (Dong et
+    /// al. 2016, Science 351, 257; arXiv:1507.03010), taken as 2 × 10⁴⁵. A magnetar outcome drawn brighter says so. Not
+    /// in the research files; the ruling's figure, checked against the paper's abstract.
+    /// </summary>
+    public const double BrightestObservedSupernovaErgS = 2e45;
+
+    /// <summary>
     /// Ruling R33a [APPROX]: the ejecta opacity of a magnetar-powered supernova, cm²/g, κ = 0.2 (1 + X̄): electron
     /// scattering κ_es = 0.2 (1 + X) in ejecta the magnetar keeps ionized, with the ejecta-averaged hydrogen fraction
     /// X̄ = X_H × M_H,env / M_ej (X_H by initial mass, <see cref="ProgenitorModel.HydrogenMassFraction"/>; held in 0–1).

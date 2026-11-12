@@ -41,7 +41,7 @@ public static class EjectaKinematics
     /// out no ejecta (no explosion energy or ejecta mass).
     /// </summary>
     public static double OuterVelocityCmS(Outcome o)
-        => HasEjecta(o) ? Math.Sqrt(10 * o.ExplosionEnergyErg!.Value / (3 * o.EjectaMass!.Value * MSun)) : double.NaN;
+        => HasEjecta(o) ? ArnettDiffusion.EjectaVelocityCmS(o.ExplosionEnergyErg!.Value, o.EjectaMass!.Value) : double.NaN;
 
     /// <summary>
     /// The radius of the outer edge, cm, at this source time.

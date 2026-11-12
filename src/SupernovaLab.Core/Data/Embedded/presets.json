@@ -21,7 +21,7 @@
       },
       "facts": [
         { "messenger": "Neutrinos", "channelId": "cumulative@kamiokande-ii", "sourceTimeS": 12.439, "value": 11, "unit": "events",
-          "description": "Kamiokande-II recorded 11 neutrino events above its threshold within 12.4 s (Hirata et al. 1987; some later tables list 12).",
+          "description": "Kamiokande-II recorded 11 neutrino events above its threshold within 12.4 s (Hirata et al. 1987; some later tables list 12). The lab expects about 18.5 here; its count depends on the neutron star's mass and on the detector's efficiency curve. Seeing 11 or fewer when 18.45 are expected has a Poisson probability of about 4.5%: unlikely, but not out of the question.",
           "source": { "citation": "Hirata et al. 1987, PRL 58, 1490 (event table as compiled by Vissani 2015, J. Phys. G 42, 013001)", "researchRef": "signals §1.5; presets §1" } },
         { "messenger": "Neutrinos", "channelId": "cumulative@imb", "sourceTimeS": 5.582, "value": 8, "unit": "events",
           "description": "IMB recorded 8 neutrino events within 5.6 s.",
@@ -92,7 +92,7 @@
     {
       "id": "sn2011fe",
       "name": "SN 2011fe",
-      "summary": "A Type Ia supernova in the Pinwheel Galaxy (M101), caught within a day of exploding. The closest Type Ia in decades and the best observed: a white dwarf that blew itself apart completely. The lab does not detect its gamma-ray lines with INTEGRAL/SPI, as observed (Isern et al. 2013), but only just: its best signal is 0.76 of SPI's threshold for lines this broad, and the margin depends on the assumed instrument resolution and the 0.53 solar masses of nickel.",
+      "summary": "A Type Ia supernova in the Pinwheel Galaxy (M101), caught within a day of exploding. The closest Type Ia in decades and the best observed: a white dwarf that blew itself apart completely. The lab does not detect its gamma-ray lines with INTEGRAL/SPI, as observed (Isern et al. 2013), but only just: its best signal is 0.76 of SPI's threshold for lines this broad, and the margin depends on the assumed instrument resolution and the 0.53 solar masses of nickel. The lab's B light curve fades 0.99 magnitudes in the 15 days after its peak, slower than the observed 1.10 ± 0.04 (Pereira et al. 2013): every near-Chandrasekhar Type Ia in the lab has the same light-curve shape (one opacity, ejecta mass and energy, with the nickel setting only the brightness), and its colour after the peak follows a simple blend toward the Lira relation, not a fit to this supernova.",
       "whatWasSeen": "It was found about 11 hours after first light and peaked near magnitude 10 some 18 days later. Pre-explosion images showed the star was far too faint to be a giant, and no radio or X-rays were seen, so its surroundings were clean.",
       "inputs": { "kind": "WhiteDwarf", "iaChannel": "NearChandrasekhar" },
       "observer": {
@@ -152,7 +152,7 @@
     {
       "id": "sn1998bw",
       "name": "SN 1998bw / GRB 980425",
-      "summary": "The first supernova linked to a gamma-ray burst. A broad-lined Type Ic, about ten times as energetic as a normal supernova, from the stripped core of a massive star; its burst was about ten thousand times weaker than a typical one. The lab's light curve peaks about a week late and half a magnitude faint (V 14.1 on day 23, against the observed 13.62 near day 16): its one-zone light curve spreads the radioactive heat through all 10.9 M☉ of ejecta.",
+      "summary": "The first supernova linked to a gamma-ray burst. A broad-lined Type Ic, about ten times as energetic as a normal supernova, from the stripped core of a massive star; its burst was about ten thousand times weaker than a typical one. The lab's light curve peaks about a week late and half a magnitude faint (V 14.1 on day 23, against the observed 13.62 near day 16): its one-zone light curve spreads the radioactive heat through all 10.9 M☉ of ejecta. The published ejecta and black hole (10.9 + 2.9 M☉, from a 13.8 M☉ core) weigh more than the lab's star at death (11.2 M☉): the real star was heavier than the lab's model of it.",
       "whatWasSeen": "BeppoSAX and BATSE recorded a 23-second gamma-ray burst; the supernova appeared in the same patch of sky the next day and peaked near magnitude 13.6. Its radio emission was unusually bright and early, showing a shock moving at close to the speed of light.",
       "inputs": { "kind": "MassiveStar", "initialMass": 40, "metallicity": 0.3, "stripping": "Full", "rotation": "Extreme" },
       "observer": {
@@ -160,9 +160,9 @@
         "source": { "citation": "Distance 38 Mpc (z = 0.0085; Galama et al. 1998, Nature 395, 670; Kulkarni et al. 1998, Nature 395, 663); A_V = 3.1 × Galactic E(B−V) 0.06 (Patat et al. 2001, ApJ 555, 900) [DERIVED]", "researchRef": "presets §7; presets-verification" }
       },
       "pins": {
-        "explosionEnergyErg": 3e52, "ejectaMass": 10.9, "nickelMass": 0.7,
+        "explosionEnergyErg": 3e52, "ejectaMass": 10.9, "nickelMass": 0.7, "remnantMass": 2.9,
         "grbEisoErg": 8.5e47, "grbEpKeV": 55, "grbT90S": 23.3,
-        "source": { "citation": "Iwamoto et al. 1998, Nature 395, 672 (model CO138: E = 3 × 10⁵² erg, M_ej = 13.8 − 2.9 M☉, ⁵⁶Ni 0.7 M☉); GRB 980425: E_iso 8.5 × 10⁴⁷ erg and T90 23.3 s (Galama et al. 1998), E_p,i 55 ± 21 keV (Amati 2006, MNRAS 372, 233, Table 1)", "researchRef": "presets §7; signals §9.4; presets-verification" }
+        "source": { "citation": "Iwamoto et al. 1998, Nature 395, 672 (model CO138: E = 3 × 10⁵² erg, M_ej = 13.8 − 2.9 M☉, ⁵⁶Ni 0.7 M☉, remnant 2.9 M☉); GRB 980425: E_iso 8.5 × 10⁴⁷ erg and T90 23.3 s (Galama et al. 1998), E_p,i 55 ± 21 keV (Amati 2006, MNRAS 372, 233, Table 1)", "researchRef": "presets §7; signals §9.4; presets-verification" }
       },
       "facts": [
         { "messenger": "GammaRays", "channelId": "prompt", "sourceTimeS": null, "value": 3.0e-7, "unit": "erg cm⁻² s⁻¹",
@@ -212,7 +212,7 @@
     {
       "id": "sn2015bn",
       "name": "SN 2015bn",
-      "summary": "A hydrogen-poor superluminous supernova about 1.7 billion light-years away, a hundred times brighter than a normal one. Its long glow is best explained by a newborn magnetar spinning about 500 times a second.",
+      "summary": "A hydrogen-poor superluminous supernova about 1.7 billion light-years away, a hundred times brighter than a normal one. Its long glow is best explained by a newborn magnetar spinning about 500 times a second. The lab's light peaks at about 1.8 × 10⁴⁴ erg/s, 0.77 of the observed 2.3 ± 0.4 × 10⁴⁴ (about 1.3 standard deviations low), after about 62 days instead of 69: it puts the published magnetar through the lab's one-zone diffusion, not the fit's own model. The published ejecta (8.4 M☉) plus the magnetar also weigh more than the lab's stripped star at death (9.3 M☉), so the real star was heavier than the lab's model of it.",
       "whatWasSeen": "It rose for about three months and faded over a year, with wiggles in its light curve that no one fully explains. Magnetar fits to its light match a stripped star of at least 10 M☉.",
       "inputs": { "kind": "MassiveStar", "initialMass": 30, "stripping": "Full", "rotation": "Fast", "field": "Strong" },
       "observer": {

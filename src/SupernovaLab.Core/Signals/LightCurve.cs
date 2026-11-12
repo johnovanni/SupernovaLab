@@ -46,6 +46,8 @@ internal sealed class LightCurve
     public bool HasMagnetar => _magEnergy > 0 && _magTimeS > 0;
     public BcSample BcSample { get; private init; }
     public double StartS { get; private init; }
+    /// <summary>Shock breakout, s after bounce (NaN for a Type Ia or without one); before <see cref="StartS"/>.</summary>
+    public double BreakoutS { get; private init; }
     public double DiffusionTimeS { get; private init; }
     public double PlateauEndS { get; private init; }
 
@@ -56,9 +58,11 @@ internal sealed class LightCurve
     private readonly Lazy<double> _mainPeakS;
     private readonly Lazy<(double TimeS, double AbsV)> _peak;
     private readonly Lazy<bool> _visiblePlateau;
+    private readonly Lazy<double> _dm15B;
 
     private LightCurve()
     {
+        _dm15B = new(MeasureDm15B);
         _mainPeakS = new(() => ArnettDiffusion.Maximize(Main, Math.Max(StartS, 0.05 * DiffusionTimeS),
             Math.Min(LightCurveModel.EndS, 10 * DiffusionTimeS)).TimeS);
         _peak = new(FindPeak);
@@ -101,6 +105,7 @@ internal sealed class LightCurve
             PairInstability = o.Fate == Fate.PairInstabilitySupernova,
             BcSample = plateau ? BcSample.TypeII : BcSample.StrippedEnvelope,
             StartS = start,
+            BreakoutS = breakoutS,
             DiffusionTimeS = ArnettDiffusion.DiffusionTimeS(kappa, m, e),
             PlateauEndS = plateau ? PlateauModel.DurationS(e, m, nickel, r) : double.NaN,
             _nickel = nickel,
@@ -251,4 +256,36 @@ internal sealed class LightCurve
     /// supergiant, whose ⁵⁶Ni dome outshines its faint plateau).
     /// </summary>
     public bool HasVisiblePlateau => _visiblePlateau.Value;
+
+    /// <summary>
+    /// The drawn bolometric peak, erg/s: the light at the peak of everything but shock cooling (ruling R53's check
+    /// against the brightest supernova ever observed).
+    /// </summary>
+    public double PeakLuminosityErgS => Luminosity(MainPeakS);
+
+    /// <summary>
+    /// Absolute B magnitude at source time t (s): the drawn V plus the light curve's own blended B−V (§4.5), so B and V
+    /// come from one curve. NaN when there is no light.
+    /// </summary>
+    public double AbsoluteB(double t)
+    {
+        double lc = Cooling(t), lm = Main(t), l = Math.Max(lc, lm);
+        if (!(l > 0)) return double.NaN;
+        double bv = BlendedBMinusV(t, lc, lm);
+        return BolometricCorrection.AbsoluteV(l, bv, BcSample) + bv;
+    }
+
+    /// <summary>
+    /// Ruling R53 (I5): Δm15(B) measured on the drawn curve, the B magnitudes 15 days after B maximum less those at
+    /// maximum (source time). NaN when there is no B maximum or no light 15 days later.
+    /// </summary>
+    public double DeclineRateDm15B => _dm15B.Value;
+
+    private double MeasureDm15B()
+    {
+        var (t, negB) = ArnettDiffusion.Maximize(
+            t => AbsoluteB(t) is var b && !double.IsNaN(b) ? -b : double.NegativeInfinity, StartS, LightCurveModel.EndS);
+        if (!double.IsFinite(negB)) return double.NaN;
+        return AbsoluteB(t + 15 * Day) + negB;
+    }
 }

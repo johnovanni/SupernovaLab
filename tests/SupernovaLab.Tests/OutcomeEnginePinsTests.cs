@@ -133,25 +133,8 @@ public class OutcomeEnginePinsTests
 
     // ---------------------------------------------------------------- R44: R22 judged again after pins
 
-    [Fact]
-    public void HydrogenRichMagnetar_IsJudgedAgain_OnThePinnedEjecta()
-    {
-        // A 16 M☉ red supergiant with fast rotation and a strong field: the model calls it SLSN-II (R22, R32).
-        var x = LabInputs.Default with { Rotation = Rotation.Fast, Field = CoreField.Strong };
-        var model = Engine.Compute(x);
-        Assert.Equal(SupernovaType.SlsnII, model.Type);
-        Assert.True(model.PeakLuminosityErgS!.Value >= 7e43);
-
-        // Pinned with a heavy, slow ejecta the same magnetar's peak drops under R22's 7e43 erg/s: a magnetar-boosted II-P.
-        var heavy = Engine.Compute(x, Pins(e: 1e51, ej: 60));
-        Assert.True(heavy.PeakLuminosityErgS!.Value < 7e43, $"peak {heavy.PeakLuminosityErgS.Value:e3}");
-        Assert.Equal(SupernovaType.IIP, heavy.Type);
-        Assert.Contains(heavy.Notes, n => n.Contains("not superluminous", StringComparison.Ordinal));
-        Assert.DoesNotContain(heavy.Notes, n => n.Contains("superluminous supernova with hydrogen lines", StringComparison.Ordinal));
-
-        // Pins that keep it bright leave it SLSN-II.
-        Assert.Equal(SupernovaType.SlsnII, Engine.Compute(x, Pins(ej: model.EjectaMass!.Value)).Type);
-    }
+    // Ruling R53 moved the hydrogen-rich re-judgement test to OutcomeConsistencyTests (a 25 M☉ partly stripped star): the
+    // 16 M☉ star used here is no longer superluminous, being below outcomes §5.3's 20 M☉.
 
     // ---------------------------------------------------------------- R41: neutron-star pins
 

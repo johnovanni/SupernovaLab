@@ -76,6 +76,23 @@ public static class EventMarkers
         return list.OrderBy(m => m.ObserverTimeS).ToList();
     }
 
+    /// <summary>
+    /// Review M1 (spec §9, model errors stay inside one place): the markers <paramref name="markers"/> makes, or none when a
+    /// model throws, so a model error leaves the timeline without markers instead of ending the app. The error is traced.
+    /// </summary>
+    public static IReadOnlyList<EventMarker> Guarded(Func<IReadOnlyList<EventMarker>> markers)
+    {
+        try
+        {
+            return markers();
+        }
+        catch (Exception e)
+        {
+            System.Diagnostics.Trace.TraceError($"Timeline markers: {e}");
+            return Array.Empty<EventMarker>();
+        }
+    }
+
     /// <summary>"Speculative: from the light-curve model (signals §4.1, …)".</summary>
     private static string Basis(ISignalModel model)
         => Basis(model.Confidence, string.Join("; ", model.Sources.Select(s => s.ResearchRef).Distinct().Take(3)));

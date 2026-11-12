@@ -40,8 +40,28 @@ public partial class App : Application
             return;
         }
 
+        // Review M1: a last-resort handler. Model calls are guarded where they are made; anything that still escapes is
+        // logged and reported instead of ending the app without a word.
+        DispatcherUnhandledException += OnUnhandledException;
         new PlaybackClock(vm.Timeline).Start();
         main.Show();
+    }
+
+    private bool _reportedUnhandled;
+
+    /// <summary>
+    /// Review M1: writes an unhandled exception to %LOCALAPPDATA%\SupernovaLab\error.log (and the trace), tells the user
+    /// once per session, and keeps the app running.
+    /// </summary>
+    private void OnUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        string path = ErrorLog.Write(e.Exception);
+        e.Handled = true;
+        if (_reportedUnhandled) return;
+        _reportedUnhandled = true;
+        MessageBox.Show(MainWindow!, $"Something went wrong ({e.Exception.GetType().Name}: {e.Exception.Message}). The details " +
+            $"were written to {path}. The app keeps running; if a view looks wrong, restart it.", "SupernovaLab",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     /// <summary>Writes a bad --snapshot argument to stderr, and to snapshot.log when the output directory was given.</summary>

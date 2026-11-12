@@ -33,14 +33,16 @@ public class SpectrumModelTests
         // Hand check (ruling R43). H-alpha is anchored at 7,300 km/s at day 50 (signals 10.2, Gutierrez 2017) and follows
         // v = 7300 (t/50 d)^-0.46 back to the V peak, so at day 20 (after the peak):
         // 7300 x (20/50)^-0.46 = 7300 x exp(0.46 x 0.916291 = 0.421494) = 7300 x 1.52424 = 11,127 km/s (about 11,130).
-        // Absorption minimum: 6563 x (1 - 11127/299792.458) = 6563 x (1 - 0.037118) = 6319.4 A. The accepted 6,000-12,000
-        // km/s band is 6563 x (1 - 0.040028) = 6300.3 A to 6563 x (1 - 0.020014) = 6431.7 A.
+        // Ruling R53: v_ref is scaled by √((E/M_ej) / (1e51 erg / 10 M☉)). The default 16 M☉ II-P has E = 1.25537e51 erg and
+        // M_ej = 11.59828 M☉: E/M = 1.08238e50, √1.08238 = 1.040375, so the day-50 anchor is 7300 x 1.040375 = 7,594.7 km/s.
+        // At day 20: 7594.7 x 1.52424 = 11,576 km/s. Absorption minimum: 6563 x (1 - 11576/299792.458) = 6309.6 A, inside
+        // the accepted 6,000-12,000 km/s band, 6563 x (1 - 0.040028) = 6300.3 A to 6563 x (1 - 0.020014) = 6431.7 A.
         var s = Model.At(RedSupergiant16, 20 * Day);
         Assert.True(Has(s, "Hα"));
         double lambdaMin = MinimumIn(s, 6150, 6563);
         double v = CKmS * (6563 - lambdaMin) / 6563;
         Assert.InRange(v, 6000, 12000);
-        Assert.Equal(11127, s.PhotosphereVelocityKmS, 0);
+        Assert.Equal(11576, s.PhotosphereVelocityKmS, 1.0);
     }
 
     [Fact]
@@ -53,22 +55,28 @@ public class SpectrumModelTests
     [Fact]
     public void Hydrogen_velocity_follows_the_day_50_anchor_and_the_minus_0_46_law()
     {
-        // At 100 d: (100/50)^-0.46 = exp(-0.46 x 0.693147 = -0.318848) = 0.726985; 7300 x 0.726985 = 5,307.0 km/s.
+        // At 100 d: (100/50)^-0.46 = exp(-0.46 x 0.693147 = -0.318848) = 0.726985; 7300 x 0.726985 = 5,307.0 km/s before
+        // ruling R53's scaling.
+        // Ruling R53: v_ref is scaled by √((E/M_ej) / (1e51 erg / 10 M☉)). The default 16 M☉ II-P has E = 1.25537e51 erg and
+        // M_ej = 11.59828 M☉: E/M = 1.08238e50, √1.08238 = 1.040375, so the day-50 anchor is 7300 x 1.040375 = 7,594.7 km/s.
+        // 7594.7 x 0.726985 = 5,521.2 km/s.
         var s = Model.At(RedSupergiant16, 100 * Day);
-        Assert.Equal(5307.0, s.PhotosphereVelocityKmS, 0);
+        Assert.Equal(5521.2, s.PhotosphereVelocityKmS, 1.0);
     }
 
     [Fact]
     public void Ia_at_peak_has_Si_II_6355_absorbed_near_6130_A()
     {
-        // Hand check: Ia v = 10,600 km/s at V maximum (Wang 2009). 6355 x (1 - 10600/299792.458) = 6355 x (1 - 0.035357)
-        // = 6130.3 A (the research quotes "near 6150 A").
+        // Hand check: Ia v = 10,600 km/s at V maximum (Wang 2009), scaled by ruling R53 against the Ia reference
+        // 1.3e51 erg / 1.4 M☉: the default Ia has 1.35e51 erg in 1.38 M☉, (0.978261 / 0.928571) = 1.053511, √ = 1.026407,
+        // v = 10,879.9 km/s. 6355 x (1 - 10879.9/299792.458) = 6355 x (1 - 0.036292) = 6124.4 A (the research quotes "near
+        // 6150 A").
         var ia = TestOutcomes.TypeIa();
         double tPeak = Curves.PeakTimeS(ia);
         var s = Model.At(ia, tPeak);
         Assert.True(Has(s, "Si II 6355"));
         Assert.False(Has(s, "Hα"));
-        Assert.Equal(10600, s.PhotosphereVelocityKmS, 6);
+        Assert.Equal(10879.9, s.PhotosphereVelocityKmS, 0.1);
         Assert.InRange(MinimumIn(s, 5900, 6355), 6080, 6180);
         Assert.False(s.Nebular);
     }
@@ -76,16 +84,17 @@ public class SpectrumModelTests
     [Fact]
     public void Ia_velocity_follows_the_law_after_peak_and_hits_the_floor()
     {
-        // At 5 t_peak: 10600 x 5^-0.46 = 10600 x exp(-0.46 x 1.609438 = -0.740342) = 10600 x 0.476951 = 5,055.7 km/s.
+        // v_ref = 10,879.9 km/s (ruling R53's scaling, see above). At 5 t_peak: 5^-0.46 = exp(-0.46 x 1.609438 = -0.740342)
+        // = 0.476951, so 10879.9 x 0.476951 = 5,189.2 km/s.
         var ia = TestOutcomes.TypeIa();
         double tPeak = Curves.PeakTimeS(ia);
-        Assert.Equal(5055.7, Model.At(ia, 5 * tPeak).PhotosphereVelocityKmS, 0);
+        Assert.Equal(5189.2, Model.At(ia, 5 * tPeak).PhotosphereVelocityKmS, 0.2);
         // At 1 yr the law gives less than 0.3 v_ref (t/t_peak > 0.3^(-1/0.46) = 13.7 for t_peak < 26 d):
-        // the floor 0.3 x 10600 = 3,180 km/s applies.
+        // the floor 0.3 x 10879.9 = 3,264.0 km/s applies.
         Assert.True(tPeak < 26 * Day);
-        Assert.Equal(3180, Model.At(ia, PhysicalConstants.Year).PhotosphereVelocityKmS, 6);
+        Assert.Equal(3264.0, Model.At(ia, PhysicalConstants.Year).PhotosphereVelocityKmS, 0.1);
         // Before peak the velocity is held at v_ref.
-        Assert.Equal(10600, Model.At(ia, 0.5 * tPeak).PhotosphereVelocityKmS, 6);
+        Assert.Equal(10879.9, Model.At(ia, 0.5 * tPeak).PhotosphereVelocityKmS, 0.1);
     }
 
     [Fact]
@@ -150,9 +159,12 @@ public class SpectrumModelTests
         // times faster (Liu 2016), so its FWHM = v/c x lambda gives 20,647 km/s (no GRB) and 23,737 km/s (GRB), i.e. 0.0689 x
         // 7774 = 535 A and 0.0792 x 7774 = 616 A. The width is measured from the spectrum (the O I trough at half its depth
         // over the blackbody continuum); one grid step is 10 A = 386 km/s at 7774 A, and the red-side emission adds a little.
+        // Ruling R53: these Ic-BL outcomes carry their type references' energy per mass (Taddia 2019's 7e51 erg / 4 M☉;
+        // with a GRB Cano 2017's 2.5e52 erg / 6 M☉), so the scaling factor is 1.
         foreach (bool grb in new[] { false, true })
         {
-            var o = Custom(SupernovaType.IcBL, grb);
+            var o = grb ? TestOutcomes.Custom(SupernovaType.IcBL, 2.5e52, 6, 0.4, 1e11, hasGrb: true)
+                        : TestOutcomes.Custom(SupernovaType.IcBL, 7e51, 4, 0.3, 1e11);
             var s = Model.At(o, Curves.PeakTimeS(o));
             double tracer = grb ? 19200 : 16700;
             Assert.Equal(tracer, s.PhotosphereVelocityKmS, 6);
@@ -202,12 +214,13 @@ public class SpectrumModelTests
     public void Hydrogen_velocity_is_held_before_day_15()
     {
         // R45d: the V peak of the 16 M-sun II-P is at 8.5 d, earlier than 15 d, so the hold is at 15 d:
-        // 7300 x (15/50)^-0.46 = 7300 x exp(0.46 x 1.203973 = 0.553828) = 7300 x 1.73990 = 12,701 km/s.
+        // 7300 x (15/50)^-0.46 = 7300 x exp(0.46 x 1.203973 = 0.553828) = 7300 x 1.73990 = 12,701 km/s before ruling R53,
+        // which scales the anchor by 1.040375 (see above): 12,701 x 1.040375 = 13,213.8 km/s.
         Assert.True(Curves.PeakTimeS(RedSupergiant16) < 15 * Day);
         double v5 = Model.At(RedSupergiant16, 5 * Day).PhotosphereVelocityKmS;
         double v15 = Model.At(RedSupergiant16, 15 * Day).PhotosphereVelocityKmS;
         Assert.Equal(v15, v5, 9);
-        Assert.InRange(v15, 12699, 12703);
+        Assert.InRange(v15, 13212, 13216);
     }
 
     [Fact]

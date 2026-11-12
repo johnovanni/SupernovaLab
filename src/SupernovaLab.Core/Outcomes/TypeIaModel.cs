@@ -3,8 +3,14 @@ using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.Core.Outcomes;
 
-/// <summary>The Type Ia explosion of a white dwarf: class, kinetic energy (erg), ejecta and ⁵⁶Ni (M☉), and remnant.</summary>
-public sealed record TypeIaExplosion(SupernovaType Type, Quantity Energy, Quantity Ejecta, Quantity Nickel, Remnant Remnant);
+/// <summary>
+/// The Type Ia explosion of a white dwarf: class, kinetic energy (erg), ejecta and ⁵⁶Ni (M☉), and remnant.
+/// <see cref="SubtypeNote"/> is the note that gives the ⁵⁶Ni and the subtype (null for Iax), which a ⁵⁶Ni pin rewrites.
+/// </summary>
+public sealed record TypeIaExplosion(SupernovaType Type, Quantity Energy, Quantity Ejecta, Quantity Nickel, Remnant Remnant)
+{
+    public string? SubtypeNote { get; init; }
+}
 
 /// <summary>
 /// Outcomes §8.2 step 9 (with §7.2–§7.4): the Type Ia path for a white dwarf of the chosen mass and channel. The peak
@@ -33,10 +39,6 @@ public static class TypeIaModel
 
     // Step 9: M_bol = 4.74 − 2.5 log10(L_peak / 3.828×10³³ erg/s), and M_B ≈ M_bol (BC_B ≈ 0 at peak, APPROXIMATION).
     private const double MbolSun = 4.74;
-    // §7.2: Phillips et al. 1999 B band, M_B = M_B,0 + a (Δm15 − 1.1) + b (Δm15 − 1.1)², a = 0.786, b = 0.633, with
-    // M_B,0 = −19.3 (step 9), valid for 0.85 < Δm15(B) < 1.70.
-    private const double PhillipsA = 0.786, PhillipsB = 0.633, PhillipsZeroPoint = -19.3, PhillipsPivot = 1.1;
-    private const double Dm15Min = 0.85, Dm15Max = 1.7;
 
     /// <summary>
     /// Step 9: peak absolute B magnitude from the peak luminosity, M_B ≈ M_bol = 4.74 − 2.5 log10(L / L☉). Speculative:
@@ -47,28 +49,9 @@ public static class TypeIaModel
             new Source("M_bol = 4.74 − 2.5 log10(L_peak / L☉) with BC_B ≈ 0 at peak [APPROX]; L_peak from " +
                        peakLuminosity.Source.Citation, "outcomes §7.2, §8.2 step 9"));
 
-    /// <summary>
-    /// Step 9: Δm15(B) from the inverted Phillips 1999 quadratic with M_B,0 = −19.3. With u = Δm15 − 1.1 and
-    /// ΔM = M_B − M_B,0, b u² + a u − ΔM = 0 gives u = (−a + √(a² + 4 b ΔM)) / (2b), the branch through u = 0. Outside
-    /// the relation's 0.85–1.7 range (or brighter than the parabola's vertex) Δm15 is clamped to the nearer end, with a
-    /// note. Speculative, like the M_B it comes from.
-    /// </summary>
-    public static Quantity DeclineRateDm15B(Quantity peakMagB, List<string> notes)
-    {
-        double dm = peakMagB.Value - PhillipsZeroPoint;
-        double disc = PhillipsA * PhillipsA + 4 * PhillipsB * dm;
-        double dm15 = disc < 0 ? Dm15Min : PhillipsPivot + (-PhillipsA + Math.Sqrt(disc)) / (2 * PhillipsB);
-        bool clamped = dm15 < Dm15Min || dm15 > Dm15Max;
-        dm15 = Math.Clamp(dm15, Dm15Min, Dm15Max);
-        var src = new Source("Phillips et al. 1999, AJ 118, 1766, Table 3 (B band, inverted), M_B,0 = −19.3 (Riess et al. " +
-                             "2022, ApJL 934, L7)" + (clamped ? "; clamped to the fit's 0.85–1.7 mag range [APPROX]" : ""),
-            "outcomes §7.2, §8.2 step 9");
-        if (clamped)
-            notes.Add($"Its peak brightness lies outside the range the Phillips relation covers, so its decline rate is " +
-                      $"held at the end of that range ({dm15.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} " +
-                      "mag in 15 days); this is an extrapolation.");
-        return new Quantity(dm15, "mag", Confidence.Speculative, src);
-    }
+    // Ruling R53 (I5): the inverted Phillips relation (M_B,0 = −19.3) that gave Δm15(B) here is gone. Arnett's −19.0 for
+    // a normal 0.6 M☉ Ia made every normal Ia a fast decliner (Δm15 ≈ 1.41); Δm15(B) is now measured on the drawn light
+    // curve (LightCurveModel.DeclineRateDm15B).
 
     public static TypeIaExplosion Explode(LabInputs inputs, List<string> notes)
     {
@@ -111,18 +94,23 @@ public static class TypeIaModel
             new Source("W7-type models, E_K ≈ 1.2–1.5 B (Nomoto, Thielemann & Yokoi 1984, ApJ 286, 644; Iwamoto et al. " +
                        "1999, ApJS 125, 439); middle of the range [APPROX]", Refs), 1.2e51, 1.5e51);
 
-        var type = nickel.Value >= Overluminous ? SupernovaType.Ia91T
-                 : nickel.Value <= Subluminous ? SupernovaType.Ia91bg
-                 : SupernovaType.Ia;
-        notes.Add(type switch
-        {
-            SupernovaType.Ia91T => $"With {UnitFormat.Mass(nickel.Value)} of nickel it is unusually bright and fades " +
-                                   "slowly, like SN 1991T.",
-            SupernovaType.Ia91bg => $"With only {UnitFormat.Mass(nickel.Value)} of nickel it is faint, red and fades " +
-                                    "quickly, like SN 1991bg.",
-            _ => $"It makes {UnitFormat.Mass(nickel.Value)} of radioactive nickel, whose decay powers its light.",
-        });
-        return new TypeIaExplosion(type, energy, ejecta, nickel, Remnant.None);
+        var (type, note) = Subtype(nickel.Value, published: false);
+        notes.Add(note);
+        return new TypeIaExplosion(type, energy, ejecta, nickel, Remnant.None) { SubtypeNote = note };
+    }
+
+    /// <summary>
+    /// Step 9's subtype for this ⁵⁶Ni mass (M☉): 91T-like at ≥ 0.8, 91bg-like at ≤ 0.1, else normal; and the sentence that
+    /// gives it, marked as published when a preset pinned the ⁵⁶Ni (ruling R53).
+    /// </summary>
+    internal static (SupernovaType Type, string Note) Subtype(double nickel, bool published)
+    {
+        string ni = UnitFormat.Mass(nickel), pub = published ? " (the published value)" : "";
+        return nickel >= Overluminous
+            ? (SupernovaType.Ia91T, $"With {ni} of nickel{pub} it is unusually bright and fades slowly, like SN 1991T.")
+            : nickel <= Subluminous
+                ? (SupernovaType.Ia91bg, $"With only {ni} of nickel{pub} it is faint, red and fades quickly, like SN 1991bg.")
+                : (SupernovaType.Ia, $"It makes {ni} of radioactive nickel{pub}, whose decay powers its light.");
     }
 
     /// <summary>

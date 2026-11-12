@@ -146,6 +146,33 @@ public class PresetValidationTests
     }
 
     [Fact]
+    public void Sn1987A_KamiokandeII_Fact_ExplainsTheExpectedAgainstTheSeenCount()
+    {
+        // Review M4. Poisson P(N ≤ 11 | λ = 18.45) = e^−λ Σ_{k=0}^{11} λ^k / k!, by hand: the terms λ^k / k! are
+        // 1, 18.45, 170.20125, 1,046.7377, 4,828.0776, 17,815.606, 54,782.989, 144,392.31, 333,004.76, 682,659.76,
+        // 1,259,507.3, 2,112,537.2 (each the last × 18.45 / k); their sum is 4,610,764.3. e^−18.45 = 9.71106e−9, so
+        // P = 4,610,764.3 × 9.71106e−9 = 0.04478, about 4.5%.
+        var fact = PresetCatalog.Get("sn1987a").Facts.Single(f => f.ChannelId == "cumulative@kamiokande-ii");
+        Assert.Contains("18.45", fact.Description);
+        Assert.Contains("about 4.5%", fact.Description);
+        // The lab's own count is the 18.45 the sentence names.
+        Assert.Equal(18.45, NeutrinoModel.KamiokandeIIEvents(Of("sn1987a"), ObserverOf("sn1987a")), 0.005);
+    }
+
+    [Fact]
+    public void Sn2015bn_PeakMiss_IsDisclosed()
+    {
+        // Review M5: the drawn peak is 0.77 of Nicholl et al. 2016's 2.3 ± 0.4e44 erg/s (1.78e44 in the final review's
+        // probe: (2.3 − 1.78) / 0.4 = 1.3σ low). The summary says so.
+        var lc = new LightCurveModel();
+        var o = Of("sn2015bn");
+        double best = 0;
+        for (double t = Day; t <= 300 * Day; t *= 1.005) best = Math.Max(best, lc.Sample(o, ObserverOf("sn2015bn"), t, "lbol"));
+        Assert.InRange(best / 2.3e44, 0.76, 0.78);
+        Assert.Contains("0.77 of the observed 2.3 ± 0.4 × 10⁴⁴", PresetCatalog.Get("sn2015bn").Summary);
+    }
+
+    [Fact]
     public void Sn1987A_PeakV_IsWithinHalfAMagnitudeOf2Point975()
     {
         // Spec §8: peak V of about +2.9 within 0.5 mag. Verified: V = 2.975 at day 84.5 (Hamuy & Suntzeff 1990). The

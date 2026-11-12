@@ -258,7 +258,9 @@ public class MainViewModelTests
         vm.Lab.Kind = StarKind.WhiteDwarf;
 
         Assert.NotSame(rows, vm.Outcome.DetailRows);
-        Assert.Contains(vm.Outcome.DetailRows, r => r.Label.Contains("Δm15"));
+        // Ruling R53: Δm15(B) is read off the drawn light curve, so it is a curve row, not an outcome quantity.
+        Assert.Contains(vm.Outcome.CurveRows, r => r.Label.Contains("Δm15"));
+        Assert.DoesNotContain(vm.Outcome.DetailRows, r => r.Label.Contains("Δm15"));
         Assert.DoesNotContain(vm.Outcome.DetailRows, r => r.Label.Contains("⁴⁴Ti"));
     }
 
