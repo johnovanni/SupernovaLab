@@ -21,7 +21,9 @@ It is built in three projects:
 - **Project 3.** A close-up of the remnant: the neutron star, pulsar beams, a magnetar, a black hole bending light.
   Not started.
 
-All views read from one physics core, so they cannot contradict each other.
+All views read from one physics core, and shared quantities (the explosion's energy and ejecta, the remnant, the
+colour temperature, the magnetar's and the plateau's light) are defined once. Where a view still simplifies (the 3D
+view's uniform ball, the schematic spectrum's type-typical velocities), it says so.
 
 ## System requirements
 
@@ -125,7 +127,8 @@ Notes on these:
   The preset's source says so.
 - **SN 1987A's neutrino count** is in the allowed band, but 18 is well above the 11 events seen.
   The lab's value depends on the assumed neutron star mass and on the detector's
-  efficiency curve.
+  efficiency curve. Seeing 11 or fewer when 18.45 are expected has a Poisson probability of about 4.5%. The
+  Kamiokande-II fact in the app says so.
 - Betelgeuse has no observation to compare with. Its two checks are only plausibility bounds.
 
 ### Known misses
@@ -143,6 +146,9 @@ away. Each is also stated in that preset's own summary in the app.
 | SN 1987A | No pulsar has been seen | From 10 years, the 3D view draws a pulsar with sweeping beams | The lab's pulsar model gives every neutron star one. JWST found indirect evidence of a hidden neutron star in 2024 (Fransson et al.). |
 | SN 1054 | Peak roughly -4 to -7, visible in daylight for 23 days, from the historical records | Peak V about -2.0, behind dust | The lab's weak electron-capture explosion. Not tuned. |
 | SN 2011fe | INTEGRAL/SPI did not detect its gamma-ray lines (Isern et al. 2013) | Not detected, but the margin is thin: at best 0.76 of the threshold | It rests on SPI's resolution (taken as 2 keV; the ratio would be about 0.93 at 3 keV) and on 0.53 solar masses of nickel (about 0.70 would reach the threshold). The limit used is preliminary. |
+| SN 2011fe | B-band decline Δm15(B) = 1.10 ± 0.04 (Pereira et al. 2013) | 0.99, measured on the drawn curve | Every near-Chandrasekhar Type Ia in the lab has one light-curve shape (the nickel sets only its brightness), and its colour after the peak is a simple blend toward the Lira relation. |
+| SN 2015bn | Peak 2.3 ± 0.4e44 erg/s after a 69-day rise (Nicholl et al. 2016) | 1.8e44 erg/s (0.77 of it, about 1.3σ low) at about day 62 | The published magnetar goes through the lab's one-zone diffusion, not the fit's own model. |
+| SN 1998bw, SN 2015bn | Published ejecta and remnant (1998bw: 10.9 + 2.9 solar masses, Iwamoto et al. 1998) | Both exceed what the lab's star holds when it dies (11.2 and 9.3 solar masses) | The lab's star models are lighter than the real stars. The published values are kept, and a note says so. |
 
 ### Other known limits
 
@@ -159,14 +165,25 @@ These come from the research files (`signals.md` section 12 and `outcomes.md` se
   in the radio model.
 - **Outcomes.** The black-hole islands exist in published models, but their positions differ by 1 to 3 solar masses
   between groups. Whether Ib and Ic differ in helium is contested. Rotation thresholds for gamma-ray bursts are
-  speculative. The mapping from a star to a magnetar's spin and field is speculative.
+  speculative. The mapping from a star to a magnetar's spin and field is speculative. At 30 solar masses the lab
+  switches star models and rules, so the cores jump there; the outcome map says so.
+- **Magnetar-powered supernovae.** A superluminous class needs a star of more than 20 solar masses and at least 2.2
+  solar masses of ejecta (Nicholl et al. 2017, as the research gives them); outside these the lab keeps the ordinary
+  class and calls it magnetar-boosted. The lab assumes the ejecta trap all of the magnetar's power, so with extreme
+  rotation some outcomes peak above 2e45 erg/s, brighter than any supernova ever observed (ASASSN-15lh; Dong et al.
+  2016). Such outcomes say so in their notes and in the visible-light panel.
+- **Type Ia peak B magnitude** is estimated from the engine's peak luminosity (taking B and bolometric magnitudes as
+  equal). It does not shape the light curve. The decline rate Δm15(B) is measured on the drawn curve.
 - **Above 50 Mpc** the shift of light between bands (K-correction) is not modelled. The app says so.
 - **The 3D view is schematic.** Its colours are approximate, the ejecta are drawn as a uniform ball, and the gas around
   the star is drawn out to a made-up 1e15 cm. The view says so.
-- **No spectra** are bundled. The spectrum panel draws a schematic blackbody with the identifying lines.
+- **No spectra** are bundled. The spectrum panel draws a schematic blackbody with the identifying lines. Its line
+  velocities are typical values for each type, scaled by the explosion's energy per unit mass and kept inside the
+  observed range. The caption says so.
 - **Some values are marked `[APPROX]`** in the code and research files and should be checked before relying on them. They
-  include the SN 1987A titanium-44 mass, the N_H/A_V ratio, some detector thresholds, and the gamma-ray line widths
-  used to scale thresholds.
+  include the titanium-44 rule for outcomes without a published titanium-44 mass (2e-3 of the nickel mass; SN 1987A's
+  and Cas A's own masses are published values), the N_H/A_V ratio, some detector thresholds, the gamma-ray line widths
+  used to scale thresholds, and the spectrum's velocity scaling.
 
 ## Building
 
