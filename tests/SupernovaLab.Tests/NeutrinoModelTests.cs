@@ -260,4 +260,34 @@ public class NeutrinoModelTests
         Assert.DoesNotContain("Lorimer", Detectors.Get("fast").Source.Citation);
         Assert.Throws<KeyNotFoundException>(() => Detectors.Get("hubble"));
     }
+
+    // ---- Kamiokande-II (spec §8, the SN 1987A check) ----
+
+    [Fact]
+    public void KamiokandeIIEfficiency_MatchesTheFiorilloFitByHand()
+    {
+        // Fiorillo et al. 2023 Eq. 8, η = 0.932 / √(1 + (34 / (12 − 7x + x²))²) for x > 4. By hand: x = 7.5: 12 − 52.5 +
+        // 56.25 = 15.75, 34/15.75 = 2.15873, √(1 + 4.66012) = 2.37910, η = 0.391745. x = 10: 34/42 = 0.809524,
+        // √1.655329 = 1.286596, η = 0.724392. x = 20: 34/272 = 0.125, √1.015625 = 1.007782, η = 0.924803.
+        Assert.Equal(0.391745, NeutrinoModel.KamiokandeIIEfficiency(7.5), 5);
+        Assert.Equal(0.724392, NeutrinoModel.KamiokandeIIEfficiency(10), 5);
+        Assert.Equal(0.924803, NeutrinoModel.KamiokandeIIEfficiency(20), 5);
+        Assert.Equal(0, NeutrinoModel.KamiokandeIIEfficiency(4));
+        Assert.Equal(0, NeutrinoModel.KamiokandeIIEfficiency(2));
+        Assert.Equal(2.14, NeutrinoModel.KamiokandeIIKilotons);
+    }
+
+    [Fact]
+    public void WaterCherenkovEvents_WithFullEfficiency_MatchSuperKsCumulativeCount_Scaled()
+    {
+        // With η = 1 the efficiency-weighted count is the plain IBD count: Super-K's 32 kt cumulative over 20 s scaled to
+        // the detector's mass. An efficiency below 1 can only lower it.
+        var lmc = AtKpc(51.4);
+        double superK = Sample(Star12, 20, "cumulative@superk", lmc);
+        double full = NeutrinoModel.WaterCherenkovIbdEvents(Star12, lmc, 2.14, _ => 1, 20);
+        Assert.Equal(superK * 2.14 / 32, full, superK * 2.14 / 32 * 1e-3);
+        double kam = NeutrinoModel.KamiokandeIIEvents(Star12, lmc);
+        Assert.InRange(kam, 0.5 * full, full);
+        Assert.Equal(0, NeutrinoModel.WaterCherenkovIbdEvents(TestOutcomes.TypeIa(), lmc, 2.14, _ => 1, 20));
+    }
 }

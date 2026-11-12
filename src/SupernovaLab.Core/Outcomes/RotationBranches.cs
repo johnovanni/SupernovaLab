@@ -164,18 +164,23 @@ public sealed partial class OutcomeEngine
 
     /// <summary>
     /// What step 7b makes of a newborn neutron star: the magnetar remnant, the kinetic energy, the spin-down energy and
-    /// time when they change the light (<see cref="PowersLight"/>), and the superluminous class when they power one.
+    /// time when they change the light (<see cref="PowersLight"/>), and the superluminous class when they power one. For a
+    /// hydrogen-rich magnetar with superluminous energy, <see cref="HydrogenRichPours"/> and <see cref="ClassNote"/> keep
+    /// what ruling R22 needs to judge the class again after pins (ruling R44).
     /// </summary>
     private sealed record MagnetarOutcome(Remnant Remnant, Quantity Energy, Quantity? SpinDownEnergy, Quantity? SpinDownTime,
         SupernovaType? Superluminous)
     {
         public bool PowersLight => SpinDownEnergy is not null;
+        public string? HydrogenRichPours { get; init; }
+        public string? ClassNote { get; init; }
     }
 
     private static MagnetarOutcome Magnetar(LabInputs x, PresupernovaStar star, Remnant neutronStar, Quantity energy,
-        Quantity ejecta, List<string> notes)
+        Quantity ejecta, List<string> notes, PresetPins? pins)
     {
-        var remnant = MagnetarModel.Magnetar(neutronStar, x.Rotation);
+        // Ruling R41: a preset's published birth spin and field replace step 7b's.
+        var remnant = WithSpinPins(MagnetarModel.Magnetar(neutronStar, x.Rotation), pins);
         var period = remnant.SpinPeriodS!;
         var ep = MagnetarModel.SpinDownEnergy(period);
         var tp = MagnetarModel.SpinDownTime(period, remnant.MagneticFieldG!);
@@ -220,7 +225,7 @@ public sealed partial class OutcomeEngine
             MagnetarModel.EjectaOpacity(x.InitialMass, star.HydrogenEnvelopeMass.Value, ejecta.Value));
         var (slsn, note) = HydrogenRichMagnetarClass(pours, peak);
         notes.Add(note);
-        return new MagnetarOutcome(remnant, kinetic, ep, tp, slsn);
+        return new MagnetarOutcome(remnant, kinetic, ep, tp, slsn) { HydrogenRichPours = pours, ClassNote = note };
     }
 
     /// <summary>

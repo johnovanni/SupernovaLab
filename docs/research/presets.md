@@ -11,6 +11,8 @@ Web access in this session returned only abstracts, summaries and some full-text
 - **[D]** = derived here by simple scaling or arithmetic (formula given). Not a published value.
 - "unknown" = not known, or not found. Nothing has been invented.
 
+**Task 13 check (2026-11-11):** the values the presets use were re-checked against the papers in `presets-verification.md`; where the two differ (e.g. SN 1987A peak V 2.975, Crab P 33.39 ms, Kepler 5.1 kpc, SN 2008D author sets), that file wins.
+
 Where papers disagree, the spread is given rather than one number. Real ranges for explosion energy, Ni mass and ejecta mass are model dependent (spherical vs aspherical, different light-curve codes); a preset should pick one author's self-consistent set, not mix sources.
 
 Units: E in foe (1 foe = 1e51 erg). Positions J2000.

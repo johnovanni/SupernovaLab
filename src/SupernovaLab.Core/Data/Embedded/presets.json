@@ -1,0 +1,282 @@
+// Real-supernova presets (spec §2.3). Values from docs/research/presets.md, checked against the papers in
+// docs/research/presets-verification.md; only verified (or corrected) values are pinned or listed as facts. Each preset
+// pins one author's consistent set (ruling R44); the observer's distance and dust have their own source. Times are
+// seconds after core bounce (or ignition) in the source frame. Inputs left out keep LabInputs.Default.
+{
+  "presets": [
+    {
+      "id": "sn1987a",
+      "name": "SN 1987A",
+      "summary": "The closest supernova seen since the telescope was invented, in the Large Magellanic Cloud in 1987. Its star was a compact blue supergiant, not the usual red one, so it brightened slowly to a dome peaking about three months later instead of holding a plateau. The lab classes it II-P; astronomers call it a peculiar Type II (II-pec). The lab reaches a blue supergiant only at low metal content, so this preset uses 0.1 of the Sun's (the LMC itself has about half); the real star was more likely made blue by a merger with a companion.",
+      "whatWasSeen": "About three hours before the first light, Kamiokande-II caught 11 neutrinos in 13 seconds and IMB caught 8: still the only neutrinos ever seen from a supernova. The light peaked near magnitude 3 after about 85 days, and gamma-ray lines from radioactive cobalt and, decades later, titanium showed the radioactive heating directly. From about 1995 the blast began hitting a ring of gas the star had shed thousands of years earlier, lighting it up in X-rays. In 2024 JWST found signs of a hidden neutron star.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 19, "metallicity": 0.1, "opacity": 0.10 },
+      "observer": {
+        "distancePc": 51400, "av": 0.47,
+        "source": { "citation": "Distance 51.4 ± 1.2 kpc from the ring geometry (Panagia 2005, IAU Colloq. 192); A_V = 3.1 × E(B−V) 0.15 (Blinnikov et al. 2000, ApJ 532, 1132, after Wampler 1988) [DERIVED]", "researchRef": "presets §1; presets-verification" }
+      },
+      "pins": {
+        "explosionEnergyErg": 1.1e51, "ejectaMass": 14.7, "nickelMass": 0.078, "radiusCm": 3.3741e12,
+        "ti44Mass": 1.5e-4, "equatorialRing": true,
+        "source": { "citation": "Blinnikov et al. 2000, ApJ 532, 1132 (model 14E1: E = 1.1 × 10⁵¹ erg, M_ej = 14.7 M☉, M_Ni = 0.078 M☉, R0 = 48.5 R☉); ⁴⁴Ti 1.5 × 10⁻⁴ M☉ from Boggs et al. 2015, Science 348, 670; the equatorial ring's X-rays from Chandra (signals §6.3)", "researchRef": "presets §1; signals §5.3, §6.3; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "Neutrinos", "channelId": "cumulative@kamiokande-ii", "sourceTimeS": 12.439, "value": 11, "unit": "events",
+          "description": "Kamiokande-II recorded 11 neutrino events above its threshold within 12.4 s.",
+          "source": { "citation": "Hirata et al. 1987, PRL 58, 1490 (event table as compiled by Vissani 2015, J. Phys. G 42, 013001)", "researchRef": "signals §1.5; presets §1" } },
+        { "messenger": "Neutrinos", "channelId": "cumulative@imb", "sourceTimeS": 5.582, "value": 8, "unit": "events",
+          "description": "IMB recorded 8 neutrino events within 5.6 s.",
+          "source": { "citation": "Bionta et al. 1987, PRL 58, 1494 (as compiled by Vissani 2015, J. Phys. G 42, 013001)", "researchRef": "signals §1.5" } },
+        { "messenger": "VisibleLight", "channelId": "appV", "sourceTimeS": 7300800, "value": 2.975, "unit": "mag",
+          "description": "Peak brightness V = 2.975 on day 84.5.",
+          "source": { "citation": "Hamuy & Suntzeff 1990, AJ 99, 1146 (as quoted by Suntzeff 1997, arXiv:astro-ph/9707324)", "researchRef": "presets §1; presets-verification" } },
+        { "messenger": "GammaRays", "channelId": "line847", "sourceTimeS": 17668800, "value": 1.0e-3, "unit": "photons cm⁻² s⁻¹",
+          "description": "The Solar Maximum Mission saw the 847 keV cobalt line at about 1.0 × 10⁻³ photons cm⁻² s⁻¹, averaged over 1 August to 31 October 1987 (days 159–250).",
+          "source": { "citation": "Matz et al. 1988, Nature 331, 416", "researchRef": "signals §5.3" } },
+        { "messenger": "GammaRays", "channelId": "Ti44Mass", "sourceTimeS": null, "value": 1.5e-4, "unit": "M☉",
+          "description": "NuSTAR's titanium-44 lines imply about 1.5 × 10⁻⁴ M☉ of ⁴⁴Ti was made.",
+          "source": { "citation": "Boggs et al. 2015, Science 348, 670", "researchRef": "signals §5.3; presets-verification" } },
+        { "messenger": "XRaysUv", "channelId": "ringLx", "sourceTimeS": 820800000, "value": 2.53e36, "unit": "erg/s",
+          "description": "Chandra measured the ring's 0.5–2 keV X-rays levelling off at about 8 × 10⁻¹² erg cm⁻² s⁻¹ from about day 9,500 (2.5 × 10³⁶ erg/s at 51.4 kpc).",
+          "source": { "citation": "Frank et al. 2016, ApJ 829, 40 (Chandra 0.5–2 keV)", "researchRef": "signals §6.3" } }
+      ]
+    },
+    {
+      "id": "sn1054",
+      "name": "SN 1054 (Crab Nebula)",
+      "summary": "A supernova recorded by Chinese astronomers in 1054, bright enough to see in daylight for 23 days. Its remnant is the Crab Nebula, powered by a young pulsar. It was probably a weak explosion of a star of about 8–10 M☉, perhaps an electron-capture supernova, which is what this preset makes.",
+      "whatWasSeen": "Only historical records of the 1054 'guest star' survive. Today the Crab pulsar spins about 30 times a second and slows steadily, and its wind lights the nebula from radio to the highest-energy gamma rays.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 9.1 },
+      "observer": {
+        "distancePc": 2000, "av": 1.61,
+        "source": { "citation": "Distance 2.0 kpc (ATNF Pulsar Catalogue v2.6.1, Manchester et al. 2005, AJ 129, 1993); A_V = 3.1 × E(B−V) 0.52 (Sollerman et al. 2000, arXiv:astro-ph/0002374) [DERIVED]", "researchRef": "presets §2; presets-verification" }
+      },
+      "pins": {
+        "nsSpinPeriodS": 0.016845, "nsFieldG": 3.794e12, "pulsarRadioLumMjyKpc2": 56,
+        "source": { "citation": "Crab pulsar, ATNF Pulsar Catalogue v2.6.1 (Manchester et al. 2005, AJ 129, 1993): P = 33.3924 ms and Ṗ = 4.20972 × 10⁻¹³ at MJD 48442.5, S1400 = 14 mJy at 2.0 kpc (56 mJy kpc²); field B = 3.2 × 10¹⁹ √(PṖ) G and birth period P0 = √(P² − 2PṖt) for dipole spin-down (n = 3) over the 937 years since 1054 July 4 [DERIVED]", "researchRef": "presets §2; signals §8.1–8.3; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "Radio", "channelId": "periodS", "sourceTimeS": 2.9568e10, "value": 0.0333924, "unit": "s",
+          "description": "The Crab pulsar's spin period, 33.39 ms, in 1991 (937 years after 1054).",
+          "source": { "citation": "ATNF Pulsar Catalogue v2.6.1 (Manchester et al. 2005, AJ 129, 1993)", "researchRef": "presets §2; presets-verification" } },
+        { "messenger": "Radio", "channelId": "pdot", "sourceTimeS": 2.9568e10, "value": 4.20972e-13, "unit": "s/s",
+          "description": "The Crab pulsar's spin-down rate in 1991.",
+          "source": { "citation": "ATNF Pulsar Catalogue v2.6.1 (Manchester et al. 2005, AJ 129, 1993)", "researchRef": "presets §2; presets-verification" } },
+        { "messenger": "Radio", "channelId": "fluxMjy", "sourceTimeS": null, "value": 14, "unit": "mJy",
+          "description": "The Crab pulsar's radio flux at 1.4 GHz, 14 ± 3 mJy.",
+          "source": { "citation": "ATNF Pulsar Catalogue v2.6.1 (Manchester et al. 2005, AJ 129, 1993)", "researchRef": "signals §8.3; presets-verification" } }
+      ]
+    },
+    {
+      "id": "casa",
+      "name": "Cassiopeia A",
+      "summary": "The youngest known core-collapse remnant in our Galaxy, from a supernova around 1671–1681 that dust hid from view. Light echoes showed it was a Type IIb: a star that had lost almost all its hydrogen, probably to a companion.",
+      "whatWasSeen": "Probably no one saw the explosion. Centuries later, light echoing off dust let astronomers take its spectrum. NuSTAR mapped lumps of radioactive titanium-44 showing the blast was lopsided, and Chandra found the neutron star at its centre.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 18, "stripping": "Partial" },
+      "observer": {
+        "distancePc": 3400, "av": 5,
+        "source": { "citation": "Distance 3.4 kpc (Reed et al. 1995, ApJ 440, 706); A_V about 5 (presets.md, recalled, not verified) [APPROX]", "researchRef": "presets §3; presets-verification" }
+      },
+      "pins": {
+        "ti44Mass": 1.25e-4,
+        "source": { "citation": "Grefenstette et al. 2014, Nature 506, 339 (initial ⁴⁴Ti 1.25 ± 0.3 × 10⁻⁴ M☉, ruling R35)", "researchRef": "presets §3; signals §5.3; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "GammaRays", "channelId": "Ti44Mass", "sourceTimeS": null, "value": 1.25e-4, "unit": "M☉",
+          "description": "NuSTAR's map of the titanium-44 lines implies about 1.25 × 10⁻⁴ M☉ of ⁴⁴Ti was made.",
+          "source": { "citation": "Grefenstette et al. 2014, Nature 506, 339", "researchRef": "signals §5.3" } }
+      ]
+    },
+    {
+      "id": "sn2011fe",
+      "name": "SN 2011fe",
+      "summary": "A Type Ia supernova in the Pinwheel Galaxy (M101), caught within a day of exploding. The closest Type Ia in decades and the best observed: a white dwarf that blew itself apart completely.",
+      "whatWasSeen": "It was found about 11 hours after first light and peaked near magnitude 10 some 18 days later. Pre-explosion images showed the star was far too faint to be a giant, and no radio or X-rays were seen, so its surroundings were clean.",
+      "inputs": { "kind": "WhiteDwarf", "iaChannel": "NearChandrasekhar" },
+      "observer": {
+        "distancePc": 6.43e6, "av": 0.08,
+        "source": { "citation": "Distance modulus 29.04 (Shappee & Stanek 2011, ApJ 733, 124; adopted by Pereira et al. 2013, A&A 554, A27): 6.43 Mpc; A_V = 0.08 (Richmond & Smith 2012, JAAVSO, arXiv:1203.4013)", "researchRef": "presets §4; presets-verification" }
+      },
+      "pins": {
+        "nickelMass": 0.53,
+        "source": { "citation": "Pereira et al. 2013, A&A 554, A27 (⁵⁶Ni 0.53 ± 0.11 M☉ by Arnett's rule)", "researchRef": "presets §4; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "VisibleLight", "channelId": "appV", "sourceTimeS": 1679616, "value": 9.98, "unit": "mag",
+          "description": "Peak brightness V = 9.98, 19.4 days after the estimated explosion.",
+          "source": { "citation": "Pereira et al. 2013, A&A 554, A27", "researchRef": "presets §4; presets-verification" } }
+      ]
+    },
+    {
+      "id": "sn2014j",
+      "name": "SN 2014J",
+      "summary": "A Type Ia supernova in the Cigar Galaxy (M82), the closest in 42 years. Thick dust in M82 dimmed it by about two magnitudes and reddened it unusually.",
+      "whatWasSeen": "INTEGRAL detected the gamma-ray lines of radioactive cobalt for the first time in a Type Ia, directly showing the nickel-cobalt decay that powers its light. No radio or X-rays were seen.",
+      "inputs": { "kind": "WhiteDwarf", "iaChannel": "NearChandrasekhar" },
+      "observer": {
+        "distancePc": 3.53e6, "av": 1.85,
+        "source": { "citation": "Distance 3.53 Mpc (Dalcanton et al. 2009, ApJS 183, 67, as in signals §5.3); A_V = 1.85 ± 0.11 (Amanullah et al. 2014, ApJL 788, L21; their R_V is 1.4, unusually low)", "researchRef": "presets §5; signals §5.3; presets-verification" }
+      },
+      "pins": {
+        "nickelMass": 0.6,
+        "source": { "citation": "Churazov et al. 2014, Nature 512, 406 (⁵⁶Ni 0.6 ± 0.1 M☉ from the ⁵⁶Co lines)", "researchRef": "presets §5; signals §5.3; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "GammaRays", "channelId": "line847", "sourceTimeS": 6480000, "value": 2.34e-4, "unit": "photons cm⁻² s⁻¹",
+          "description": "INTEGRAL's 847 keV line flux, 2.34 ± 0.74 × 10⁻⁴ photons cm⁻² s⁻¹, averaged over days 50–100.",
+          "source": { "citation": "Churazov et al. 2014, Nature 512, 406", "researchRef": "signals §5.3" } },
+        { "messenger": "GammaRays", "channelId": "line1238", "sourceTimeS": 6480000, "value": 2.78e-4, "unit": "photons cm⁻² s⁻¹",
+          "description": "INTEGRAL's 1238 keV line flux, 2.78 ± 0.74 × 10⁻⁴ photons cm⁻² s⁻¹, averaged over days 50–100.",
+          "source": { "citation": "Churazov et al. 2014, Nature 512, 406", "researchRef": "signals §5.3" } }
+      ]
+    },
+    {
+      "id": "sn1993j",
+      "name": "SN 1993J",
+      "summary": "A Type IIb supernova in M81: a red supergiant that a companion had stripped of nearly all its hydrogen. Its spectrum showed hydrogen at first, then turned helium-rich within weeks.",
+      "whatWasSeen": "Its light curve had two peaks, an early one from the cooling envelope and a later one powered by nickel. Radio telescopes linked across continents watched its shell expand, and a hot companion star was found at its position about ten years later.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 15, "stripping": "Partial" },
+      "observer": {
+        "distancePc": 3.63e6, "av": 0.5,
+        "source": { "citation": "Distance 3.63 ± 0.34 Mpc (Freedman et al. 1994, HST Cepheids); A_V about 0.5 (presets.md, recalled, not verified) [APPROX]", "researchRef": "presets §6; presets-verification" }
+      },
+      "pins": null,
+      "facts": []
+    },
+    {
+      "id": "sn1998bw",
+      "name": "SN 1998bw / GRB 980425",
+      "summary": "The first supernova linked to a gamma-ray burst. A broad-lined Type Ic, about ten times as energetic as a normal supernova, from the stripped core of a massive star; its burst was about ten thousand times weaker than a typical one.",
+      "whatWasSeen": "BeppoSAX and BATSE recorded a 23-second gamma-ray burst; the supernova appeared in the same patch of sky the next day and peaked near magnitude 13.6. Its radio emission was unusually bright and early, showing a shock moving at close to the speed of light.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 40, "metallicity": 0.3, "stripping": "Full", "rotation": "Extreme" },
+      "observer": {
+        "distancePc": 3.8e7, "av": 0.19,
+        "source": { "citation": "Distance 38 Mpc (z = 0.0085; Galama et al. 1998, Nature 395, 670; Kulkarni et al. 1998, Nature 395, 663); A_V = 3.1 × Galactic E(B−V) 0.06 (Patat et al. 2001, ApJ 555, 900) [DERIVED]", "researchRef": "presets §7; presets-verification" }
+      },
+      "pins": {
+        "explosionEnergyErg": 3e52, "ejectaMass": 10.9, "nickelMass": 0.7,
+        "grbEisoErg": 8.5e47, "grbEpKeV": 55, "grbT90S": 23.3,
+        "source": { "citation": "Iwamoto et al. 1998, Nature 395, 672 (model CO138: E = 3 × 10⁵² erg, M_ej = 13.8 − 2.9 M☉, ⁵⁶Ni 0.7 M☉); GRB 980425: E_iso 8.5 × 10⁴⁷ erg and T90 23.3 s (Galama et al. 1998), E_p,i 55 ± 21 keV (Amati 2006, MNRAS 372, 233, Table 1)", "researchRef": "presets §7; signals §9.4; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "GammaRays", "channelId": "prompt", "sourceTimeS": null, "value": 3.0e-7, "unit": "erg cm⁻² s⁻¹",
+          "description": "The burst's peak gamma-ray flux, 3.0 ± 0.3 × 10⁻⁷ erg cm⁻² s⁻¹.",
+          "source": { "citation": "Galama et al. 1998, Nature 395, 670", "researchRef": "signals §9.4" } },
+        { "messenger": "Radio", "channelId": "radio5", "sourceTimeS": 1036800, "value": 45, "unit": "mJy",
+          "description": "The radio flux peaked on day 12 at about 45 mJy at 4.8 GHz (49 mJy at 8.6 GHz).",
+          "source": { "citation": "Kulkarni et al. 1998, Nature 395, 663", "researchRef": "presets §7; presets-verification" } },
+        { "messenger": "VisibleLight", "channelId": "appV", "sourceTimeS": null, "value": 13.62, "unit": "mag",
+          "description": "Peak brightness V = 13.62.",
+          "source": { "citation": "Galama et al. 1998, Nature 395, 670", "researchRef": "signals §9.4" } }
+      ]
+    },
+    {
+      "id": "sn2008d",
+      "name": "SN 2008D",
+      "summary": "A Type Ib supernova in NGC 2770, the first caught at the moment its shock broke out of the star, by chance, while Swift was watching another supernova in the same galaxy.",
+      "whatWasSeen": "Swift's X-ray telescope recorded a flash lasting about 400 seconds, peaking near 6 × 10⁴³ erg/s. The supernova itself brightened over the following weeks; its spectrum looked broad-lined at first and then showed helium.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 30, "stripping": "Full" },
+      "observer": {
+        "distancePc": 2.7e7, "av": 1.9,
+        "source": { "citation": "Distance 27 Mpc and A_V ≈ 1.9 (Soderberg et al. 2008, Nature 453, 469)", "researchRef": "presets §8; presets-verification" }
+      },
+      "pins": {
+        "explosionEnergyErg": 6e51, "ejectaMass": 7, "nickelMass": 0.09, "radiusCm": 7e10,
+        "source": { "citation": "Mazzali et al. 2008, Science 321, 1185 (E ≈ 6 × 10⁵¹ erg, M_ej ≈ 7 M☉, ⁵⁶Ni ≈ 0.09 M☉); progenitor radius ≈ 7 × 10¹⁰ cm from the X-ray flash (Soderberg et al. 2008, Nature 453, 469)", "researchRef": "presets §8; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "XRaysUv", "channelId": "flux@swift-xrt", "sourceTimeS": null, "value": 6.9e-10, "unit": "erg cm⁻² s⁻¹",
+          "description": "Peak X-ray flux 6.9 × 10⁻¹⁰ erg cm⁻² s⁻¹ in 0.3–10 keV, corrected for absorption: L_X ≈ 6.1 × 10⁴³ erg/s, about 2 × 10⁴⁶ erg over about 400 s.",
+          "source": { "citation": "Soderberg et al. 2008, Nature 453, 469", "researchRef": "presets §8; signals §3.2; presets-verification" } }
+      ]
+    },
+    {
+      "id": "sn2023ixf",
+      "name": "SN 2023ixf",
+      "summary": "A Type II supernova in the Pinwheel Galaxy (M101), the closest of its kind in a decade. Its star was a large, dusty red supergiant of about 17 M☉ that was pulsating and shedding gas in its last years.",
+      "whatWasSeen": "Caught within a day, its early spectra showed narrow lines from dense gas close around the star, lit by the blast and fading within a week. The lab does not model that dense gas for this preset, so it is shown as a plain Type II.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 17 },
+      "observer": {
+        "distancePc": 6.85e6, "av": 0.12,
+        "source": { "citation": "Distance 6.85 ± 0.15 Mpc (Riess et al. 2022, ApJL 934, L7, Cepheids); A_V = 3.1 × E(B−V) 0.039 (Galactic 0.008 + host 0.031; as adopted in arXiv:2306.10284) [DERIVED]", "researchRef": "presets §9; presets-verification" }
+      },
+      "pins": null,
+      "facts": []
+    },
+    {
+      "id": "sn2015bn",
+      "name": "SN 2015bn",
+      "summary": "A hydrogen-poor superluminous supernova about 1.7 billion light-years away, a hundred times brighter than a normal one. Its long glow is best explained by a newborn magnetar spinning about 500 times a second.",
+      "whatWasSeen": "It rose for about three months and faded over a year, with wiggles in its light curve that no one fully explains. Magnetar fits to its light match a stripped star of at least 10 M☉.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 30, "stripping": "Full", "rotation": "Fast", "field": "Strong" },
+      "observer": {
+        "distancePc": 4.738e8, "av": 0.07,
+        "source": { "citation": "Redshift z = 0.1136 (Nicholl et al. 2016, ApJ 826, 39): comoving distance 474 Mpc for H0 = 70, Ωm = 0.3 [DERIVED]; A_V = 3.1 × Galactic E(B−V) 0.022 (Nicholl et al. 2016) [DERIVED]", "researchRef": "presets §10; presets-verification" }
+      },
+      "pins": {
+        "explosionEnergyErg": 1e51, "ejectaMass": 8.4, "nsSpinPeriodS": 2.1e-3, "nsFieldG": 0.9e14,
+        "source": { "citation": "Nicholl et al. 2016, ApJ 826, 39 (magnetar fit with the 69-day rise, κ = 0.2: M_ej 8.4 M☉, P 2.1 ms, B 0.9 × 10¹⁴ G; kinetic energy about 10⁵¹ erg)", "researchRef": "presets §10; presets-verification" }
+      },
+      "facts": [
+        { "messenger": "VisibleLight", "channelId": "lbol", "sourceTimeS": null, "value": 2.3e44, "unit": "erg/s",
+          "description": "Peak bolometric luminosity 2.3 ± 0.4 × 10⁴⁴ erg/s.",
+          "source": { "citation": "Nicholl et al. 2016, ApJ 826, 39", "researchRef": "presets §10" } }
+      ]
+    },
+    {
+      "id": "tycho",
+      "name": "Tycho's supernova (SN 1572)",
+      "summary": "A Type Ia supernova in Cassiopeia that Tycho Brahe studied in 1572. Its proof that the heavens could change helped overturn the idea of unchanging stars; a light echo later confirmed its type.",
+      "whatWasSeen": "It outshone everything but the Moon and Venus and stayed visible to the naked eye for about 16 months. Its remnant is a bright, nearly round shell of hot gas.",
+      "inputs": { "kind": "WhiteDwarf", "iaChannel": "NearChandrasekhar" },
+      "observer": {
+        "distancePc": 2800, "av": 1.86,
+        "source": { "citation": "Distance 2.8 ± 0.4 kpc and A_V = 1.86 ± 0.12 (Ruiz-Lapuente 2004, arXiv:astro-ph/0309009)", "researchRef": "presets §11; presets-verification" }
+      },
+      "pins": null,
+      "facts": []
+    },
+    {
+      "id": "kepler",
+      "name": "Kepler's supernova (SN 1604)",
+      "summary": "A Type Ia supernova in Ophiuchus watched by Johannes Kepler from 1604: the last supernova in our Galaxy seen with the naked eye. Its remnant shows it exploded inside gas its system had shed.",
+      "whatWasSeen": "It was brighter than Jupiter for weeks and visible for about a year, though dust dimmed it by nearly three magnitudes.",
+      "inputs": { "kind": "WhiteDwarf", "iaChannel": "NearChandrasekhar" },
+      "observer": {
+        "distancePc": 5100, "av": 2.7,
+        "source": { "citation": "Distance 5.1 (+0.8/−0.7) kpc (Sankrit et al. 2016, arXiv:1512.05730); A_V = 2.7 ± 0.1 (Ruiz-Lapuente 2017, arXiv:1612.07399)", "researchRef": "presets §11; presets-verification" }
+      },
+      "pins": null,
+      "facts": []
+    },
+    {
+      "id": "n6946bh1",
+      "name": "N6946-BH1 (failed supernova candidate)",
+      "summary": "A red supergiant of about 25 M☉ in NGC 6946 that seemed to vanish without a supernova, perhaps collapsing quietly to a black hole. It is only a candidate: it may instead have been two stars merging and hiding in dust.",
+      "whatWasSeen": "In 2009 it brightened weakly, to about a million Suns, then faded below its old brightness. Hubble saw no star afterwards; JWST later found a faint, dusty infrared source in its place that does not settle the question.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 25 },
+      "observer": {
+        "distancePc": 7.72e6, "av": 0.94,
+        "source": { "citation": "Distance 7.72 ± 0.32 Mpc (Anand, Rizzi & Tully 2018, TRGB; the value recommended by arXiv:1903.00173); A_V = 3.1 × Galactic E(B−V) 0.303 (Schlafly & Finkbeiner 2011, as adopted by Adams et al. 2017) [DERIVED]", "researchRef": "presets §12; presets-verification" }
+      },
+      "pins": null,
+      "facts": [
+        { "messenger": "VisibleLight", "channelId": "lbol", "sourceTimeS": null, "value": 3.8e39, "unit": "erg/s",
+          "description": "Its weak 2009 outburst reached about a million times the Sun's luminosity.",
+          "source": { "citation": "Adams et al. 2017, MNRAS 468, 4968", "researchRef": "presets §12; presets-verification" } }
+      ]
+    },
+    {
+      "id": "betelgeuse",
+      "name": "Betelgeuse, if it exploded today",
+      "summary": "The red supergiant in Orion's shoulder, one of the nearest stars that will one day explode. It is probably still about 100,000 years from doing so; this preset shows what we would see if it went tonight.",
+      "whatWasSeen": "Nothing yet. Its 2019–2020 'Great Dimming' came from dust it puffed out, not an approaching explosion. If it did explode, it would outshine the half Moon for weeks, and neutrino detectors would record millions of events.",
+      "inputs": { "kind": "MassiveStar", "initialMass": 19 },
+      "observer": {
+        "distancePc": 168, "av": 0.62,
+        "source": { "citation": "Distance 168 (+27/−15) pc and initial mass 18–21 M☉ (Joyce et al. 2020, ApJ 902, 63); A_V = 0.62 (Levesque & Massey 2020, arXiv:2002.10463)", "researchRef": "presets §13; presets-verification" }
+      },
+      "pins": null,
+      "facts": []
+    }
+  ]
+}

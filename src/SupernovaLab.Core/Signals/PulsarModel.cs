@@ -17,7 +17,8 @@ namespace SupernovaLab.Core.Signals;
 /// <item>Radio (§8.3): S = L_1400 / D², with L_1400 the median of Faucher-Giguère &amp; Kaspi's log-normal luminosity
 /// function, 10^(−1.1) ≈ 0.079 mJy kpc² (σ = 0.9 dex, a factor of 8 either way; the Crab's 56 mJy kpc² is about 3σ
 /// bright). The model is deterministic: no luminosity is drawn. Magnetars get the same function [APPROX], although most
-/// known magnetars are radio-quiet; the Detect reason says so.</item>
+/// known magnetars are radio-quiet; the Detect reason says so. A preset that pins the pulsar's measured luminosity
+/// (<see cref="Outcome.PulsarRadioLuminosityMjyKpc2"/>, ruling R41; the Crab's 56 mJy kpc²) uses that instead.</item>
 /// <item>Beaming (§8.3): only observers inside the beam see pulses. Whether the beam sweeps Earth is the observer's
 /// <see cref="ObserverSetup.BeamTowardEarth"/> (rolled, if at all, outside the model); when it does not, the verdict is
 /// <see cref="DetectionStatus.NotPointedAtUs"/>. <see cref="BeamingFraction"/> gives the chance (Tauris &amp; Manchester
@@ -85,7 +86,7 @@ public sealed class PulsarModel : ISignalModel
             new("periodS", "Spin period", "s", true),
             new("pdot", "Spin-down rate Ṗ", "s/s", true),
             new("edot", "Spin-down power Ė", "erg/s", true),
-            new("fluxMjy", "Pulsed radio flux at 1.4 GHz (median pulsar luminosity)", "mJy", true),
+            new("fluxMjy", "Pulsed radio flux at 1.4 GHz (median pulsar luminosity, or the measured one for a preset)", "mJy", true),
         };
         foreach (string id in DetectorIds)
             list.Add(new(ChannelId.Compose("detect", id), $"Pulsed flux over {Detectors.Get(id).Name}'s limit (≥ 1: detected)",
@@ -103,7 +104,8 @@ public sealed class PulsarModel : ISignalModel
             "extension −0.255 log10(P/s) + 0.135 capped at 0.9 (Titus et al. 2020)", "signals §8.3"),
         new("Radio luminosity at 1.4 GHz: log-normal, ⟨log10 L⟩ = −1.1, σ = 0.9 (L in mJy kpc²; Faucher-Giguère & Kaspi " +
             "2006, ApJ 643, 332); the median is shown. It was fitted to ordinary radio pulsars; magnetars, mostly " +
-            "radio-quiet, are given it too [APPROX]", "signals §8.3"),
+            "radio-quiet, are given it too [APPROX]. A preset may pin a pulsar's measured luminosity (ruling R41): the " +
+            "Crab's S1400 = 14 mJy at 2.0 kpc, 56 mJy kpc² (ATNF catalogue v2.6.1, Manchester et al. 2005)", "signals §8.3"),
         new("Pulses shown from 10 yr: the ejecta are opaque to radio for years to decades, \"pulses visible after about " +
             "10–30 yr\" [APPROX]; no pulsar is yet seen in SN 1987A (Fransson et al. 2024)", "signals §8.3"),
         new("Pulsar-search thresholds (ruling R40): FAST 0.01 mJy (\"large telescopes reach about 10 µJy\"), Parkes and " +
@@ -127,7 +129,7 @@ public sealed class PulsarModel : ISignalModel
             case "edot": return spin.SpinDownLuminosity(sourceTimeS);
         }
         if (!observer.BeamTowardEarth) return double.NaN;
-        double flux = FluxMjy(observer);
+        double flux = FluxMjy(outcome, observer);
         return id.DetectorId is { } d ? flux / Detectors.Get(d).Threshold : flux;
     }
 
@@ -156,15 +158,19 @@ public sealed class PulsarModel : ISignalModel
         if (sourceTimeS > EndS)
             return new Detection(DetectionStatus.NotModeled, $"The model ends {UnitFormat.Time(EndS * z1)} after core collapse.");
 
-        double flux = FluxMjy(observer), ratio = flux / detector.Threshold;
+        double flux = FluxMjy(outcome, observer), ratio = flux / detector.Threshold;
+        string luminosity = outcome.PulsarRadioLuminosityMjyKpc2 is { } measured
+            ? $"This uses the pulsar's measured radio luminosity ({measured.Value.ToString("0.###", inv)} mJy kpc²; " +
+              $"{measured.Source.Citation}), about {(measured.Value / MedianLuminosityMjyKpc2).ToString("N0", inv)} times " +
+              "the median pulsar's."
+            : $"This assumes a median pulsar ({MedianLuminosityMjyKpc2.ToString("0.###", inv)} mJy kpc²); real pulsars range about " +
+              $"{Math.Pow(10, LuminositySigmaDex).ToString("0", inv)} times fainter to as many times brighter (one standard " +
+              "deviation), and the young Crab pulsar is about 700 times the median.";
         var status = ratio >= 1 ? DetectionStatus.Detected : DetectionStatus.TooFaint;
         return new Detection(status,
             $"{detector.Name} receives about {UnitFormat.Figure(flux)} mJy of pulsed radio at 1.4 GHz against its pulsar-search " +
             $"limit of about {UnitFormat.Figure(detector.Threshold)} mJy: {(status == DetectionStatus.Detected ? "detected" : "too faint")}. " +
-            $"This assumes a median pulsar ({MedianLuminosityMjyKpc2.ToString("0.###", inv)} mJy kpc²); real pulsars range about " +
-            $"{Math.Pow(10, LuminositySigmaDex).ToString("0", inv)} times fainter to as many times brighter (one standard " +
-            "deviation), and the young Crab pulsar is about 700 times the median. " +
-            $"It spins every {UnitFormat.Time(spin.PeriodS(sourceTimeS))}." +
+            $"{luminosity} It spins every {UnitFormat.Time(spin.PeriodS(sourceTimeS))}." +
             (outcome.Remnant.Kind == RemnantKind.Magnetar ? MagnetarRadioCaveat : ""));
     }
 
@@ -231,11 +237,11 @@ public sealed class PulsarModel : ISignalModel
 
     private static bool InRange(double t) => t >= EmergenceYears * Year && t <= EndS;
 
-    /// <summary>S = L_1400 / D², mJy, with the median luminosity and D in kpc.</summary>
-    private static double FluxMjy(ObserverSetup obs)
+    /// <summary>S = L_1400 / D², mJy, with D in kpc and the preset's measured luminosity, else the median (R41).</summary>
+    private static double FluxMjy(Outcome o, ObserverSetup obs)
     {
         double dKpc = obs.DistancePc / 1000;
-        return MedianLuminosityMjyKpc2 / (dKpc * dKpc);
+        return (o.PulsarRadioLuminosityMjyKpc2?.Value ?? MedianLuminosityMjyKpc2) / (dKpc * dKpc);
     }
 
     /// <summary>The n = 3 spin-down of one remnant: birth period P0 (s) and spin-down time τ0 (s).</summary>

@@ -213,7 +213,9 @@ public sealed class NeutrinoModel : ISignalModel
             "signals §1.4, §11"),
     };
 
-    public bool Applies(Outcome outcome)
+    public bool Applies(Outcome outcome) => AppliesTo(outcome);
+
+    private static bool AppliesTo(Outcome outcome)
         => outcome.Fate is Fate.Supernova or Fate.FailedSupernova or Fate.PulsationalPairInstability
            && outcome.Remnant.Kind is RemnantKind.NeutronStar or RemnantKind.Magnetar or RemnantKind.BlackHole;
 
@@ -318,6 +320,80 @@ public sealed class NeutrinoModel : ISignalModel
         {
             double e = eMin + k * h, w = k == 0 || k == n ? 1 : k % 2 == 1 ? 4 : 2;
             sum += w * e * e * Sq(e - delta) / (1 + Math.Exp(e / t));
+        }
+        return Math.Clamp(sum * h / 3 / whole, 0, 1);
+    }
+
+    // ---------------------------------------------------------------- Kamiokande-II (the SN 1987A check, spec §8)
+
+    /// <summary>
+    /// Kamiokande-II's sensitive water mass for the SN 1987A burst, kt: 2,140 t (Hirata et al. 1987, PRL 58, 1490; as used
+    /// by Fiorillo et al. 2023, PRD 108, 083040, Sec. III and Table 5). Verified in docs/research/presets-verification.md.
+    /// </summary>
+    public const double KamiokandeIIKilotons = 2.14;
+
+    /// <summary>
+    /// Kamiokande-II's detection efficiency for a positron of this energy (MeV): η = 0.932 / √(1 + (34 / (12 − 7x + x²))²)
+    /// for x = E_e+/MeV &gt; 4, else 0 (Fiorillo et al. 2023, PRD 108, 083040, Eq. 8, a fit to the published Kam-II trigger
+    /// efficiency curve). It is 0.39 at the "traditional" 7.5 MeV threshold (signals §1.5), 0.72 at 10 MeV and 0.92 at 20
+    /// MeV. Verified in docs/research/presets-verification.md.
+    /// </summary>
+    public static double KamiokandeIIEfficiency(double positronMeV)
+    {
+        if (!(positronMeV > 4)) return 0;
+        double x = positronMeV, q = 34 / (12 - 7 * x + x * x);
+        return 0.932 / Math.Sqrt(1 + q * q);
+    }
+
+    /// <summary>
+    /// The expected number of SN 1987A-like events in Kamiokande-II: inverse beta decays on the free protons of 2.14 kt of
+    /// water over the first 20 s, each counted with <see cref="KamiokandeIIEfficiency"/> of its positron energy.
+    /// SN 1987A gave 11 events above threshold (Hirata et al. 1987; signals §1.5).
+    /// </summary>
+    public static double KamiokandeIIEvents(Outcome outcome, ObserverSetup observer)
+        => WaterCherenkovIbdEvents(outcome, observer, KamiokandeIIKilotons, KamiokandeIIEfficiency, TriggerWindowS);
+
+    /// <summary>
+    /// [DERIVED] Expected inverse-beta-decay events in a water Cherenkov detector of this mass (kt) from bounce to
+    /// <paramref name="windowS"/> (s), each event weighted by the detector's efficiency for its positron energy (MeV),
+    /// E_e+ = E_ν − 1.293 MeV, over the zero-degeneracy Fermi-Dirac spectra the model uses (as for Super-K's trigger
+    /// fraction, <see cref="SuperKTriggerFraction"/>). 0 when the model does not apply.
+    /// </summary>
+    public static double WaterCherenkovIbdEvents(Outcome outcome, ObserverSetup observer, double kilotons,
+        Func<double, double> positronEfficiency, double windowS)
+    {
+        if (!AppliesTo(outcome) || !(windowS > 0)) return 0;
+        var p = Profile.Of(outcome);
+        double d = observer.LuminosityDistanceCm, protons = kilotons * ProtonsPerKtWater;
+        double upper = Math.Min(windowS, Math.Min(EndS, p.CutoffS ?? EndS));
+        double Events(double l, double meanE)
+            => Number(l, meanE) is var n && n > 0 ? n * MeanIbdCrossSectionCm2(meanE) * DetectedFraction(meanE, positronEfficiency) : 0;
+        return Integrate(t =>
+        {
+            var e = EmissionAt(p, t);
+            double antiNue = Events(e.AccL, e.AccMeanE) + Events(e.CoolEL, e.CoolMeanE);
+            double nuX = Events(e.CoolXL, e.CoolMeanE);
+            return protons * Fluence(d) * (AntiNueSurvival * antiNue + (1 - AntiNueSurvival) * nuX);
+        }, 0, upper, p.CutoffS);
+    }
+
+    /// <summary>
+    /// [DERIVED] The efficiency-weighted fraction of inverse-beta-decay events for a zero-degeneracy Fermi-Dirac spectrum of
+    /// this mean energy: ∫ η(E − 1.293) E² (E − 1.293)² / (1 + e^{E/T}) dE over the whole-spectrum integral
+    /// T⁵F4 − 2ΔT⁴F3 + Δ²T³F2 (the weighting of <see cref="MeanIbdCrossSectionCm2"/>), Simpson over E_e+ from 0 to 60T.
+    /// </summary>
+    private static double DetectedFraction(double meanEnergyMeV, Func<double, double> positronEfficiency)
+    {
+        if (!(meanEnergyMeV > 0)) return 0;
+        double t = meanEnergyMeV / FermiDiracMeanOverT, delta = IbdDeltaMeV;
+        double whole = Math.Pow(t, 5) * F4 - 2 * delta * Math.Pow(t, 4) * F3 + delta * delta * Math.Pow(t, 3) * F2;
+        double eMin = delta, eMax = eMin + 60 * t;
+        const int n = 400;
+        double h = (eMax - eMin) / n, sum = 0;
+        for (int k = 0; k <= n; k++)
+        {
+            double e = eMin + k * h, w = k == 0 || k == n ? 1 : k % 2 == 1 ? 4 : 2;
+            sum += w * positronEfficiency(e - delta) * e * e * Sq(e - delta) / (1 + Math.Exp(e / t));
         }
         return Math.Clamp(sum * h / 3 / whole, 0, 1);
     }

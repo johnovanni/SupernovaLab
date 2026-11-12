@@ -41,9 +41,10 @@ namespace SupernovaLab.Core.Signals;
 /// Ṁ ≲ 1e-9 M☉/yr; presets §4–5), so <see cref="Applies"/> is false and no circumstellar gas is invented; dense
 /// circumstellar gas (Type IIn, Ibn, Icn, the dense-CSM input, pulsational pair-instability shells), which applies but
 /// returns NaN and NotModeled; free-free absorption by a dense wind, which can dominate early for II-P (§6.1, so the
-/// early low-frequency radio is overestimated); and the SN 1987A ring (§6.3), whose luminosity is
-/// <see cref="RingXrayLuminosityErgS"/> but which no outcome flag yet switches on (ruling R41: Task 13). Source time
-/// throughout.
+/// early low-frequency radio is overestimated). The SN 1987A ring (§6.3) is drawn only for an outcome a preset gives it
+/// (<see cref="Outcome.HasEquatorialRing"/>, ruling R41): channel <c>ringLx</c> is <see cref="RingXrayLuminosityErgS"/>,
+/// the 0.5–2 keV luminosity as observed, already absorbed by the gas toward the LMC, so no absorption is applied to it; it
+/// is NaN for every other outcome. Source time throughout.
 /// Speculative (rulings R24/R27): the microphysics, shock speeds and spectral shapes are [APPROX].
 /// </summary>
 public sealed class CsmInteractionModel : ISignalModel
@@ -134,6 +135,7 @@ public sealed class CsmInteractionModel : ISignalModel
         new("nuPeakGHz", "Radio peak (self-absorption) frequency", "GHz", true),
         new("lx", "X-ray luminosity, 0.3–10 keV (thermal + inverse Compton)", "erg/s", true),
         new("fluxX", "X-ray flux, 0.3–10 keV (after gas absorption)", "erg cm⁻² s⁻¹", true),
+        new("ringLx", "X-ray luminosity of the equatorial ring, 0.5–2 keV, as observed (already absorbed)", "erg/s", true),
     };
 
     public IReadOnlyList<Source> Sources { get; } = new Source[]
@@ -156,9 +158,11 @@ public sealed class CsmInteractionModel : ISignalModel
             "1e-13 erg cm⁻² s⁻¹, for exposures of ~100 ks and ~10 ks [APPROX]; telescope frequency ranges [APPROX]",
             "signals §6.1, §6.2, §11"),
         new("Not modeled: dense circumstellar gas (IIn, Ibn, Icn; the brightest radio and X-ray supernovae), free-free " +
-            "absorption in dense winds (early II-P radio is overestimated), the SN 1987A ring (formula only), and Type Ia " +
-            "supernovae, whose surroundings are clean (SN 2011fe, SN 2014J: Ṁ ≲ 1e-9 M☉/yr)",
-            "signals §6.1, §6.3; presets §4, §5"),
+            "absorption in dense winds (early II-P radio is overestimated), and Type Ia supernovae, whose surroundings are " +
+            "clean (SN 2011fe, SN 2014J: Ṁ ≲ 1e-9 M☉/yr)", "signals §6.1; presets §4, §5"),
+        new("SN 1987A's equatorial ring (ruling R41, for the preset only): 0.5–2 keV as Chandra observed it, 8e-12 erg cm⁻² " +
+            "s⁻¹ at 51.4 kpc on the plateau, already absorbed, so not absorbed again; zero until the shock reaches the ring " +
+            "at about 3,000 d, then a logistic rise to the plateau by 9,000 d [APPROX]", "signals §6.3; presets §1"),
     };
 
     public bool Applies(Outcome outcome) => AppliesTo(outcome);
@@ -167,9 +171,11 @@ public sealed class CsmInteractionModel : ISignalModel
 
     public double Sample(Outcome outcome, ObserverSetup observer, double sourceTimeS, string channelId)
     {
-        if (channelId is not ("nuPeakGHz" or "lx" or "fluxX") && RadioBands.All(b => b.Channel != channelId))
+        if (channelId is not ("nuPeakGHz" or "lx" or "fluxX" or "ringLx") && RadioBands.All(b => b.Channel != channelId))
             throw new ArgumentException($"The circumstellar-interaction model has no channel '{channelId}'.", nameof(channelId));
         if (!AppliesTo(outcome) || DenseCsm(outcome) || !(sourceTimeS >= StartS && sourceTimeS <= EndS)) return double.NaN;
+        // Ruling R41: the ring's luminosity is as observed (absorbed once already), so it is returned as it is.
+        if (channelId == "ringLx") return outcome.HasEquatorialRing ? RingXrayLuminosityErgS(sourceTimeS) : double.NaN;
 
         var shock = Shock.Of(outcome);
         double z1 = observer.TimeDilation;
@@ -234,6 +240,10 @@ public sealed class CsmInteractionModel : ISignalModel
 
         double lx = XrayLuminosity(outcome, shock, sourceTimeS);
         double absorbed = XrayFlux(lx, observer, absorbed: true), clear = XrayFlux(lx, observer, absorbed: false);
+        double ringLx = outcome.HasEquatorialRing ? RingXrayLuminosityErgS(sourceTimeS) : 0;
+        if (ringLx > 0)
+            caveat += $" The equatorial ring adds about {FormatFlux(ringLx / (4 * Math.PI * Math.Pow(observer.LuminosityDistanceCm, 2)))} " +
+                      "erg cm⁻² s⁻¹ in 0.5–2 keV as Chandra measured it (already absorbed), not included in the verdict above.";
         string flux = $"{detector.Name} would receive {FormatFlux(absorbed)} erg cm⁻² s⁻¹ in 0.3–10 keV (from " +
                       $"{FormatFlux(lx)} erg/s) against the {FormatFlux(detector.Threshold)} it reaches in " +
                       $"{XrayExposure(detector.Id)}";

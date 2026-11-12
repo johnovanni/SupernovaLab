@@ -1,6 +1,7 @@
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Signals;
+using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.Tests;
 
@@ -135,5 +136,24 @@ public class PulsarModelTests
         Assert.False(Model.Applies(TestOutcomes.TypeIa()));
         Assert.False(Model.Applies(TestOutcomes.Star(23)));
         Assert.True(double.IsNaN(Model.EmergenceTimeS(bh)));
+    }
+
+    // ---------------------------------------------------------------- ruling R41: a measured radio luminosity
+
+    [Fact]
+    public void PinnedRadioLuminosity_ReplacesTheMedian()
+    {
+        // The Crab: L_1400 = 56 mJy kpc² (ATNF S1400 = 14 mJy at 2.0 kpc). At 2 kpc: 56 / 2² = 14 mJy; FAST's 0.01 mJy limit
+        // is passed 1,400 times over.
+        var source = new Source("Crab (test)", "tests");
+        var o = CrabLike() with { PulsarRadioLuminosityMjyKpc2 = new(56, "mJy kpc²", Confidence.ModelDependent, source) };
+        var obs = new ObserverSetup(2000, 0, true);
+        Assert.Equal(14, Model.Sample(o, obs, 100 * Year, "fluxMjy"), 1e-9);
+        Assert.Equal(1400, Model.Sample(o, obs, 100 * Year, "detect@fast"), 1e-6);
+        var d = Model.Detect(o, obs, 100 * Year, Detectors.Get("parkes"));
+        Assert.Equal(DetectionStatus.Detected, d.Status);
+        Assert.Contains("measured radio luminosity", d.Reason);
+        // Without the pin, the median 10^-1.1 = 0.0794328 mJy kpc² gives 0.0198582 mJy at 2 kpc.
+        Assert.Equal(0.0198582, Model.Sample(CrabLike(), obs, 100 * Year, "fluxMjy"), 1e-7);
     }
 }

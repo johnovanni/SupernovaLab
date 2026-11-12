@@ -24,10 +24,18 @@ public enum Fate
 /// Published values that a preset puts in place of the model's own (spec §2.3): explosion energy in erg, ejecta and
 /// ⁵⁶Ni masses in M☉ and progenitor radius in cm, and the initial ⁴⁴Ti mass in M☉ (ruling R35; a core-collapse
 /// supernova only). The gamma-ray burst pins (ruling R36; an outcome with a GRB only) are the isotropic-equivalent energy
-/// in erg, the rest-frame peak energy E_p,i in keV and T90 in s. A null value keeps the model's value.
+/// in erg, the rest-frame peak energy E_p,i in keV and T90 in s. The neutron-star pins (ruling R41; an outcome that
+/// leaves a neutron star or magnetar only) are the birth spin period in s, the surface dipole field in G and the pulsar's
+/// 1.4 GHz radio luminosity in mJy kpc². <see cref="EquatorialRing"/> (ruling R41) gives the supernova SN 1987A's
+/// equatorial ring, whose X-rays <c>CsmInteractionModel</c> then draws. A null value keeps the model's value.
+/// <para>Ruling R44: pins are published values and are trusted. The explosion pins (E, M_ej, ⁵⁶Ni, ⁴⁴Ti, the GRB and
+/// neutron-star pins, the ring) are ignored, with a note, when the outcome has no explosion (or no GRB, no neutron star)
+/// to apply them to; the radius pin always applies. The ⁵⁶Ni ≤ 0.5 M_ej cap is not applied to pinned values, but a pin
+/// set that breaks it gets a note.</para>
 /// </summary>
 public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
-    double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null);
+    double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null,
+    double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null);
 
 /// <summary>
 /// The lab's result (spec §3). <see cref="Inputs"/> are the inputs as used, held inside their slider ranges.
@@ -40,10 +48,14 @@ public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, 
 /// <see cref="GrbIsotropicEnergyErg"/> (erg), <see cref="GrbPeakEnergyKeV"/> (rest-frame E_p,i, keV) and
 /// <see cref="GrbT90S"/> (s) are a preset's gamma-ray burst pins (ruling R36), set only when the outcome has a GRB; null
 /// means the classical burst of <c>GrbModel</c>.
+/// <see cref="PulsarRadioLuminosityMjyKpc2"/> is a preset's measured 1.4 GHz pulsar luminosity (mJy kpc²; ruling R41),
+/// null for the population median <c>PulsarModel</c> uses. <see cref="HasEquatorialRing"/> is true when a preset gives the
+/// supernova SN 1987A's equatorial ring (ruling R41).
 /// </summary>
 public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bool HasGrb, Remnant Remnant,
     PresupernovaStar? Star, Quantity? ExplosionEnergyErg, Quantity? EjectaMass, Quantity? NickelMass,
     Quantity? PeakLuminosityErgS, Quantity? MagnetarEnergyErg, Quantity? MagnetarTimescaleS,
     IReadOnlyList<string> Notes, bool UsesPublishedValues,
     Quantity? PeakAbsoluteMagB = null, Quantity? DeclineRateDm15B = null, Quantity? Ti44Mass = null,
-    Quantity? GrbIsotropicEnergyErg = null, Quantity? GrbPeakEnergyKeV = null, Quantity? GrbT90S = null);
+    Quantity? GrbIsotropicEnergyErg = null, Quantity? GrbPeakEnergyKeV = null, Quantity? GrbT90S = null,
+    Quantity? PulsarRadioLuminosityMjyKpc2 = null, bool HasEquatorialRing = false);

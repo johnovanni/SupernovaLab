@@ -241,4 +241,18 @@ public class CsmInteractionModelTests
         // At 10,500 d: 1 / (1 + e^(−4500/1018.87)) = 0.98805 of the plateau, 2.49869e36.
         Assert.Equal(2.49869e36, CsmInteractionModel.RingXrayLuminosityErgS(10_500 * Day), 0.0002e36);
     }
+
+    [Fact]
+    public void RingChannel_IsTheObservedRingLuminosity_OnlyWhenThePresetGivesTheRing()
+    {
+        // Ruling R41: ringLx is RingXrayLuminosityErgS as observed (0.5–2 keV, already absorbed), never absorbed again. At
+        // 9,500 d: 2.52891e36 / (1 + e^(−3500/1018.87)) = 2.52891e36 × 0.968788 = 2.44998e36 erg/s, whatever the dust.
+        var withRing = Ib() with { HasEquatorialRing = true };
+        Assert.Equal(2.44998e36, Model.Sample(withRing, new ObserverSetup(51_400, 0, true), 9500 * Day, "ringLx"), 0.0005e36);
+        Assert.Equal(2.44998e36, Model.Sample(withRing, new ObserverSetup(51_400, 5, true), 9500 * Day, "ringLx"), 0.0005e36);
+        Assert.Equal(0, Model.Sample(withRing, new ObserverSetup(51_400, 0, true), 1000 * Day, "ringLx"));
+        Assert.True(double.IsNaN(Model.Sample(Ib(), new ObserverSetup(51_400, 0, true), 9500 * Day, "ringLx")));
+        var d = Model.Detect(withRing, new ObserverSetup(51_400, 0.47, true), 9500 * Day, Detectors.Get("chandra"));
+        Assert.Contains("equatorial ring", d.Reason);
+    }
 }
