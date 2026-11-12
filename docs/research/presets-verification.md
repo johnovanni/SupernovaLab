@@ -39,6 +39,7 @@ Only verified, verified (via), corrected or derived values are pinned in `preset
 | Preset | Pins | Checked value | Citation | Status |
 |---|---|---|---|---|
 | SN 1987A | E, M_ej, M_Ni, R | **E = (1.1 ± 0.3)e51 erg, M_ej = 14.7 M☉ (Table 1: 14.67), M_Ni = 0.078 M☉, R0 = 48.5 R☉** (= 3.374e12 cm [D]) | Blinnikov et al. 2000, ApJ 532, 1132 (model 14E1), Abstract, Sec. 3, 6, 7.2 | verified |
+| SN 1987A | NS mass (ruling R46) | — | **mass cut M_c = 1.6 M☉** (Sec. 3, "the mass cut is located at M_r = M_c = 1.6 M☉", an interior mass coordinate, so baryonic) → **1.444 M☉ gravitational [D]** by Lattimer & Yahil 1989, M_g = (−1 + √(1 + 0.3 × 1.6)) / 0.15 = 1.44369 (the engine's own conversion, outcomes §1.5) | Blinnikov et al. 2000, ApJ 532, 1132 (arXiv:astro-ph/9911205), Sec. 3 | verified (1.6 M☉); the gravitational value is derived, assuming the paper's mass coordinate is baryonic (it does not say) |
 | SN 1987A | ⁴⁴Ti | 1.5e-4 [R, "verify"] | **(1.5 ± 0.3)e-4 M☉** | Boggs et al. 2015, Science 348, 670 (via a 2017 paper quoting it; a 2025 reanalysis finds 1.6 ± 0.5e-4) | verified (via) |
 | SN 1987A | opacity κ | — | 0.10 cm²/g (the slider's top; Task 9 note: dome peaks ~83–86 d, closer to the observed 84.5 d) | — | choice, not a published value |
 | Crab | P0, B, L_1400 | — | P0 = √(P² − 2PṖt) = **16.845 ms** (n = 3, t = 936.97 yr from 1054 July 4 (Julian) to MJD 48442.5); B = 3.2e19 √(PṖ) = **3.794e12 G**; L = **56 mJy kpc²** | ATNF v2.6.1 values [D] | derived |

@@ -67,7 +67,7 @@ public static class PresetCatalog
         if (d.Pins is { } p)
             pins = new PresetPins(p.ExplosionEnergyErg, p.EjectaMass, p.NickelMass, p.RadiusCm, ToSource(p.Source, id, "pins"),
                 p.Ti44Mass, p.GrbEisoErg, p.GrbEpKeV, p.GrbT90S, p.NsSpinPeriodS, p.NsFieldG, p.PulsarRadioLumMjyKpc2,
-                p.EquatorialRing);
+                p.EquatorialRing, p.NsGravitationalMass);
 
         var facts = (d.Facts ?? new List<FactDto>()).Select(f => new ObservedFact(
             f.Messenger ?? throw new InvalidDataException($"A fact of preset '{id}' has no messenger."),
@@ -143,6 +143,7 @@ public static class PresetCatalog
         public double? NsFieldG { get; set; }
         public double? PulsarRadioLumMjyKpc2 { get; set; }
         public bool? EquatorialRing { get; set; }
+        public double? NsGravitationalMass { get; set; }
         public SourceDto? Source { get; set; }
     }
 

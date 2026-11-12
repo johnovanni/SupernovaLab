@@ -174,12 +174,15 @@ public sealed partial class OutcomeEngine
                     }
                     else notes.Add("The published gamma-ray burst values are not used: in the lab this explosion makes no burst.");
                 }
-                // Ruling R41: the neutron-star pins. Spin and field went onto the remnant when it formed (Exploded).
-                if (pins.NsSpinPeriodS is not null || pins.NsFieldG is not null || pins.PulsarRadioLumMjyKpc2 is not null)
+                // Rulings R41 and R46: the neutron-star pins. Mass, spin and field went onto the remnant when it formed
+                // (Exploded).
+                if (pins.NsSpinPeriodS is not null || pins.NsFieldG is not null || pins.PulsarRadioLumMjyKpc2 is not null ||
+                    pins.NsGravitationalMass is not null)
                 {
                     if (neutronStar)
                     {
-                        published |= pins.NsSpinPeriodS is not null || pins.NsFieldG is not null;
+                        published |= pins.NsSpinPeriodS is not null || pins.NsFieldG is not null ||
+                                     pins.NsGravitationalMass is not null;
                         if (pins.PulsarRadioLumMjyKpc2 is double l) pulsarRadio = Pin(l, "mJy kpc²");
                     }
                     else notes.Add("The published neutron-star values are not used: in the lab this explosion leaves no " +
@@ -219,7 +222,8 @@ public sealed partial class OutcomeEngine
     private static bool HasExplosionPins(PresetPins p)
         => p.ExplosionEnergyErg is not null || p.EjectaMass is not null || p.NickelMass is not null || p.Ti44Mass is not null ||
            p.GrbEisoErg is not null || p.GrbEpKeV is not null || p.GrbT90S is not null || p.NsSpinPeriodS is not null ||
-           p.NsFieldG is not null || p.PulsarRadioLumMjyKpc2 is not null || p.EquatorialRing == true;
+           p.NsFieldG is not null || p.PulsarRadioLumMjyKpc2 is not null || p.EquatorialRing == true ||
+           p.NsGravitationalMass is not null;
 
     /// <summary>
     /// Ruling R44: pinned values are trusted, so the model's cap (⁵⁶Ni ≤ 0.5 M_ej for core-collapse and pair-instability
@@ -698,7 +702,8 @@ public sealed partial class OutcomeEngine
         Quantity? spinDownEnergy = null, spinDownTime = null;
         var branch = Step7.None;
         HydrogenRichMagnetar? r22 = null;
-        // Ruling R41: a preset's published spin and field replace the neutron star's (a magnetar's in Magnetar).
+        // Rulings R41 and R46: a preset's published mass, spin and field replace the neutron star's (a magnetar's spin
+        // and field again in Magnetar).
         if (remnant.Kind == RemnantKind.NeutronStar) remnant = WithSpinPins(remnant, pins);
         if (x.Field == CoreField.Strong && remnant.Kind == RemnantKind.NeutronStar)
         {
@@ -729,8 +734,8 @@ public sealed partial class OutcomeEngine
     }
 
     /// <summary>
-    /// Ruling R41: this neutron star (or magnetar) with a preset's published birth spin period and dipole field, where the
-    /// pins give them.
+    /// Rulings R41 and R46: this neutron star (or magnetar) with a preset's published birth spin period, dipole field and
+    /// gravitational mass, where the pins give them. The mass sets the neutrino binding energy (NeutrinoModel).
     /// </summary>
     private static Remnant WithSpinPins(Remnant neutronStar, PresetPins? pins)
     {
@@ -740,6 +745,7 @@ public sealed partial class OutcomeEngine
         {
             SpinPeriodS = pins.NsSpinPeriodS is double p ? Pin(p, "s") : neutronStar.SpinPeriodS,
             MagneticFieldG = pins.NsFieldG is double b ? Pin(b, "G") : neutronStar.MagneticFieldG,
+            Mass = pins.NsGravitationalMass is double m ? Pin(m, MSun) : neutronStar.Mass,
         };
     }
 

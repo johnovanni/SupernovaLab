@@ -26,7 +26,8 @@ public enum Fate
 /// supernova only). The gamma-ray burst pins (ruling R36; an outcome with a GRB only) are the isotropic-equivalent energy
 /// in erg, the rest-frame peak energy E_p,i in keV and T90 in s. The neutron-star pins (ruling R41; an outcome that
 /// leaves a neutron star or magnetar only) are the birth spin period in s, the surface dipole field in G and the pulsar's
-/// 1.4 GHz radio luminosity in mJy kpc². <see cref="EquatorialRing"/> (ruling R41) gives the supernova SN 1987A's
+/// 1.4 GHz radio luminosity in mJy kpc², and (ruling R46) the neutron star's gravitational mass in M☉, which sets its
+/// neutrino binding energy. <see cref="EquatorialRing"/> (ruling R41) gives the supernova SN 1987A's
 /// equatorial ring, whose X-rays <c>CsmInteractionModel</c> then draws. A null value keeps the model's value.
 /// <para>Ruling R44: pins are published values and are trusted. The explosion pins (E, M_ej, ⁵⁶Ni, ⁴⁴Ti, the GRB and
 /// neutron-star pins, the ring) are ignored, with a note, when the outcome has no explosion (or no GRB, no neutron star)
@@ -35,7 +36,8 @@ public enum Fate
 /// </summary>
 public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
     double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null,
-    double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null);
+    double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null,
+    double? NsGravitationalMass = null);
 
 /// <summary>
 /// The lab's result (spec §3). <see cref="Inputs"/> are the inputs as used, held inside their slider ranges.

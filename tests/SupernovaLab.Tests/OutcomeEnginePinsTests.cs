@@ -1,5 +1,7 @@
+using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Progenitors;
+using SupernovaLab.Core.Signals;
 using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.Tests;
@@ -146,6 +148,35 @@ public class OutcomeEnginePinsTests
         Assert.Equal(56, o.PulsarRadioLuminosityMjyKpc2!.Value);
         Assert.True(o.UsesPublishedValues);
         Assert.Null(Engine.Compute(LabInputs.Default with { InitialMass = 9.1 }).PulsarRadioLuminosityMjyKpc2);
+    }
+
+    [Fact]
+    public void NeutronStarMassPin_SetsTheRemnantMass_AndTheNeutrinoBindingEnergy()
+    {
+        // Ruling R46. The 19 M☉ star at Z = 0.1 leaves a 1.634 M☉ neutron star in the model; pinned, 1.444 M☉.
+        var x = LabInputs.Default with { InitialMass = 19, Metallicity = 0.1 };
+        var model = Engine.Compute(x);
+        Assert.Equal(1.634, model.Remnant.Mass!.Value, 0.001);
+        Assert.False(model.UsesPublishedValues);
+
+        var o = Engine.Compute(x, new PresetPins(null, null, null, null, Published, NsGravitationalMass: 1.444));
+        Assert.Equal(RemnantKind.NeutronStar, o.Remnant.Kind);
+        Assert.Equal(1.444, o.Remnant.Mass!.Value);
+        Assert.True(o.Remnant.Mass.Published);
+        Assert.Same(Published, o.Remnant.Mass.Source);
+        Assert.True(o.UsesPublishedValues);
+
+        // A lighter neutron star releases less binding energy, so fewer neutrinos are counted.
+        var lmc = new ObserverSetup(51_400, 0, true);
+        Assert.True(NeutrinoModel.KamiokandeIIEvents(o, lmc) <
+                    NeutrinoModel.KamiokandeIIEvents(model, lmc));
+
+        // On a failed supernova (no neutron star) it is ignored with a note (R44).
+        var failed = Engine.Compute(LabInputs.Default with { InitialMass = 25 },
+            new PresetPins(null, null, null, null, Published, NsGravitationalMass: 1.444));
+        Assert.Equal(RemnantKind.BlackHole, failed.Remnant.Kind);
+        Assert.False(failed.UsesPublishedValues);
+        Assert.Contains(failed.Notes, n => n.Contains("does not explode", StringComparison.Ordinal));
     }
 
     [Fact]

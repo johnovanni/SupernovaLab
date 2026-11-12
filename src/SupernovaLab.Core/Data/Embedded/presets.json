@@ -16,8 +16,8 @@
       },
       "pins": {
         "explosionEnergyErg": 1.1e51, "ejectaMass": 14.7, "nickelMass": 0.078, "radiusCm": 3.3741e12,
-        "ti44Mass": 1.5e-4, "equatorialRing": true,
-        "source": { "citation": "Blinnikov et al. 2000, ApJ 532, 1132 (model 14E1: E = 1.1 × 10⁵¹ erg, M_ej = 14.7 M☉, M_Ni = 0.078 M☉, R0 = 48.5 R☉); ⁴⁴Ti 1.5 × 10⁻⁴ M☉ from Boggs et al. 2015, Science 348, 670; the equatorial ring's X-rays from Chandra (signals §6.3)", "researchRef": "presets §1; signals §5.3, §6.3; presets-verification" }
+        "ti44Mass": 1.5e-4, "equatorialRing": true, "nsGravitationalMass": 1.444,
+        "source": { "citation": "Blinnikov et al. 2000, ApJ 532, 1132 (model 14E1: E = 1.1 × 10⁵¹ erg, M_ej = 14.7 M☉, M_Ni = 0.078 M☉, R0 = 48.5 R☉; mass cut 1.6 M☉, as a neutron star of 1.444 M☉ gravitational by Lattimer & Yahil 1989 [DERIVED]); ⁴⁴Ti 1.5 × 10⁻⁴ M☉ from Boggs et al. 2015, Science 348, 670; the equatorial ring's X-rays from Chandra (signals §6.3)", "researchRef": "presets §1; signals §5.3, §6.3; presets-verification" }
       },
       "facts": [
         { "messenger": "Neutrinos", "channelId": "cumulative@kamiokande-ii", "sourceTimeS": 12.439, "value": 11, "unit": "events",

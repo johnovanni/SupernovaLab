@@ -106,6 +106,7 @@ public class PresetValidationTests
         Assert.Equal(1.5e-4, Of("sn1987a").Ti44Mass!.Value);
         Assert.Contains("Boggs", Of("sn1987a").Ti44Mass!.Source.Citation);
         Assert.Equal(0.078, Of("sn1987a").NickelMass!.Value);
+        Assert.True(Of("sn1987a").Remnant.Mass!.Published); // R46: Blinnikov's mass cut
         Assert.Contains("Blinnikov", Of("sn1987a").NickelMass!.Source.Citation);
         Assert.True(Of("sn1987a").HasEquatorialRing);
         Assert.Equal(0.10, Of("sn1987a").Inputs.Opacity);
@@ -122,30 +123,20 @@ public class PresetValidationTests
 
     // ---------------------------------------------------------------- spec §8 validations
 
-    /// <summary>
-    /// SPEC §8 VALIDATION NOT MET: Kamiokande-II expected count 6–20 (11 seen). With the real detector — 2,140 t of water at
-    /// 51.4 kpc and its published efficiency (Fiorillo et al. 2023, Eq. 8) — the model expects about 24 events. The excess
-    /// comes from the engine's neutron star (1.63 M☉ for the 19 M☉ preset, binding energy 3.9e53 erg, above the 2–3e53
-    /// inferred for SN 1987A). No physics is tuned to pass; see task-13-report.md for the numbers and options.
-    /// </summary>
-    [Fact(Skip = "Spec §8 not met by the model: about 24 Kam-II events expected (6–20 asked). Reported, awaiting a ruling.")]
+    [Fact]
     public void Sn1987A_KamiokandeII_ExpectedCount_Is6To20()
     {
-        double n = NeutrinoModel.KamiokandeIIEvents(Of("sn1987a"), ObserverOf("sn1987a"));
-        Assert.InRange(n, 6, 20);
-    }
-
-    [Fact]
-    public void Sn1987A_KamiokandeII_ExpectedCount_IsWithinAFactorOf3OfThe11Seen()
-    {
-        // The active check while the spec's 6–20 is open (see the skipped test above): the expected count is within a
-        // factor of 3 of the 11 events Kamiokande-II recorded (Hirata et al. 1987), and the detector's efficiency removes
-        // some events (it is below 1 at every energy).
+        // Spec §8: Kamiokande-II expected count 6–20 (11 seen; Hirata et al. 1987). The real detector: 2,140 t of water,
+        // its published efficiency (Fiorillo et al. 2023, Eq. 8), at 51.4 kpc, over 20 s. Ruling R46: the neutron star is
+        // Blinnikov et al. 2000's mass cut, 1.444 M☉ gravitational (binding energy 3.0e53 erg at 12 km, the top of the
+        // 2–3e53 the burst implies); the engine's own 1.634 M☉ for the 19 M☉ star would give about 24.
         var o = Of("sn1987a");
         var lmc = ObserverOf("sn1987a");
         Assert.Equal(51_400, lmc.DistancePc);
+        Assert.Equal(1.444, o.Remnant.Mass!.Value);
         double n = NeutrinoModel.KamiokandeIIEvents(o, lmc);
-        Assert.InRange(n, 11.0 / 3, 11.0 * 3);
+        Assert.InRange(n, 6, 20);
+        // The efficiency removes events: it is below 1 at every energy.
         Assert.True(n < NeutrinoModel.WaterCherenkovIbdEvents(o, lmc, NeutrinoModel.KamiokandeIIKilotons, _ => 1, 20));
     }
 
