@@ -19,6 +19,11 @@ public partial class InstrumentsWindow : Window
     public InstrumentsWindow()
     {
         InitializeComponent();
+        // Belt and braces with the views' own Unloaded: a closed window's views stop listening to the shared panels.
+        Closed += (_, _) =>
+        {
+            foreach (var view in PanelViews) view.Detach();
+        };
         KeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape || MaximizedPanel.Visibility != Visibility.Visible) return;

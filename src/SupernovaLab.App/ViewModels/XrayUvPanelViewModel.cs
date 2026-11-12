@@ -79,11 +79,15 @@ public sealed class XrayUvPanelViewModel : InstrumentPanelViewModel
         _ => new ISignalModel[] { _cooling },
     };
 
+    /// <summary>
+    /// Which models judge each instrument. Ruling R50: GrbModel judges the drawn X-ray afterglow for Swift XRT, Chandra
+    /// and XMM-Newton, whose limits the afterglow view draws.
+    /// </summary>
     protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument) => instrument.Id switch
     {
-        "swift-xrt" => new ISignalModel[] { _breakout, _csm },
+        "swift-xrt" => new ISignalModel[] { _breakout, _csm, _grb },
         "einstein-probe" or "ultrasat" => new ISignalModel[] { _breakout },
-        _ => new ISignalModel[] { _csm, _cooling },
+        _ => new ISignalModel[] { _csm, _cooling, _grb },
     };
 
     protected override (ISignalModel Model, string ChannelId)? PrimaryChannel(string subTab, Detector instrument) => subTab switch
@@ -98,26 +102,12 @@ public sealed class XrayUvPanelViewModel : InstrumentPanelViewModel
     /// Ruling R29: after breakout, an X-ray instrument's NotYet means its first exposure is still filling, not that the
     /// signal has yet to start.
     /// </summary>
-    protected override (string Full, string Short) Badge(Detection d)
+    protected override (string Full, string Short) Badge(ISignalModel model, Detection d)
     {
-        if (d.Status == DetectionStatus.NotYet && SelectedInstrument.Id is "swift-xrt" or "einstein-probe"
+        if (ReferenceEquals(model, _breakout) && d.Status == DetectionStatus.NotYet && SelectedInstrument.Id is "swift-xrt" or "einstein-probe"
             && _breakout.ValidRange(Outcome) is var (start, end) && end > start && SourceTimeS >= start && SourceTimeS <= end)
             return (ExposureFillingText, "Exposure filling");
-        return base.Badge(d);
-    }
-
-    /// <summary>The afterglow's reasons are the GRB model's own (R39), which no X-ray instrument here asks for.</summary>
-    protected override string NotDrawnReason(ISignalModel model)
-    {
-        if (!ReferenceEquals(model, _grb)) return base.NotDrawnReason(model);
-        if (!_grb.Applies(Outcome)) return "This supernova makes no gamma-ray burst, so there is no afterglow.";
-        if (!Observer.BeamTowardEarth)
-            return "The jets point away from Earth, so no afterglow is drawn (a late \"orphan\" afterglow is not modeled).";
-        if (_grb.AfterglowNotModeledReason(Outcome, Observer, SourceTimeS) is { } reason) return reason;
-        double onset = _grb.OnsetS(Outcome) * Observer.TimeDilation;
-        return TimeS < onset + _grb.T90S(Outcome) * Observer.TimeDilation
-            ? "The afterglow is drawn once the prompt burst is over."
-            : $"The afterglow is drawn to {UnitFormat.Time(GrbModel.AfterglowEndS * Observer.TimeDilation)} after the burst.";
+        return base.Badge(model, d);
     }
 
     /// <summary>

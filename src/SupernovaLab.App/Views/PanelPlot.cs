@@ -189,13 +189,14 @@ public static class PanelPlot
             double yl = Y(line.Value);
             // Levels compare with curves: with nothing drawn, an instrument's limit alone would only mislead.
             if (!double.IsFinite(yl) || !hasData) continue;
-            // A level far outside the data would flatten the curves: it is drawn only within 3 decades (or 8 mag) of them.
-            double slack = logY ? 3 : 8;
-            if (hasData && (yl < yMin - slack || yl > yMax + slack)) continue;
+            bool observed = line.Label.StartsWith("Observed", StringComparison.Ordinal);
+            // A limit far outside the data would flatten the curves: it is drawn only within 3 decades (or 8 mag) of them.
+            // An observed level was already placed by the view model under the same rule (its row says when it is not).
+            double slack = logY ? InstrumentPanelViewModel.LevelSlackDecades : InstrumentPanelViewModel.LevelSlackLinear;
+            if (!observed && (yl < yMin - slack || yl > yMax + slack)) continue;
             yMin = Math.Min(yMin, yl);
             yMax = Math.Max(yMax, yl);
             var h = plot.Add.HorizontalLine(yl);
-            bool observed = line.Label.StartsWith("Observed", StringComparison.Ordinal);
             string colour = observed ? FactColor : LimitColor;
             h.Color = Color.FromHex(colour).WithAlpha(observed ? 0.8 : 0.65);
             h.LineWidth = 1;
@@ -286,7 +287,7 @@ public static class PanelPlot
 
     private static void DrawSpectrogram(Plot plot, InstrumentPanelViewModel vm)
     {
-        plot.Axes.Bottom.Label.Text = "Time after core bounce (s)";
+        plot.Axes.Bottom.Label.Text = "Observer time after core bounce (s)";
         if (vm.Spectrogram is not { } s)
         {
             plot.Axes.SetLimits(0, 2, 0, 2048);
@@ -307,7 +308,7 @@ public static class PanelPlot
 
     private static void DrawSpectrum(Plot plot, InstrumentPanelViewModel vm, List<LegendEntry> legend)
     {
-        plot.Axes.Bottom.Label.Text = "Wavelength (Å)";
+        plot.Axes.Bottom.Label.Text = "Rest-frame wavelength (Å)";
         if (vm.Spectrum is not { } s)
         {
             plot.Axes.SetLimits(3000, 10000, 0, 1.1);

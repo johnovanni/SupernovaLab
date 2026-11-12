@@ -35,17 +35,18 @@ public sealed class InstrumentTileViewModel : ObservableObject
     /// <summary>The cursor's position 0..1 on the log timeline.</summary>
     public double CursorFraction => TimeAxis.ToFraction(Panel.CursorTimeS);
 
-    /// <summary>The badge: the panel's current detection.</summary>
-    public Detection Badge => Panel.CurrentDetection;
+    /// <summary>
+    /// The badge (ruling R50): the panel's best current-time verdict for its selected instrument over all its signals,
+    /// which may differ from the panel's own badge (that one speaks only of the selected sub-tab).
+    /// </summary>
+    public Detection Badge => Panel.StripDetection;
 
-    public string BadgeText => Panel.DetectionShortText;
+    public string BadgeText => Panel.StripBadgeText;
 
     /// <summary>The badge status for its colour; null when a model failed.</summary>
-    public DetectionStatus? BadgeStatus => Panel.ErrorText is null ? Panel.CurrentDetection.Status : null;
+    public DetectionStatus? BadgeStatus => Panel.ErrorText is null ? Panel.StripDetection.Status : null;
 
-    public string ToolTip =>
-        $"{Title}: {Panel.DetectionText} ({Panel.SelectedInstrument.Name}).{Environment.NewLine}{Environment.NewLine}" +
-        $"{Panel.ErrorText ?? Panel.CurrentDetection.Reason}{Environment.NewLine}{Environment.NewLine}Click to open the panel.";
+    public string ToolTip => Panel.StripToolTip;
 
     public IRelayCommand OpenCommand { get; }
 
@@ -59,8 +60,9 @@ public sealed class InstrumentTileViewModel : ObservableObject
             case nameof(InstrumentPanelViewModel.CursorTimeS):
                 OnPropertyChanged(nameof(CursorFraction));
                 break;
-            case nameof(InstrumentPanelViewModel.CurrentDetection):
-            case nameof(InstrumentPanelViewModel.DetectionShortText):
+            case nameof(InstrumentPanelViewModel.StripDetection):
+            case nameof(InstrumentPanelViewModel.StripBadgeText):
+            case nameof(InstrumentPanelViewModel.StripToolTip):
             case nameof(InstrumentPanelViewModel.ErrorText):
             case nameof(InstrumentPanelViewModel.SelectedInstrument):
                 OnPropertyChanged(nameof(Badge));

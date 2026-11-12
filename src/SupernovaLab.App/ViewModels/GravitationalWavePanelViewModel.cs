@@ -35,7 +35,12 @@ public sealed class GravitationalWavePanelViewModel : InstrumentPanelViewModel
     public override string Title => "Gravitational waves";
     public override string TitleToolTip => Glossary.GravitationalWaves;
 
-    protected override IReadOnlyList<PlotSeries> BuildMainSeries() => _strain = SampleStrain();
+    protected override IReadOnlyList<PlotSeries> BuildMainSeries()
+    {
+        // Cleared first: after a failed sample, a later sub-tab switch must not draw the previous outcome's strain.
+        _strain = Array.Empty<PlotSeries>();
+        return _strain = SampleStrain();
+    }
 
     protected override PanelContent BuildTab(string subTab, Detector instrument)
     {
@@ -73,7 +78,8 @@ public sealed class GravitationalWavePanelViewModel : InstrumentPanelViewModel
     }
 
     /// <summary>After the brief signal: "Over", and whether the instrument caught it.</summary>
-    protected override (string Full, string Short) Badge(Detection d) => OverBadge(_gw, d) ?? base.Badge(d);
+    protected override (string Full, string Short) Badge(ISignalModel model, Detection d)
+        => (ReferenceEquals(model, _gw) ? OverBadge(_gw, d) : null) ?? base.Badge(model, d);
 
     protected override IReadOnlyList<ISignalModel> TabModels(string subTab) => new ISignalModel[] { _gw };
     protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument) => new ISignalModel[] { _gw };

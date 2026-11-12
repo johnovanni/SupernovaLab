@@ -22,17 +22,29 @@ public partial class InstrumentPanel : System.Windows.Controls.UserControl
         // Double-click maximizes the panel in the Instruments window, so ScottPlot's double-click benchmark is off.
         Plot.UserInputProcessor.DoubleLeftClickBenchmark(false);
         Plot.Plot.RenderManager.RenderFinished += (_, _) => Dispatcher.BeginInvoke(PlaceCursor, DispatcherPriority.Render);
-        DataContextChanged += OnDataContextChanged;
+        // The panel view models live as long as the app; a view listens to one only while it is loaded, so a closed
+        // Instruments window's views are released and stop redrawing (review I3).
+        DataContextChanged += (_, _) => { if (IsLoaded) Attach(); };
+        Loaded += (_, _) => Attach();
+        Unloaded += (_, _) => Detach();
         SizeChanged += (_, _) => PlaceCursor();
     }
 
-    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    /// <summary>Listens to the current DataContext's panel (and only it), and redraws.</summary>
+    private void Attach()
     {
-        if (_vm is not null) _vm.PropertyChanged -= OnViewModelChanged;
+        Detach();
         _vm = DataContext as InstrumentPanelViewModel;
         if (_vm is null) return;
         _vm.PropertyChanged += OnViewModelChanged;
         QueueRedraw();
+    }
+
+    /// <summary>Stops listening (the view was unloaded, or its window closed).</summary>
+    public void Detach()
+    {
+        if (_vm is not null) _vm.PropertyChanged -= OnViewModelChanged;
+        _vm = null;
     }
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)

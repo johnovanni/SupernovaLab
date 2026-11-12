@@ -76,6 +76,31 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
     protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument)
         => GrbModel.DetectorIds.Contains(instrument.Id) ? new ISignalModel[] { _grb } : new ISignalModel[] { _lines };
 
+    /// <summary>
+    /// Ruling R50: GBM and BAT trigger on the prompt burst. Once it is over (the drawn prompt curve ends three T90 after
+    /// onset), their verdict is a past event: "Over", with whether it triggered, never a current "Detected".
+    /// </summary>
+    protected override Detection VerdictNow(ISignalModel model, Detector instrument, double sourceTimeS)
+    {
+        var d = base.VerdictNow(model, instrument, sourceTimeS);
+        if (!ReferenceEquals(model, _grb) || !GrbModel.DetectorIds.Contains(instrument.Id) || !BurstIsOver(sourceTimeS)
+            || d.Status is not (DetectionStatus.Detected or DetectionStatus.TooFaint))
+            return d;
+        return new Detection(DetectionStatus.NotModeled,
+            $"The burst is over: it lasted about {Core.Units.UnitFormat.Time(_grb.T90S(Outcome) * Observer.TimeDilation)} (T90). " +
+            $"At its peak, {char.ToLowerInvariant(d.Reason[0])}{d.Reason[1..]}");
+    }
+
+    protected override (string Full, string Short) Badge(ISignalModel model, Detection d)
+    {
+        if (ReferenceEquals(model, _grb) && GrbModel.DetectorIds.Contains(SelectedInstrument.Id) && BurstIsOver(SourceTimeS)
+            && d.Status == DetectionStatus.NotModeled && Observer.BeamTowardEarth)
+            return OverWords(base.VerdictNow(model, SelectedInstrument, SourceTimeS).Status == DetectionStatus.Detected);
+        return base.Badge(model, d);
+    }
+
+    private bool BurstIsOver(double sourceTimeS) => _grb.PromptEndS(Outcome) is var end && double.IsFinite(end) && sourceTimeS > end;
+
     protected override (ISignalModel Model, string ChannelId)? PrimaryChannel(string subTab, Detector instrument) => subTab switch
     {
         GrbTab => (_grb, "prompt"),

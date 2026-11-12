@@ -275,7 +275,8 @@ public sealed partial class LabViewModel : ObservableObject
     // ---------------------------------------------------------------- the star (spec §2.1)
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsMassiveStar), nameof(IsWhiteDwarf), nameof(IsOpacityEnabled), nameof(OpacityToolTip))]
+    [NotifyPropertyChangedFor(nameof(IsMassiveStar), nameof(IsWhiteDwarf), nameof(IsOpacityEnabled), nameof(OpacityToolTip),
+        nameof(OpacityText))]
     private StarKind _kind;
 
     /// <summary>For the Kind radio buttons.</summary>

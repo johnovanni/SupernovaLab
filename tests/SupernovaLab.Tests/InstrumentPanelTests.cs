@@ -141,10 +141,10 @@ public class InstrumentPanelTests
         Assert.NotEmpty(tile.MainSeries);
         Assert.All(tile.MainSeries, s => Assert.Equal(channel, s.ChannelId));
         Assert.Equal(inverted, tile.InvertY);
-        Assert.Same(panel.CurrentDetection, tile.Badge);
+        Assert.Same(panel.StripDetection, tile.Badge);
 
         vm.Timeline.ObserverTimeS = 2 * Year;
-        Assert.Same(panel.CurrentDetection, tile.Badge);
+        Assert.Same(panel.StripDetection, tile.Badge);
         Assert.Equal(TimeAxis.ToFraction(2 * Year), tile.CursorFraction, 12);
     }
 
@@ -427,7 +427,8 @@ public class InstrumentPanelTests
         {
             var expected = PresetCatalog.Get("sn1998bw").Facts.Where(f => f.Messenger == panel.Messenger).ToList();
             Assert.Equal(expected, panel.Facts);
-            Assert.True(panel.FactNotes.Count >= expected.Count, $"{panel.Title}: a fact was dropped");
+            // Exactly one row per fact (review M9): none dropped, none doubled.
+            Assert.Equal(expected.Count, panel.FactNotes.Count);
         }
 
         // Radio 5 GHz on day 12 is timed and drawn: a marker. The peak V has no time: a labelled level line.
@@ -601,9 +602,190 @@ public class InstrumentPanelTests
         Assert.Equal(first, moved.StatusMessage);
     }
 
+    // ---------------------------------------------------------------- fix round 1: R50 badges (I1, I2)
+
+    /// <summary>
+    /// Ruling R50 / review I1: GRB 980425 lasted 23.3 s (T90), drawn for three T90 after onset; at 139 days the burst is
+    /// long over, so neither the panel nor the tile says "Detected" now: both say it is over and that GBM caught it.
+    /// </summary>
+    [Fact]
+    public void Sn1998bw_GammaBadge_IsNotDetected_At139Days_TheBurstIsOver()
+    {
+        var vm = WithPreset("sn1998bw");
+        vm.Timeline.ObserverTimeS = 1.2e7;
+        var gamma = Panel<GammaPanelViewModel>(vm);
+        Assert.Equal("gbm", gamma.SelectedInstrument.Id);
+
+        Assert.NotEqual(DetectionStatus.Detected, gamma.CurrentDetection.Status);
+        Assert.NotEqual(DetectionStatus.Detected, gamma.StripDetection.Status);
+        Assert.Equal("Over: it was detected", gamma.DetectionText);
+        Assert.Equal("Over: detected", Assert.Single(vm.Tiles, t => t.Messenger == Messenger.GammaRays).BadgeText);
+
+        // During the burst (onset + its 1/4-T90 rise) GBM detects it now.
+        var grb = new GrbModel();
+        vm.Timeline.ObserverTimeS = grb.PeakTimeS(vm.CurrentOutcome) + 1;
+        Assert.Equal(DetectionStatus.Detected, gamma.CurrentDetection.Status);
+    }
+
+    /// <summary>
+    /// Ruling R50 / review I2: the afterglow is judged on the curve and limit the panel draws. A classical collapsar
+    /// (30 M☉, Z 0.1, H and He gone, Extreme rotation) at 1 Gpc on day 3: the reviewer's probe gave afterglowX ≈ 3.0e-12
+    /// erg cm⁻² s⁻¹ against Swift XRT's drawn 1e-13, so the badge must say Detected.
+    /// </summary>
+    [Fact]
+    public void GrbAfterglow_AboveTheDrawnXrtLimit_IsDetected()
+    {
+        var vm = NewViewModel();
+        vm.Lab.InitialMass = 30;
+        vm.Lab.Metallicity = 0.1;
+        vm.Lab.Stripping = Core.Progenitors.Stripping.HydrogenAndHelium;
+        vm.Lab.Rotation = Core.Progenitors.Rotation.Extreme;
+        vm.Lab.DistancePc = 1e9;
+        Assert.True(vm.CurrentOutcome.HasGrb);
+        var xray = Panel<XrayUvPanelViewModel>(vm);
+        xray.SelectedSubTab = XrayUvPanelViewModel.AfterglowTab;
+        xray.SelectedInstrument = Detectors.Get("swift-xrt");
+        vm.Timeline.ObserverTimeS = 3 * Day;
+
+        var limit = Assert.Single(xray.ReferenceLines, l => !l.IsTime);
+        Assert.Equal(1e-13, limit.Value);
+        double now = new GrbModel().Sample(vm.CurrentOutcome, vm.CurrentObserver, 3 * Day / vm.CurrentObserver.TimeDilation, "afterglowX");
+        Assert.True(now > limit.Value, $"the drawn afterglow ({now:e2}) should be above the drawn limit");
+        Assert.Equal(DetectionStatus.Detected, xray.CurrentDetection.Status);
+        Assert.Contains("afterglow", xray.CurrentDetection.Reason);
+    }
+
+    /// <summary>Ruling R50: the "Shock breakout" tab's badge is the breakout model's verdict, never the wind's.</summary>
+    [Fact]
+    public void XrayBreakoutTab_Badge_ReflectsOnlyTheBreakout()
+    {
+        var vm = NewViewModel();
+        vm.Lab.DistancePc = 1e7;
+        var xray = Panel<XrayUvPanelViewModel>(vm);
+        xray.SelectedInstrument = Detectors.Get("swift-xrt");
+        var breakout = new ShockBreakoutModel();
+        double tb = breakout.BreakoutTimeS(vm.CurrentOutcome);
+        foreach (double t in new[] { 0.5 * tb, tb + 0.1, 3 * Day, 30 * Day })
+        {
+            vm.Timeline.ObserverTimeS = t;
+            var expected = breakout.Detect(vm.CurrentOutcome, vm.CurrentObserver, t, xray.SelectedInstrument);
+            Assert.Equal(expected, xray.CurrentDetection);
+        }
+        // At 30 days the breakout model has ended (NotModeled), while the shock in the wind is judged (too faint at
+        // 10 Mpc): the tile carries the wind's verdict, the "Shock breakout" tab does not.
+        Assert.Equal(DetectionStatus.NotModeled, xray.CurrentDetection.Status);
+        var wind = new CsmInteractionModel().Detect(vm.CurrentOutcome, vm.CurrentObserver, 30 * Day, xray.SelectedInstrument);
+        Assert.Equal(wind, xray.StripDetection);
+    }
+
+    [Fact]
+    public void AnInstrumentThatDoesNotObserveTheTab_SaysSo()
+    {
+        var vm = WithPreset("sn1998bw");
+        var gamma = Panel<GammaPanelViewModel>(vm);
+        gamma.SelectedSubTab = GammaPanelViewModel.GrbTab;
+        gamma.SelectedInstrument = Detectors.Get("spi");
+
+        Assert.Equal("Not observed by this instrument", gamma.DetectionText);
+        Assert.Contains("Fermi GBM", gamma.CurrentDetection.Reason);
+    }
+
+    // ---------------------------------------------------------------- fix round 1: spec §9 boundary (I4, M9)
+
+    [Fact]
+    public void AThrowingFactComparison_IsAModelError_InThatPanelOnly()
+    {
+        // The fact's unit differs from the drawn channel's, so it is not marked and its row asks the model for its value at
+        // the fact's time, 1,234 s, where the fake throws.
+        var fact = new ObservedFact(Messenger.Radio, "x", 1234, 5, "Jy", "A measured fake value.", new Source("Fake", "tests"));
+        var panel = new FakePanel(new FakeModel(throws: false, throwAtS: 1234));
+
+        panel.Update(TestOutcomes.Star(16), ObserverSetup.Default, 1, new[] { fact }, true);
+
+        Assert.Contains("Model error", panel.ErrorText);
+        // The fact is still listed, as a plain row.
+        Assert.Equal("A measured fake value.", Assert.Single(panel.FactNotes).Text);
+    }
+
+    [Fact]
+    public void AThrowingContextHook_IsAModelError_InThatPanelOnly()
+    {
+        var panel = new FakePanel(new FakeModel(throws: false), contextThrows: true);
+
+        panel.Update(TestOutcomes.Star(16), ObserverSetup.Default, 1, Array.Empty<ObservedFact>(), true);
+
+        Assert.Contains("Model error", panel.ErrorText);
+    }
+
+    /// <summary>The time-only path: sampling works, but the verdict at the current time throws.</summary>
+    [Fact]
+    public void AThrowingVerdict_AtTheCurrentTime_IsAModelError()
+    {
+        var panel = new FakePanel(new FakeModel(throws: false, detectThrows: true));
+        panel.Update(TestOutcomes.Star(16), ObserverSetup.Default, 1, Array.Empty<ObservedFact>(), true);
+        panel.OnTimeChanged(10);
+
+        Assert.NotEmpty(panel.Series);
+        Assert.Contains("Model error", panel.ErrorText);
+        Assert.Equal("Model error", panel.DetectionText);
+        Assert.Equal("Model error", panel.StripBadgeText);
+    }
+
+    /// <summary>
+    /// Review M3: an untimed observed value is drawn as a level only near the curves (the fake's curve is 1/t, 10⁻⁶ to 1;
+    /// within 3 decades means 10⁻⁹ to 10³). 10¹⁰ is not drawn and its row says so; 10⁻³ is drawn and flagged ◆.
+    /// </summary>
+    [Fact]
+    public void UntimedFacts_AreLevelsOnlyNearTheCurve_AndTheirRowsSaySo()
+    {
+        var src = new Source("Fake", "tests");
+        var near = new ObservedFact(Messenger.Radio, "x", null, 1e-3, "mJy", "Near.", src);
+        var far = new ObservedFact(Messenger.Radio, "x", null, 1e10, "mJy", "Far.", src);
+        var panel = new FakePanel(new FakeModel(throws: false));
+
+        panel.Update(TestOutcomes.Star(16), ObserverSetup.Default, 1, new[] { near, far }, true);
+
+        Assert.Single(panel.ReferenceLines, l => l.Value == 1e-3);
+        Assert.DoesNotContain(panel.ReferenceLines, l => l.Value == 1e10);
+        Assert.StartsWith("◆ Near.", panel.FactNotes[0].Text);
+        Assert.Contains("Not drawn", panel.FactNotes[1].Text);
+    }
+
+    /// <summary>Review M5: Re-roll resamples only the panels that draw the run's random events (the neutrino dots).</summary>
+    [Fact]
+    public void Reroll_ResamplesOnlyThePanelsThatUseTheRunNumber()
+    {
+        var vm = NewViewModel();
+        var before = vm.Panels.Select(p => p.Series).ToList();
+
+        vm.RerollCommand.Execute(null);
+
+        for (int i = 0; i < vm.Panels.Count; i++)
+            if (vm.Panels[i].UsesRunNumber) Assert.NotSame(before[i], vm.Panels[i].Series);
+            else Assert.Same(before[i], vm.Panels[i].Series);
+        Assert.Single(vm.Panels, p => p.UsesRunNumber);
+    }
+
+    /// <summary>
+    /// Found in the fix-round snapshot of SN 2011fe: switching to a white dwarf must refresh the opacity label to the fixed
+    /// 0.19 cm²/g of ruling R31 (the label kept showing the massive star's κ).
+    /// </summary>
+    [Fact]
+    public void ChoosingAWhiteDwarf_RefreshesTheOpacityLabel()
+    {
+        var vm = NewViewModel();
+        var changed = new List<string?>();
+        vm.Lab.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        vm.Lab.SelectedPreset = PresetCatalog.Get("sn2011fe");
+
+        Assert.Contains(nameof(LabViewModel.OpacityText), changed);
+        Assert.Equal("0.19 cm²/g (fixed)", vm.Lab.OpacityText);
+    }
+
     // ---------------------------------------------------------------- fakes
 
-    private sealed class FakeModel(bool throws, bool infinite = false) : ISignalModel
+    private sealed class FakeModel(bool throws, bool infinite = false, bool detectThrows = false, double? throwAtS = null) : ISignalModel
     {
         public string Id => "fake";
         public Messenger Messenger => Messenger.Radio;
@@ -615,20 +797,25 @@ public class InstrumentPanelTests
 
         public double Sample(Outcome outcome, ObserverSetup observer, double sourceTimeS, string channelId)
         {
-            if (throws) throw new InvalidOperationException("boom");
+            if (throws || sourceTimeS == throwAtS) throw new InvalidOperationException("boom");
             if (!(sourceTimeS >= 1 && sourceTimeS <= 1e6)) return double.NaN;
             return infinite && sourceTimeS > 100 ? double.PositiveInfinity : 1 / sourceTimeS;
         }
 
         public Detection Detect(Outcome outcome, ObserverSetup observer, double sourceTimeS, Detector detector)
-            => throws ? throw new InvalidOperationException("boom") : new Detection(DetectionStatus.Detected, "Fake.");
+            => throws || detectThrows ? throw new InvalidOperationException("boom") : new Detection(DetectionStatus.Detected, "Fake.");
     }
 
-    private sealed class FakePanel(ISignalModel model)
+    private sealed class FakePanel(ISignalModel model, bool contextThrows = false)
         : InstrumentPanelViewModel(new[] { "Only" }, new[] { Detectors.Get("vla") })
     {
         public override Messenger Messenger => Messenger.Radio;
         public override string Title => "Fake";
+
+        protected override void OnContextChanged()
+        {
+            if (contextThrows) throw new InvalidOperationException("context boom");
+        }
 
         protected override PanelContent BuildTab(string subTab, Detector instrument)
             => new() { Series = SampleChannel(model, "x"), YLabel = "Fake (mJy)", LogY = true };

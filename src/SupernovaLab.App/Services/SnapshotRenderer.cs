@@ -20,9 +20,10 @@ public readonly record struct SnapshotSize(int Width, int Height)
 
 /// <summary>
 /// The windows the --snapshot diagnostic can render. <see cref="InstrumentTabs"/> is the Instruments grid again with every
-/// panel on each of its other sub-tabs in turn (instruments-tab1.png, -tab2, -tab3).
+/// panel on each of its other sub-tabs in turn (instruments-tab1.png, -tab2, -tab3). <see cref="MainAdvanced"/> is the main
+/// window with the lab's Advanced section expanded, at the top of the lab panel and scrolled to its end.
 /// </summary>
-public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentTabs }
+public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentTabs, MainAdvanced }
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
@@ -122,8 +123,9 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         "details" => SnapshotWindow.Details,
         "presetinfo" => SnapshotWindow.PresetInfo,
         "instrument-tabs" => SnapshotWindow.InstrumentTabs,
+        "main-advanced" => SnapshotWindow.MainAdvanced,
         _ => throw new ArgumentException(
-            $"--window must be main, instruments, instrument-tabs, details or presetinfo, not '{text}'."),
+            $"--window must be main, main-advanced, instruments, instrument-tabs, details or presetinfo, not '{text}'."),
     };
 }
 
@@ -183,6 +185,11 @@ public static class SnapshotRenderer
                 }
                 continue;
             }
+            if (kind == SnapshotWindow.MainAdvanced)
+            {
+                await CaptureAdvanced(request, main, suffix, log);
+                continue;
+            }
 
             Window? window = Open(kind, windows);
             if (window is null) { log.Add($"{kind}: no window opened"); continue; }
@@ -210,6 +217,52 @@ public static class SnapshotRenderer
                 scroller.ScrollToHome();
             }
         }
+    }
+
+    /// <summary>The main window with the lab's Advanced expander open: the lab panel at its top and scrolled to its end.</summary>
+    private static async Task CaptureAdvanced(SnapshotRequest request, Window main, string suffix, List<string> log)
+    {
+        var size = request.Sizes[0];
+        main.Width = size.Width;
+        main.Height = size.Height;
+        var expander = Descendants<Expander>(main).FirstOrDefault(e => e.Header is string h && h.StartsWith("Advanced", StringComparison.Ordinal));
+        if (expander is null)
+        {
+            log.Add("main-advanced: no Advanced expander found");
+            return;
+        }
+        bool was = expander.IsExpanded;
+        expander.IsExpanded = true;
+        await NextFrame(main);
+        log.Add(Save(main, Path.Combine(request.OutDirectory, $"main-advanced{suffix}-{size}.png")));
+        var scroller = Ancestor<ScrollViewer>(expander);
+        if (scroller is { ScrollableHeight: > 0 })
+        {
+            scroller.ScrollToEnd();
+            await NextFrame(main);
+            log.Add(Save(main, Path.Combine(request.OutDirectory, $"main-advanced{suffix}-{size}-end.png")));
+            scroller.ScrollToHome();
+        }
+        else log.Add("main-advanced: the lab panel does not scroll with Advanced open");
+        expander.IsExpanded = was;
+        await NextFrame(main);
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T t) yield return t;
+            foreach (var d in Descendants<T>(child)) yield return d;
+        }
+    }
+
+    private static T? Ancestor<T>(DependencyObject node) where T : DependencyObject
+    {
+        for (var n = VisualTreeHelper.GetParent(node); n is not null; n = VisualTreeHelper.GetParent(n))
+            if (n is T t) return t;
+        return null;
     }
 
     /// <summary>Draws every panel now and waits for the plots and their cursors to render.</summary>

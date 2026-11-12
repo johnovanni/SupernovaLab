@@ -81,7 +81,11 @@ public sealed class NeutrinoPanelViewModel : InstrumentPanelViewModel
     }
 
     /// <summary>After the brief signal: "Over", and whether the instrument caught it.</summary>
-    protected override (string Full, string Short) Badge(Detection d) => OverBadge(_nu, d) ?? base.Badge(d);
+    protected override (string Full, string Short) Badge(ISignalModel model, Detection d)
+        => (ReferenceEquals(model, _nu) ? OverBadge(_nu, d) : null) ?? base.Badge(model, d);
+
+    /// <summary>The dots are one seeded run, so Re-roll resamples this panel.</summary>
+    public override bool UsesRunNumber => true;
 
     protected override IReadOnlyList<ISignalModel> TabModels(string subTab) => new ISignalModel[] { _nu };
     protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument) => new ISignalModel[] { _nu };

@@ -72,9 +72,9 @@ public class SnapshotRequestTests
     [Fact]
     public void Bench_AndInstrumentTabs_AreRead()
     {
-        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--window", "instruments,instrument-tabs", "--bench", "12" })!;
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--window", "instruments,instrument-tabs,main-advanced", "--bench", "12" })!;
 
-        Assert.Equal(new[] { SnapshotWindow.Instruments, SnapshotWindow.InstrumentTabs }, r.Windows);
+        Assert.Equal(new[] { SnapshotWindow.Instruments, SnapshotWindow.InstrumentTabs, SnapshotWindow.MainAdvanced }, r.Windows);
         Assert.Equal(12, r.BenchSeconds);
         Assert.Null(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.BenchSeconds);
     }

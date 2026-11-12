@@ -55,7 +55,7 @@ public sealed partial class MainViewModel : ObservableObject
         // Re-roll changes only the run number (no OutcomeChanged); the panels resample their random events on it.
         PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(RunNumber)) UpdatePanels();
+            if (e.PropertyName == nameof(RunNumber)) UpdatePanels(onlyThoseUsingTheRunNumber: true);
         };
     }
 
@@ -148,10 +148,11 @@ public sealed partial class MainViewModel : ObservableObject
            "and dust it was really seen at.";
 
     /// <summary>Resamples every panel for the current outcome, observer, run and preset facts, at the current time.</summary>
-    private void UpdatePanels()
+    private void UpdatePanels(bool onlyThoseUsingTheRunNumber = false)
     {
         var facts = Lab.SelectedPreset?.Facts ?? (IReadOnlyList<Core.Presets.ObservedFact>)Array.Empty<Core.Presets.ObservedFact>();
-        foreach (var p in Panels) p.Update(CurrentOutcome, CurrentObserver, RunNumber, facts, Lab.IsObserverPublished);
+        foreach (var p in Panels.Where(p => !onlyThoseUsingTheRunNumber || p.UsesRunNumber))
+            p.Update(CurrentOutcome, CurrentObserver, RunNumber, facts, Lab.IsObserverPublished);
     }
 
     /// <summary>Computes the outcome and refreshes the summary, map, markers and time texts (never the time itself).</summary>

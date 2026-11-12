@@ -76,13 +76,14 @@ public sealed class RadioPanelViewModel : InstrumentPanelViewModel
 
     protected override IReadOnlyList<ISignalModel> TabModels(string subTab) => subTab switch
     {
-        ShockTab => new ISignalModel[] { _csm },
+        ShockTab => HasOutcome && _grb.Applies(Outcome) ? new ISignalModel[] { _csm, _grb } : new ISignalModel[] { _csm },
         PulsarTab => new ISignalModel[] { _pulsar },
         _ => new ISignalModel[] { _remnant },
     };
 
+    /// <summary>Ruling R50: GrbModel judges the drawn 5 GHz afterglow for the continuum instruments whose limits are drawn.</summary>
     protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument)
-        => ContinuumIds.Contains(instrument.Id) ? new ISignalModel[] { _csm, _remnant } : new ISignalModel[] { _pulsar };
+        => ContinuumIds.Contains(instrument.Id) ? new ISignalModel[] { _csm, _remnant, _grb } : new ISignalModel[] { _pulsar };
 
     protected override (ISignalModel Model, string ChannelId)? PrimaryChannel(string subTab, Detector instrument) => subTab switch
     {

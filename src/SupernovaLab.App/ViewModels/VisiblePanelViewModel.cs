@@ -56,8 +56,12 @@ public sealed class VisiblePanelViewModel : InstrumentPanelViewModel
         };
     }
 
-    protected override IReadOnlyList<ISignalModel> TabModels(string subTab) => new ISignalModel[] { _lc };
-    protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument) => new ISignalModel[] { _lc };
+    /// <summary>The light curve tab also draws the GRB's optical afterglow (when there is one), against the same limits.</summary>
+    protected override IReadOnlyList<ISignalModel> TabModels(string subTab)
+        => subTab == LightCurveTab && HasOutcome && _grb.Applies(Outcome) ? new ISignalModel[] { _lc, _grb } : new ISignalModel[] { _lc };
+
+    /// <summary>Ruling R50: GrbModel judges the drawn optical afterglow against the same V limits.</summary>
+    protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument) => new ISignalModel[] { _lc, _grb };
 
     protected override (ISignalModel Model, string ChannelId)? PrimaryChannel(string subTab, Detector instrument) => (_lc, "appV");
 
