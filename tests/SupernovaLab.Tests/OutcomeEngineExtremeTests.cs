@@ -128,17 +128,42 @@ public class OutcomeEngineExtremeTests
     public void StrongField_FastRotation_HydrogenRich16_IsAboveTheSuperluminousCut_SoSlsnII()
     {
         // Ruling R22 with R32's peak: SLSN-II if the diffused spin-down power peaks at ≥ 7e43 erg/s. 16 M☉ at Z☉:
-        // M_ej 11.59828 M☉, E_K = 1.255e51 + 3.47222e51 = 4.72722e51 erg, κ = 0.2: v = √(10 E / 3M) = 8.26472e8 cm/s,
-        // τ_m = 5.19494e6 s; t_p = 3.69252e6 s. By hand (independent Python integration of Arnett's kernel), the peak is
-        // 1.5842e44 erg/s near 61.4 d, above the cut. (Task 5's L_p(t_d) gave 6.18e43 and kept it II-P; the light curve
-        // drawn by Task 9 reached 1.6e44, which ruling R32 resolves in favour of the drawn curve.)
+        // M_ej 11.59828 M☉, M_H,env 8.38164 M☉, E_K = 1.25537e51 + 3.47222e51 = 4.72759e51 erg. Ruling R33a's opacity:
+        // X̄ = 0.6 × 8.38164 / 11.59828 = 0.433597, κ = 0.2 × 1.433597 = 0.286719; v = √(10 E / 3M) = 8.2650e8 cm/s,
+        // τ_m = 6.21993e6 s; t_p = 3.69252e6 s. By hand (independent Python integration of Arnett's kernel), the peak is
+        // 1.3370e44 erg/s near 70.6 d, above the cut. (Task 5's L_p(t_d) gave 6.18e43 and kept it II-P; with κ = 0.2
+        // the peak was 1.584e44.)
         var o = Compute(16, rotation: Rotation.Fast, field: CoreField.Strong);
         Assert.Equal(SupernovaType.SlsnII, o.Type);
         Assert.Equal(RemnantKind.Magnetar, o.Remnant.Kind);
         Assert.Equal(4.72722e51, o.ExplosionEnergyErg!.Value, 0.001e51);
-        Assert.Equal(1.5842e44, o.PeakLuminosityErgS!.Value, 0.002 * 1.5842e44);
+        Assert.Equal(1.3370e44, o.PeakLuminosityErgS!.Value, 0.002 * 1.3370e44);
         Assert.Contains(o.Notes, n => n.Contains("superluminous supernova with hydrogen lines"));
         Assert.DoesNotContain(o.Notes, n => n.Contains("Type II-P"));
+    }
+
+    [Fact]
+    public void HydrogenRichMagnetarClass_BelowTheCut_StaysLuminousII()
+    {
+        // Ruling R33b: R22's sub-threshold branch, kept for preset pins (no unpinned input reaches it under R32/R33a).
+        var (below, note) = OutcomeEngine.HydrogenRichMagnetarClass("It pours energy in.", 6.99e43);
+        Assert.Null(below);
+        Assert.Contains("not superluminous", note);
+        Assert.Contains("unusually luminous", note);
+        Assert.StartsWith("It pours energy in.", note);
+        var (at, atNote) = OutcomeEngine.HydrogenRichMagnetarClass("It pours energy in.", 7e43);
+        Assert.Equal(SupernovaType.SlsnII, at);
+        Assert.Contains("superluminous supernova with hydrogen lines", atNote);
+    }
+
+    [Fact]
+    public void MagnetarEjectaOpacity_WeightsHydrogen_AndKeepsKb10ForStrippedEjecta()
+    {
+        // Ruling R33a: κ = 0.2 (1 + X̄), X̄ = X_H M_H,env / M_ej. Stripped: exactly 0.2. 16 M☉ (X_H 0.6): 0.6 × 8.38164 /
+        // 11.59828 = 0.433597, κ = 0.286719. 25 M☉ (X_H 0.5) with 8 of 10 M☉ hydrogen envelope: 0.2 × 1.4 = 0.28.
+        Assert.Equal(0.2, MagnetarModel.EjectaOpacity(20, 0, 3.56677));
+        Assert.Equal(0.286719, MagnetarModel.EjectaOpacity(16, 8.38164, 11.59828), 1e-6);
+        Assert.Equal(0.28, MagnetarModel.EjectaOpacity(25, 8, 10), 1e-12);
     }
 
     [Fact]

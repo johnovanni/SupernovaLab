@@ -291,13 +291,14 @@ public class ShockBreakoutModelTests
         // RSG example (n = 3/2, M_env = 5 M☉ in TestOutcomes.Custom): v_s*,8.5 = 1.05 √(1e51 / 1.989e34) / 10^8.5 =
         // 0.744512; t_tr = 19.5 √(5 / 0.744512) = 50.534 d. The formula ends at τ_end = 1,269,144 s = 14.6892 d after
         // breakout; at 2 τ_end the suppression ratio is exp((1.67 τ_end/t_tr)^0.8 − (1.67 · 2τ_end/t_tr)^0.8) =
-        // exp(0.56093 − 0.97664) = 0.659877, by hand. T_col continues as τ^(−1/2): at 4 τ_end it is half its end value.
+        // exp(0.56093 − 0.97664) = 0.659877, times L_RW's own power law (τ/τ_end)^(−2 × 0.086) = 2^(−0.172) = 0.887611:
+        // 0.585714, by hand. T_col continues as τ^(−1/2): at 4 τ_end it is half its end value.
         var cooling = Model.Cooling(RsgExample)!;
         double tb = Model.BreakoutTimeS(RsgExample), tauEnd = cooling.EndS - tb;
         double lEnd = cooling.LuminosityErgS(cooling.EndS);
         Assert.Equal(lEnd, cooling.FadingLuminosityErgS(cooling.EndS));
         Assert.Equal(lEnd, cooling.FadingLuminosityErgS(cooling.EndS + 1), lEnd * 1e-5);
-        Assert.Equal(0.659877, cooling.FadingLuminosityErgS(tb + 2 * tauEnd) / lEnd, 0.002);
+        Assert.Equal(0.585714, cooling.FadingLuminosityErgS(tb + 2 * tauEnd) / lEnd, 0.002);
         Assert.Equal(0.5, cooling.FadingColourTemperatureK(tb + 4 * tauEnd) / cooling.ColourTemperatureK(cooling.EndS), 1e-9);
         Assert.True(double.IsNaN(cooling.FadingLuminosityErgS(cooling.StartS - 1)));
         Assert.True(double.IsNaN(cooling.LuminosityErgS(tb + 2 * tauEnd)), "the formula itself stays bounded by its validity");

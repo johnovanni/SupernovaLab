@@ -215,18 +215,25 @@ public sealed partial class OutcomeEngine
         }
 
         // Ruling R22 [APPROX]: hydrogen-rich events count as SLSN-II only above the usual superluminous cut, judged on the
-        // one magnetar peak (ruling R32) that the light curve also draws.
-        double peak = MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, kinetic.Value);
-        if (peak >= SlsnIIMinPeak)
-        {
-            notes.Add($"{pours} That makes a superluminous supernova with hydrogen lines (Type II); how such " +
-                      "hydrogen-rich events arise is speculative.");
-            return new MagnetarOutcome(remnant, kinetic, ep, tp, SupernovaType.SlsnII);
-        }
-        notes.Add($"{pours} Its hydrogen envelope holds the light back, so it is not superluminous; it stays a " +
-                  "hydrogen-rich supernova, made unusually luminous by the magnetar (speculative).");
-        return new MagnetarOutcome(remnant, kinetic, ep, tp, null);
+        // one magnetar peak (ruling R32, with R33a's opacity) that the light curve also draws.
+        double peak = MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, kinetic.Value,
+            MagnetarModel.EjectaOpacity(x.InitialMass, star.HydrogenEnvelopeMass.Value, ejecta.Value));
+        var (slsn, note) = HydrogenRichMagnetarClass(pours, peak);
+        notes.Add(note);
+        return new MagnetarOutcome(remnant, kinetic, ep, tp, slsn);
     }
+
+    /// <summary>
+    /// Ruling R22 [APPROX] (kept by R33b): a hydrogen-rich magnetar supernova is SLSN-II when its peak (erg/s) reaches
+    /// 7×10⁴³; below that it keeps its base class (null) as a magnetar-boosted, unusually luminous supernova. Returns the
+    /// class and the note that follows <paramref name="pours"/>.
+    /// </summary>
+    internal static (SupernovaType? Class, string Note) HydrogenRichMagnetarClass(string pours, double peakErgS)
+        => peakErgS >= SlsnIIMinPeak
+            ? (SupernovaType.SlsnII, $"{pours} That makes a superluminous supernova with hydrogen lines (Type II); how " +
+                                     "such hydrogen-rich events arise is speculative.")
+            : (null, $"{pours} Its hydrogen envelope holds the light back, so it is not superluminous; it stays a " +
+                     "hydrogen-rich supernova, made unusually luminous by the magnetar (speculative).");
 
     private static string FieldText(double gauss)
         => $"{(gauss / 1e14).ToString("0.##", CultureInfo.InvariantCulture)} × 10¹⁴ G";

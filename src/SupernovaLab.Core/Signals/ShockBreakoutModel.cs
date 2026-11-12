@@ -283,11 +283,13 @@ public sealed class ShockBreakoutModel : ISignalModel
 
         /// <summary>
         /// [APPROX] The cooling luminosity (erg/s) continued past <see cref="EndS"/>, where the formula's validity ends: its
-        /// value at EndS times Sapir &amp; Waxman 2017's late suppression exp(−(a t / t_tr)^α) relative to its value at EndS
-        /// (§3.3: a = 4.57, α = 0.73 for n = 3; a = 1.67, α = 0.8 for n = 3/2), with t_tr = 19.5 d (κ_0.34 M_env /
-        /// v_s*,8.5)^(1/2) and M_env the hydrogen envelope (Type II) or the helium envelope (hydrogen-free stars), as §3.3
-        /// says. The research gives the suppression inside the formula's validity only; carrying it past the end, and
-        /// onto the helium (Rabinak &amp; Waxman) formula, lets the cooling glow fade instead of stopping. Inside
+        /// value at EndS carried on by the formula's own power law in time, (τ/τ_end)^(−p) (p = 2ε2 = 0.172 for n = 3/2 and
+        /// 0.35 for n = 3, Sapir &amp; Waxman 2017's L_RW; 0.03 for Rabinak &amp; Waxman's helium formula), times Sapir &amp;
+        /// Waxman's late suppression exp(−(a τ / t_tr)^α) relative to its value at EndS (§3.3: a = 4.57, α = 0.73 for
+        /// n = 3; a = 1.67, α = 0.8 for n = 3/2), with t_tr = 19.5 d (κ_0.34 M_env / v_s*,8.5)^(1/2) and M_env the
+        /// hydrogen envelope (Type II) or the helium envelope (hydrogen-free stars), as §3.3 says. τ is the time since
+        /// breakout. The research gives the formulas inside their validity only; carrying them past the end, and the
+        /// suppression onto the helium formula, lets the cooling glow fade instead of stopping. Inside
         /// [<see cref="StartS"/>, EndS] this is <see cref="LuminosityErgS"/>; NaN before StartS.
         /// </summary>
         public double FadingLuminosityErgS(double sourceTimeS)
@@ -296,8 +298,9 @@ public sealed class ShockBreakoutModel : ISignalModel
             if (sourceTimeS <= EndS) return LuminosityErgS(sourceTimeS);
             double ttr = _b.TransparencyTimeS;
             if (!(ttr > 0)) return 0;
-            return LuminosityErgS(EndS) * Math.Exp(_b.SuppressionExponent(EndS - _b.DelayS, ttr)
-                                                   - _b.SuppressionExponent(sourceTimeS - _b.DelayS, ttr));
+            double tau = sourceTimeS - _b.DelayS;
+            return LuminosityErgS(EndS) * Math.Pow(tau / _b.EndS, -_b.CoolingPowerLaw)
+                   * Math.Exp(_b.SuppressionExponent(_b.EndS, ttr) - _b.SuppressionExponent(tau, ttr));
         }
 
         /// <summary>
@@ -423,6 +426,15 @@ public sealed class ShockBreakoutModel : ISignalModel
             return Math.Pow(a * tau / ttr, alpha);
         }
 
+        /// <summary>Sapir &amp; Waxman 2017's ε2 (§3.3): 0.086 for n = 3/2, 0.175 for n = 3.</summary>
+        private double Eps2 => PolytropeIndex < 2 ? 0.086 : 0.175;
+
+        /// <summary>
+        /// The cooling luminosity's power law in time, L ∝ τ^(−p): p = 2ε2 for Sapir &amp; Waxman's L_RW (hydrogen), 0.03
+        /// for Rabinak &amp; Waxman's helium formula (§3.3).
+        /// </summary>
+        internal double CoolingPowerLaw => HydrogenRich ? 2 * Eps2 : 0.03;
+
         /// <summary>
         /// The cooling emission τ seconds after breakout: a blackbody at T_col = 1.2 T_ph (§3.3). The cooling formula
         /// itself, whatever phase τ falls in (<see cref="CoolingPhase"/> calls it directly, so at its start, where the
@@ -437,11 +449,11 @@ public sealed class ShockBreakoutModel : ISignalModel
                 double v = 1.05 * Math.Sqrt(EnergyE51 * 1e51 / (EjectaMass * MSun)) / Math.Pow(10, 8.5);
                 double td = tau / PhysicalConstants.Day, r13 = RadiusCm / 1e13;
                 bool n32 = PolytropeIndex < 2;
-                double eps2 = n32 ? 0.086 : 0.175, eps1 = n32 ? 0.027 : 0.016;
-                double lrw = (n32 ? 2.0e42 : 2.1e42) * Math.Pow(v * td * td / (FRho * EjectaMass), -eps2) * v * v * r13;
-                double ttr = 19.5 * Math.Sqrt(EnvelopeMass / v);
-                (double a, double aa, double alpha) = n32 ? (0.94, 1.67, 0.8) : (0.79, 4.57, 0.73);
-                l = lrw * a * Math.Exp(-Math.Pow(aa * td / ttr, alpha));
+                double eps1 = n32 ? 0.027 : 0.016;
+                double lrw = (n32 ? 2.0e42 : 2.1e42) * Math.Pow(v * td * td / (FRho * EjectaMass), -Eps2) * v * v * r13;
+                // Late suppression L/L_RW = A exp(−(a t / t_tr)^α): A = 0.94 [0.79] for n = 3/2 [3]; a, α and t_tr are
+                // shared with the fade past the formula's end.
+                l = lrw * (n32 ? 0.94 : 0.79) * Math.Exp(-SuppressionExponent(tau, TransparencyTimeS));
                 tPhEv = (n32 ? 1.61 : 1.69) * Math.Pow(v * v * td * td / (FRho * EjectaMass), eps1) * Math.Pow(r13, 0.25)
                         / Math.Sqrt(td);
             }

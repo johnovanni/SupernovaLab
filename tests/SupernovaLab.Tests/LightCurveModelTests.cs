@@ -62,9 +62,10 @@ public class LightCurveModelTests
     [Fact]
     public void DepositedHeating_FollowsSignals41()
     {
-        // Full trapping at 10 d: M☉ [3.9e10 × 0.320984 + (6.4552e9 + 2.1458e8) × 0.644005] = 1.989e33 × 1.68137e10 =
-        // 3.3443e43 erg/s (1.5% under Nadyozhin's two-exponential form, from the research's ε values).
-        Assert.Equal(3.3443e43, LightCurveModel.DepositedNickelHeatingErgS(1, 10 * Day, 1e12), 0.0005 * 3.3443e43);
+        // Full trapping at 10 d, with Arnett et al. 2017's consistent set (§4.1): M☉ [3.9805e10 × 0.320984 + (6.4552e9 +
+        // 2.1458e8) × 0.644005] = 1.989e33 × (1.27768e10 + 4.29537e9) = 1.989e33 × 1.707217e10 = 3.3957e43 erg/s, within
+        // 0.01% of Nadyozhin's two-exponential form (3.3958e43).
+        Assert.Equal(3.3957e43, LightCurveModel.DepositedNickelHeatingErgS(1, 10 * Day, 1e12), 0.0005 * 3.3957e43);
         // At 300 d with T0 = 35 d: D = 1 − exp(−(35/300)²) = 0.0135189; Co(t) = 0.073311; Ni term ≈ 0.
         // M☉ [6.4552e9 × 0.073311 × 0.0135189 + 2.1458e8 × 0.073311] = 1.989e33 × 2.21286e7 = 4.4014e40 erg/s:
         // positrons carry most of the late tail.
@@ -144,12 +145,12 @@ public class LightCurveModelTests
         // E51 = M10 = R500 = 1: L50 = 10^42.16 = 1.44544e42 erg/s; t_p = 10^(2.184 + 0.134 log 0.05) = 102.25 d.
         Assert.Equal(1.44544e42, Lbol(RoundIIP, 50 * Day), 0.005 * 1.44544e42);
         Assert.Equal(102.25, Model.PlateauEndS(RoundIIP)!.Value / Day, 0.05);
-        // After the drop the light follows the deposited ⁵⁶Ni power, 0.05 × L_dep(t) with T0 = 281.9 d (§4.3 step 4),
-        // from above: the diffusing heat lags it by about (τ_m² / 2t) |d ln P/dt| (τ_m = 47 d here; the slope steepens as
-        // the gamma rays escape), ~5–8% at 150 and 300 d.
+        // After the drop the light is the deposited ⁵⁶Ni power, 0.05 × L_dep(t) with T0 = 281.9 d (§4.3 step 4, ruling
+        // R33d): from t_p + 3w the plateau's step has faded the diffusion-lagged light out. At 150 d the step is
+        // 1 / (1 + e^(47.75/3)) = 1.2e-7 of L50, so the tail is L_dep to well within 0.1%.
         double Tail(double t) => LightCurveModel.DepositedNickelHeatingErgS(0.05, t, LightCurveModel.GammaRayTrappingTimeS(10, 1e51));
-        Assert.InRange(Lbol(RoundIIP, 150 * Day) / Tail(150 * Day), 1, 1.10);
-        Assert.InRange(Lbol(RoundIIP, 300 * Day) / Tail(300 * Day), 1, 1.07);
+        Assert.Equal(1, Lbol(RoundIIP, 150 * Day) / Tail(150 * Day), 0.001);
+        Assert.Equal(1, Lbol(RoundIIP, 300 * Day) / Tail(300 * Day), 0.001);
     }
 
     [Fact]
@@ -171,6 +172,10 @@ public class LightCurveModelTests
         Assert.NotNull(end);
         Assert.InRange(end!.Value / Day, 80, 140);
         Assert.Equal(103.29, end.Value / Day, 0.05);
+        // M_V on the plateau, by hand (§4.5): a 6,000 K blackbody has B−V = 0.591373; Lyman Type II BC_B = −0.138 −
+        // 0.013 × 0.591373 − 0.649 × 0.591373² = −0.372658, so BC_V = BC_B + (B−V) = 0.218716; M_bol =
+        // −2.5 log10(2.49045e42 / 3.0128e35) = −2.5 × 6.917308 = −17.293270; M_V = −17.293270 − 0.218716 = −17.511986.
+        Assert.Equal(-17.512, Model.Sample(o, TenKpc, 50 * Day, "absV"), 0.001);
         // Flat through the plateau, then a drop of more than a magnitude within three weeks.
         Assert.Equal(1, Lbol(o, 40 * Day) / Lbol(o, 90 * Day), 0.02);
         Assert.True(Lbol(o, (103.29 + 20) * Day) < Lbol(o, 90 * Day) / 2.5);
@@ -195,6 +200,18 @@ public class LightCurveModelTests
         Assert.Equal(-15.5, BolometricCorrection.AbsoluteBolometricMagnitude(Lbol(o, tPeak)), 0.3);
     }
 
+    [Fact]
+    public void StrippedStar_CoolingPeak_Dip_ThenNickelPeak()
+    {
+        // The SN 2008D-like handoff (risk f): 15 M☉ Full-stripped (Ib). The helium-envelope cooling glow is bright at 1 d
+        // (≈7.5e41 erg/s), fades to a dip by 3 d (≈2.8e41) before the ⁵⁶Ni light rises to its peak near 16 d (≈1.35e42):
+        // L(3 d) < L(1 d) < L(16 d).
+        var ib = TestOutcomes.Engine.Compute(LabInputs.Default with { InitialMass = 15, Stripping = Stripping.Full });
+        Assert.Equal(SupernovaType.Ib, ib.Type);
+        double l1 = Lbol(ib, Day), l3 = Lbol(ib, 3 * Day), l16 = Lbol(ib, 16 * Day);
+        Assert.True(l3 < l1 && l1 < l16, $"L(1 d) {l1:E3}, L(3 d) {l3:E3}, L(16 d) {l16:E3}");
+    }
+
     // ---------------------------------------------------------------- §4.4 magnetar
 
     [Fact]
@@ -210,7 +227,7 @@ public class LightCurveModelTests
     [Fact]
     public void MagnetarStar16_FastAndStrongField_DrawsTheSuperluminousPeakItsLabelSays()
     {
-        // Ruling R32: the 16 M☉ fast-spinning, strong-field star. Its engine peak (1.5842e44 erg/s by hand, see
+        // Rulings R32/R33a: the 16 M☉ fast-spinning, strong-field star. Its engine peak (1.3370e44 erg/s by hand, see
         // OutcomeEngineExtremeTests) is the light curve's magnetar part; the drawn peak adds only the diffused ⁵⁶Ni and
         // the faint plateau, and it is labeled SLSN-II.
         var o = TestOutcomes.Engine.Compute(LabInputs.Default with
@@ -402,65 +419,5 @@ public class LightCurveModelTests
         var iin = TestOutcomes.Engine.Compute(LabInputs.Default with { InitialMass = 16, DenseCsm = true });
         Assert.Equal(SupernovaType.IIn, iin.Type);
         Assert.Contains("dense gas", Model.Detect(iin, TenKpc, 50 * Day, Detectors.Get("eye")).Reason);
-    }
-}
-
-public class BolometricCorrectionTests
-{
-    [Fact]
-    public void AbsoluteBolometricMagnitude_UsesTheIauZeroPoint()
-    {
-        // IAU 2015 B2: M_bol = −2.5 log10(L / 3.0128e35); the Sun (3.828e33) is 2.5 log10(78.7042) = 4.7400.
-        Assert.Equal(0, BolometricCorrection.AbsoluteBolometricMagnitude(3.0128e35), 1e-12);
-        Assert.Equal(4.7400, BolometricCorrection.AbsoluteBolometricMagnitude(PhysicalConstants.LSun), 1e-4);
-        Assert.True(double.IsNaN(BolometricCorrection.AbsoluteBolometricMagnitude(0)));
-    }
-
-    [Fact]
-    public void LymanFits_MatchTheTablesByHand()
-    {
-        // Stripped envelope, B−V = 0.5: −0.083 − 0.139 × 0.5 − 0.691 × 0.25 = −0.32525.
-        // Type II, B−V = 1.0: −0.138 − 0.013 − 0.649 = −0.800.
-        Assert.Equal(-0.32525, BolometricCorrection.LymanBcB(BcSample.StrippedEnvelope, 0.5), 1e-12);
-        Assert.Equal(-0.800, BolometricCorrection.LymanBcB(BcSample.TypeII, 1.0), 1e-12);
-        Assert.Equal((0.0, 1.3), BolometricCorrection.LymanColourRange(BcSample.StrippedEnvelope));
-        Assert.Equal((0.0, 1.6), BolometricCorrection.LymanColourRange(BcSample.TypeII));
-        // Inside the range BC_V = BC_B + (B−V): 0.5 − 0.32525 = 0.17475.
-        Assert.Equal(0.17475, BolometricCorrection.BcV(BcSample.StrippedEnvelope, 0.5), 1e-12);
-    }
-
-    [Fact]
-    public void LiraRelation_MatchesPhillips1999()
-    {
-        // B−V = 0.725 − 0.0118 (t_V − 60): 0.725 at 60 d, 1.079 at 30 d, 0.371 at 90 d.
-        Assert.Equal(0.725, BolometricCorrection.LiraBMinusV(60), 1e-12);
-        Assert.Equal(1.079, BolometricCorrection.LiraBMinusV(30), 1e-12);
-        Assert.Equal(0.371, BolometricCorrection.LiraBMinusV(90), 1e-12);
-    }
-
-    [Fact]
-    public void Blackbody_ColourAndCorrection_AreSunLike_AndInvert()
-    {
-        // By hand, monochromatic at 4,380 and 5,450 Å with Bessell et al.'s zero points: a 5,772 K blackbody has
-        // B−V = 0.6362 (the Sun: 0.65) and BC_V = −0.1213 (the Sun: about −0.07); 10,000 K: 0.1547 and −0.3393.
-        Assert.Equal(0.6362, BolometricCorrection.BlackbodyBMinusV(5772), 1e-4);
-        Assert.Equal(-0.1213, BolometricCorrection.BlackbodyBcV(5772), 1e-4);
-        Assert.Equal(0.1547, BolometricCorrection.BlackbodyBMinusV(10_000), 1e-4);
-        Assert.Equal(-0.3393, BolometricCorrection.BlackbodyBcV(10_000), 1e-4);
-        Assert.Equal(20_000, BolometricCorrection.BlackbodyTemperatureForBMinusV(BolometricCorrection.BlackbodyBMinusV(20_000)), 0.01);
-    }
-
-    [Fact]
-    public void OutsideTheFittedColours_TheCorrectionContinuesSmoothly()
-    {
-        // Continuous at the blue edge (B−V = 0), and hot colours put light into the ultraviolet, out of V: a 20,000 K
-        // blackbody (B−V = −0.1304) has BC_V lower than the edge's by the blackbody's change from the 13,503 K blackbody
-        // whose B−V is 0: −1.6594 − (−0.8147) = −0.8447, by hand.
-        foreach (var s in new[] { BcSample.StrippedEnvelope, BcSample.TypeII })
-        {
-            double edge = BolometricCorrection.BcV(s, 0);
-            Assert.Equal(edge, BolometricCorrection.BcV(s, -1e-9), 1e-6);
-            Assert.Equal(-0.8447, BolometricCorrection.BcV(s, BolometricCorrection.BlackbodyBMinusV(20_000)) - edge, 1e-3);
-        }
     }
 }

@@ -259,13 +259,15 @@ public class OutcomeEngineTests
     }
 
     [Fact]
-    public void Mass16_PlateauLuminosityFollowsS16Eq15()
+    public void Mass16_PlateauLuminosityFollowsGoldberg2019()
     {
-        // L50 = 1.85e42 E51^(5/6) M10^(-1/2) R500^(2/3) with the 16 M☉ row: E51 = 1.25537, M_env = 8.38164,
-        // R = 6.166e13 cm. 1.25537^(5/6) = 1.208690; 0.838164^(-1/2) = 1.092283; (6.166e13 / 3.4785e13)^(2/3) = 1.464683;
-        // product 1.933720 × 1.85e42 = 3.5774e42 erg/s.
+        // Ruling R33c: the plateau the light curve draws, Goldberg, Bildsten & Paxton 2019 (signals §4.3):
+        // log10 L50 = 42.16 − 0.40 log M10 + 0.74 log E51 + 0.76 log R500 with the 16 M☉ row: E51 = 1.25537,
+        // M_ej = 11.59828 (M10 = 1.159828), R = 6.166e13 cm (R500 = 1.772603). −0.40 × 0.064394 + 0.74 × 0.098771 +
+        // 0.76 × 0.248612 = −0.025758 + 0.073091 + 0.188945 = 0.236278; 10^42.396278 = 2.4904e42 erg/s. (S16 eq. 15
+        // gave 3.5774e42, 0.39 mag brighter than the drawn plateau.)
         var o = Compute(16);
-        Assert.Equal(3.5774e42, o.PeakLuminosityErgS!.Value, 0.0005e42);
+        Assert.Equal(2.4904e42, o.PeakLuminosityErgS!.Value, 0.0005e42);
     }
 
     [Fact]

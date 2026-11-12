@@ -11,10 +11,25 @@ namespace SupernovaLab.Core.Outcomes;
 public static class MagnetarModel
 {
     /// <summary>
-    /// KB10's opacity, κ ≈ 0.2 cm² g⁻¹ (outcomes §5.3): the Arnett diffusion time of every magnetar-powered light curve
-    /// (ruling R32), in the outcome engine and the light-curve model alike.
+    /// KB10's opacity, κ ≈ 0.2 cm² g⁻¹ (outcomes §5.3): electron scattering in ionized hydrogen-poor ejecta, which a
+    /// stripped magnetar supernova keeps exactly (ruling R33a; see <see cref="EjectaOpacity"/>).
     /// </summary>
     public const double Opacity = 0.2;
+
+    /// <summary>
+    /// Ruling R33a [APPROX]: the ejecta opacity of a magnetar-powered supernova, cm²/g, κ = 0.2 (1 + X̄): electron
+    /// scattering κ_es = 0.2 (1 + X) in ejecta the magnetar keeps ionized, with the ejecta-averaged hydrogen fraction
+    /// X̄ = X_H × M_H,env / M_ej (X_H by initial mass, <see cref="ProgenitorModel.HydrogenMassFraction"/>; held in 0–1).
+    /// Stripped ejecta keep KB10's 0.2. The research gives only KB10's 0.2 (outcomes §5.3) and 0.34 for hydrogen
+    /// envelopes (signals §3.3), so the weighting is Speculative. The engine and the light curve both use this.
+    /// </summary>
+    public static double EjectaOpacity(double initialMass, double hydrogenEnvelopeMsun, double ejectaMsun)
+    {
+        double xBar = ejectaMsun > 0
+            ? ProgenitorModel.HydrogenMassFraction(initialMass) * Math.Max(hydrogenEnvelopeMsun, 0) / ejectaMsun
+            : 0;
+        return Opacity * (1 + Math.Clamp(xBar, 0, 1));
+    }
 
     private static readonly Source Kb10 =
         new("Kasen & Bildsten 2010, ApJ 717, 245 (eq. 1, 2; I = 10^45 g cm², R = 10 km)", "outcomes §5.3, §8.2 step 7b");
@@ -35,13 +50,13 @@ public static class MagnetarModel
     /// <summary>
     /// Ruling R32: the spin-down power diffusing out of the ejecta, erg/s, at time t (s): Arnett's kernel (signals §4.2,
     /// Inserra et al. 2013 Eq. D1, as signals §4.4 prescribes) over L_p, with τ_m = (2κM/(βcv))^(1/2), v = √(10E/3M),
-    /// κ = <see cref="Opacity"/> and E the ejecta's kinetic energy. Full trapping is assumed. The light-curve model draws
-    /// exactly this as its magnetar part.
+    /// κ the ejecta opacity (<see cref="EjectaOpacity"/>) and E the ejecta's kinetic energy. Full trapping is assumed. The
+    /// light-curve model draws exactly this as its magnetar part.
     /// </summary>
     public static double DiffusedLuminosityErgS(double timeS, double energyErg, double timescaleS, double ejectaMsun,
-        double kineticEnergyErg)
+        double kineticEnergyErg, double opacity)
         => ArnettDiffusion.LuminosityErgS(t => LuminosityErgS(t, energyErg, timescaleS),
-            ArnettDiffusion.DiffusionTimeS(Opacity, ejectaMsun, kineticEnergyErg), timeS);
+            ArnettDiffusion.DiffusionTimeS(opacity, ejectaMsun, kineticEnergyErg), timeS);
 
     /// <summary>
     /// Ruling R32: THE peak luminosity of a magnetar-powered supernova, erg/s: the maximum of
@@ -49,11 +64,13 @@ public static class MagnetarModel
     /// stated peak use it, and the light curve draws the same function, so the label matches the drawn light.
     /// [APPROX] the ⁵⁶Ni heating (~10⁴² erg/s) is not included.
     /// </summary>
-    public static double PeakLuminosityErgS(double energyErg, double timescaleS, double ejectaMsun, double kineticEnergyErg)
+    public static double PeakLuminosityErgS(double energyErg, double timescaleS, double ejectaMsun, double kineticEnergyErg,
+        double opacity)
     {
-        double tau = ArnettDiffusion.DiffusionTimeS(Opacity, ejectaMsun, kineticEnergyErg);
-        return ArnettDiffusion.Maximize(t => DiffusedLuminosityErgS(t, energyErg, timescaleS, ejectaMsun, kineticEnergyErg),
-            0.01 * tau, 20 * tau).Value;
+        double tau = ArnettDiffusion.DiffusionTimeS(opacity, ejectaMsun, kineticEnergyErg);
+        return ArnettDiffusion.Maximize(
+            t => DiffusedLuminosityErgS(t, energyErg, timescaleS, ejectaMsun, kineticEnergyErg, opacity), 0.01 * tau,
+            20 * tau).Value;
     }
 
     /// <summary>

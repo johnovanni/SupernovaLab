@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Text;
@@ -18,14 +17,19 @@ namespace SupernovaLab.Core.Signals;
 /// exp((t'² − t²)/τ_m²) dt' (Inserra et al. 2013, Eq. D1), τ_m = (2κM/(βcv))^(1/2), v = √(10E/3M), β = 13.8. Types
 /// Ia, Ib, Ic, Ic-BL, IIb, SLSN-I and stripped pair-instability supernovae are this alone.</item>
 /// <item>Hydrogen-rich stars with at least 1 M☉ of envelope (§4.3): the Goldberg, Bildsten &amp; Paxton 2019 plateau L50
-/// held until t_p, then a Fermi-Dirac drop onto the deposited ⁵⁶Ni power; the diffused heating is shown wherever it
-/// is brighter. A compact blue supergiant has a faint plateau (L50 ∝ R^0.76), so its diffused ⁵⁶Ni makes the slow
-/// dome of SN 1987A, peaking near day 70–90 (§4.6).</item>
+/// (<see cref="PlateauModel"/>, the one the engine states, ruling R33c) held until t_p, then a Fermi-Dirac drop onto
+/// the deposited ⁵⁶Ni power, L_dep (§4.3 step 4, ruling R33d); before the drop the diffused heating is shown wherever
+/// it is brighter. [APPROX] A compact blue supergiant has a faint plateau (L50 ∝ R^0.76), so its diffused ⁵⁶Ni makes
+/// the slow dome of SN 1987A, peaking near day 60–85 across the opacity slider (§4.6 gives ~85 d). The research has
+/// no blue-supergiant recipe: this is G19 extrapolated to R500 ≈ 0.1 plus §4.2's diffusion with the core-collapse
+/// slider κ on hydrogen-rich ejecta.</item>
 /// <item>Shock cooling (§3.3) from <see cref="ShockBreakoutModel.Cooling"/>, fading past its validity
 /// (<see cref="ShockBreakoutModel.CoolingPhase.FadingLuminosityErgS"/>); the brighter of it and the rest is shown.</item>
 /// <item>V magnitude (§4.5, <see cref="BolometricCorrection"/>): Lyman et al. 2014 bolometric corrections with colours of
 /// a blackbody at the shock-cooling T_col, 6,000 K for hydrogen-rich photospheres, 10,000 K for hydrogen-free ones, and
-/// the Lira relation for Type Ia after peak. m_V = M_V + μ + A_V (§4.7).</item>
+/// the Lira relation for Type Ia after peak. m_V = M_V + μ + A_V (§4.7). [APPROX] The research has fits only for
+/// stripped-envelope and Type II samples: Type Ia/Iax, SLSN-I and pair-instability supernovae use the stripped-envelope
+/// fit, and Iax and 91bg-like events take the normal-Ia Lira relation.</item>
 /// </list>
 /// Source time throughout, from core bounce (or ignition for a Type Ia); valid from the start of shock cooling (1 hour
 /// for a Type Ia) to 3 years (§11). Speculative (ruling R24/R27 reasoning): the formulas are published, but the opacity,
@@ -35,16 +39,16 @@ public sealed class LightCurveModel : ISignalModel
 {
     // ---------------------------------------------------------------- constants
 
-    private const double Day = PhysicalConstants.Day, MSun = PhysicalConstants.MSun, C = PhysicalConstants.C;
+    private const double Day = PhysicalConstants.Day, MSun = PhysicalConstants.MSun;
 
     /// <summary>⁵⁶Ni and ⁵⁶Co mean lives, s (Nadyozhin 1994, as written by Stritzinger &amp; Leibundgut 2005; §4.1).</summary>
     public const double NickelMeanLifeS = 8.8 * Day, CobaltMeanLifeS = 111.3 * Day;
 
     /// <summary>
-    /// §4.1 decay energy per gram per second: ε_Ni = 3.9e10 (Nadyozhin 1994); ε_Co split into gamma rays 6.4552e9 and
-    /// positron kinetic energy 2.1458e8 (Arnett, Fryer &amp; Matheson 2017).
+    /// §4.1 decay energy per gram per second, one consistent set (Arnett, Fryer &amp; Matheson 2017): ε_Ni = 3.9805e10;
+    /// ε_Co split into gamma rays 6.4552e9 and positron kinetic energy 2.1458e8.
     /// </summary>
-    private const double EpsNi = 3.9e10, EpsCoGamma = 6.4552e9, EpsCoPositron = 2.1458e8;
+    private const double EpsNi = 3.9805e10, EpsCoGamma = 6.4552e9, EpsCoPositron = 2.1458e8;
 
     /// <summary>
     /// §4.1 gamma-ray trapping time T0 = √(C κ_γ M² / E): C = 0.05 for a power-law density profile (Clocchiatti &amp;
@@ -62,46 +66,11 @@ public sealed class LightCurveModel : ISignalModel
     /// </summary>
     public const double ThermonuclearOpacity = 0.19;
 
-    /// <summary>
-    /// [APPROX] A magnetar-powered outcome uses Kasen &amp; Bildsten 2010's κ = 0.2 cm²/g (outcomes §5.3) instead of the
-    /// slider: ruling R32's one magnetar peak (<see cref="MagnetarModel.PeakLuminosityErgS"/>) uses it, and so must the
-    /// ⁵⁶Ni diffusing out of the same ejecta.
-    /// </summary>
-    private const double MagnetarOpacity = MagnetarModel.Opacity;
-
-    /// <summary>§4.3 step 5: below about 1 M☉ of hydrogen envelope there is no plateau, only an Arnett peak [APPROX].</summary>
-    private const double PlateauMinEnvelope = 1.0;
-
-    /// <summary>
-    /// Goldberg et al. 2019's plateau-length fit uses models with M_Ni ≳ 0.03 M☉ (§4.3). [APPROX] Below that the length
-    /// follows Kasen &amp; Woosley 2009's nickel extension (1 + C_f M_Ni E51^−1/2 M10^−1/2 R500^−1)^(1/6), C_f ≈ 87,
-    /// scaled to meet the fit at 0.03 M☉.
-    /// </summary>
-    private const double G19MinNickel = 0.03, KwNickelCf = 87;
-
-    /// <summary>[APPROX] The width of the Fermi-Dirac drop at the plateau's end: "a free display choice" (§4.3).</summary>
-    private const double PlateauDropWidthS = 3 * Day;
-
-    /// <summary>
-    /// [APPROX] Photospheric colour temperatures (§4.5): hydrogen recombination, 5,000–7,000 K, for hydrogen-rich
-    /// photospheres; 8,000–12,000 K for Ia/Ibc near peak. The middles of the ranges, held through the tail (the research
-    /// gives no later colours, except the Lira relation for Type Ia).
-    /// </summary>
-    private const double HydrogenPhotosphereK = 6_000, HotPhotosphereK = 10_000;
-
-    /// <summary>The Lira relation holds 30–90 days after V maximum (§4.5).</summary>
-    private const double LiraStartDays = 30, LiraEndDays = 90;
-
-    /// <summary>[APPROX] §11: the light curve runs from about 1 hour (the start for a Type Ia, which has no breakout) ...</summary>
-    private const double EarliestStartS = 3600;
-
-    /// <summary>[APPROX] ... to about 1–3 years (the ⁵⁶Co tail; late positrons and ⁵⁷Co ignored).</summary>
+    /// <summary>[APPROX] The light curve runs to about 1–3 years (§11: the ⁵⁶Co tail; late positrons and ⁵⁷Co ignored).</summary>
     public const double EndS = 3 * PhysicalConstants.Year;
 
     /// <summary>The detectors whose limiting magnitude this model compares against; the first three have channels.</summary>
     public static IReadOnlyList<string> DetectorIds { get; } = new[] { "eye", "ztf", "rubin", "spectrograph" };
-
-    private static readonly ShockBreakoutModel Breakout = new();
 
     // ---------------------------------------------------------------- ISignalModel
 
@@ -129,13 +98,15 @@ public sealed class LightCurveModel : ISignalModel
             "kernel). Type Ia opacity 0.19 cm²/g, set so the default Ia rises in 18 d (observed 17–19 d) [APPROX]",
             "signals §4.2"),
         new("Goldberg, Bildsten & Paxton 2019, ApJ 879, 3 (plateau L50 and length); Kasen & Woosley 2009, ApJ 703, 2205 " +
-            "(nickel extension); Fermi-Dirac drop, 3-day width (Olivares et al. 2010) [APPROX]; under 1 M☉ of hydrogen " +
-            "envelope, no plateau [APPROX]", "signals §4.3"),
+            "(nickel extension); Fermi-Dirac drop, 3-day width (Olivares et al. 2010) [APPROX], onto the ⁵⁶Ni tail L_dep; " +
+            "under 1 M☉ of hydrogen envelope, no plateau [APPROX]; a blue supergiant's ⁵⁶Ni dome (no recipe in the " +
+            "research) [APPROX]", "signals §4.3"),
         new("Kasen & Bildsten 2010, ApJ 717, 245; Inserra et al. 2013 (magnetar heating through the Arnett kernel). Full " +
             "trapping is assumed, so the late tail is overestimated", "signals §4.4"),
-        new("Lyman, Bersier & James 2014, MNRAS 437, 3848 (bolometric corrections); blackbody colours at 6,000 K (hydrogen) " +
-            "and 10,000 K (hydrogen-free) [APPROX]; Lira relation (Phillips et al. 1999, AJ 118, 1766); Bessell, Castelli " +
-            "& Plez 1998 zero points", "signals §4.5"),
+        new("Lyman, Bersier & James 2014, MNRAS 437, 3848 (bolometric corrections; the stripped-envelope fit also for " +
+            "Type Ia, SLSN-I and pair-instability supernovae [APPROX]); blackbody colours at 6,000 K (hydrogen) and " +
+            "10,000 K (hydrogen-free) [APPROX]; Lira relation (Phillips et al. 1999, AJ 118, 1766; on Iax and 91bg-like " +
+            "events [APPROX]); Bessell, Castelli & Plez 1998 zero points", "signals §4.5"),
         new("m_V = M_V + μ + A_V (Cardelli, Clayton & Mathis 1989); naked eye V ≈ 6 [APPROX]; ZTF ≈ 20.5 and Rubin ≈ 24 " +
             "per visit, in their own bands, compared with V here [APPROX]", "signals §4.7, §11"),
         new("Circumstellar interaction (Type IIn, Ibn, Icn) and the transients of pulsational pair instability are not " +
@@ -143,15 +114,15 @@ public sealed class LightCurveModel : ISignalModel
             "−16.8; Richardson et al. 2014, AJ 147, 118)", "signals §4.6; outcomes §2.3"),
     };
 
-    public bool Applies(Outcome outcome) => Curve.Of(outcome) is not null || IsUnmodeledTransient(outcome);
+    public bool Applies(Outcome outcome) => LightCurve.Of(outcome) is not null || IsUnmodeledTransient(outcome);
 
     public (double StartS, double EndS) ValidRange(Outcome outcome)
-        => Curve.Of(outcome) is { } c ? (c.StartS, EndS) : (0, 0);
+        => LightCurve.Of(outcome) is { } c ? (c.StartS, EndS) : (0, 0);
 
     public double Sample(Outcome outcome, ObserverSetup observer, double sourceTimeS, string channelId)
     {
         var (channel, detectorId) = ParseChannel(channelId);
-        if (Curve.Of(outcome) is not { } c || !(sourceTimeS >= c.StartS && sourceTimeS <= EndS)) return double.NaN;
+        if (LightCurve.Of(outcome) is not { } c || !(sourceTimeS >= c.StartS && sourceTimeS <= EndS)) return double.NaN;
 
         if (channel == "lbol") return c.Luminosity(sourceTimeS);
         double absV = c.AbsoluteV(sourceTimeS);
@@ -165,7 +136,7 @@ public sealed class LightCurveModel : ISignalModel
         if (!Applies(outcome)) return new Detection(DetectionStatus.NotProduced, NotProducedReason(outcome));
         if (detector.Messenger != Messenger.VisibleLight || !DetectorIds.Contains(detector.Id))
             return new Detection(DetectionStatus.NotModeled, $"{detector.Name} does not observe visible light.");
-        if (Curve.Of(outcome) is not { } c)
+        if (LightCurve.Of(outcome) is not { } c)
             return new Detection(DetectionStatus.NotModeled,
                 "The shells thrown off by the pulses collide and glow (weeks to millennia, about 10^41 to more than 10^44 " +
                 "erg/s; Woosley 2017), but that light is not modeled here.");
@@ -217,19 +188,20 @@ public sealed class LightCurveModel : ISignalModel
     /// The time of the V-band peak (brightest absolute V), s after bounce (ignition for a Type Ia) in source time, for the
     /// timeline marker. NaN when there is no modeled light curve.
     /// </summary>
-    public double PeakTimeS(Outcome o) => Curve.Of(o)?.PeakTimeS ?? double.NaN;
+    public double PeakTimeS(Outcome o) => LightCurve.Of(o)?.PeakTimeS ?? double.NaN;
 
     /// <summary>
     /// The end of the plateau t_p (Goldberg et al. 2019), s after bounce in source time, for the timeline marker. Null
     /// when there is no plateau, or when the diffused ⁵⁶Ni light outshines it (a compact blue supergiant such as SN 1987A).
     /// </summary>
-    public double? PlateauEndS(Outcome o) => Curve.Of(o) is { HasVisiblePlateau: true } c ? c.PlateauEndS : null;
+    public double? PlateauEndS(Outcome o) => LightCurve.Of(o) is { HasVisiblePlateau: true } c ? c.PlateauEndS : null;
 
     // ---------------------------------------------------------------- public formulas (tested against signals §4)
 
     /// <summary>
     /// Nadyozhin 1994's total ⁵⁶Ni + ⁵⁶Co decay power with full trapping (§4.1, as written by Stritzinger &amp;
     /// Leibundgut 2005): (M_Ni / M☉) [6.45e43 e^(−t/8.8 d) + 1.45e43 e^(−t/111.3 d)] erg/s. t in s after explosion.
+    /// Reference only (the brief's check of §4.1): the light curve itself uses <see cref="DepositedNickelHeatingErgS"/>.
     /// </summary>
     public static double NickelCobaltDecayErgS(double nickelMsun, double timeS)
         => nickelMsun * (6.45e43 * Math.Exp(-timeS / NickelMeanLifeS) + 1.45e43 * Math.Exp(-timeS / CobaltMeanLifeS));
@@ -263,216 +235,15 @@ public sealed class LightCurveModel : ISignalModel
         => ArnettDiffusion.LuminosityErgS(heatingErgS, diffusionTimeS, timeS);
 
     /// <summary>
-    /// Goldberg, Bildsten &amp; Paxton 2019 (§4.3): log10(L50 / erg s⁻¹) = 42.16 − 0.40 log M10 + 0.74 log E51 +
-    /// 0.76 log R500, with M10 = M_ej / 10 M☉, E51 = E / 1e51 erg and R500 = R / 500 R☉.
+    /// Goldberg, Bildsten &amp; Paxton 2019's day-50 plateau luminosity, erg/s (§4.3; <see cref="PlateauModel"/>, shared
+    /// with the outcome engine by ruling R33c).
     /// </summary>
     public static double PlateauLuminosityErgS(double energyErg, double ejectaMsun, double radiusCm)
-        => Math.Pow(10, 42.16 - 0.40 * Math.Log10(ejectaMsun / 10) + 0.74 * Math.Log10(energyErg / 1e51)
-                        + 0.76 * Math.Log10(radiusCm / (500 * PhysicalConstants.RSun)));
+        => PlateauModel.LuminosityErgS(energyErg, ejectaMsun, radiusCm);
 
-    /// <summary>
-    /// The plateau length t_p, s after explosion (§4.3): Goldberg et al. 2019, log10(t_p / d) = 2.184 + 0.134 log M_Ni +
-    /// 0.411 log M10 − 0.282 log E51, for M_Ni ≥ 0.03 M☉; below that, [APPROX] the fit at 0.03 M☉ scaled by Kasen &amp;
-    /// Woosley's nickel extension (1 + 87 M_Ni E51^−1/2 M10^−1/2 R500^−1)^(1/6) relative to its value at 0.03 M☉.
-    /// </summary>
+    /// <summary>The plateau length t_p, s after explosion (§4.3; <see cref="PlateauModel.DurationS"/>).</summary>
     public static double PlateauDurationS(double energyErg, double ejectaMsun, double nickelMsun, double radiusCm)
-    {
-        double e51 = energyErg / 1e51, m10 = ejectaMsun / 10, r500 = radiusCm / (500 * PhysicalConstants.RSun);
-        double G19(double ni) => Math.Pow(10, 2.184 + 0.134 * Math.Log10(ni) + 0.411 * Math.Log10(m10) - 0.282 * Math.Log10(e51));
-        if (nickelMsun >= G19MinNickel) return G19(nickelMsun) * Day;
-        double Extension(double ni) => Math.Pow(1 + KwNickelCf * ni / (Math.Sqrt(e51) * Math.Sqrt(m10) * r500), 1.0 / 6);
-        return G19(G19MinNickel) * Extension(Math.Max(nickelMsun, 0)) / Extension(G19MinNickel) * Day;
-    }
-
-    // ---------------------------------------------------------------- the light curve of one outcome
-
-    /// <summary>
-    /// One outcome's light curve: its heating, diffusion time, plateau (if any), shock cooling and colours. Built once per
-    /// outcome and cached (it is a pure function of the outcome).
-    /// </summary>
-    internal sealed class Curve
-    {
-        private static readonly ConditionalWeakTable<Outcome, Holder> Cache = new();
-
-        private sealed record Holder(Curve? Value);
-
-        public bool Thermonuclear { get; private init; }
-        public bool Plateau { get; private init; }
-        public bool Interacting { get; private init; }
-        public bool PairInstability { get; private init; }
-        public bool HasMagnetar => _magEnergy > 0 && _magTimeS > 0;
-        public BcSample BcSample { get; private init; }
-        public double StartS { get; private init; }
-        public double DiffusionTimeS { get; private init; }
-        public double PlateauEndS { get; private init; }
-
-        private double _nickel, _trappingS, _magEnergy, _magTimeS, _l50, _ejecta, _energy;
-        private ShockBreakoutModel.CoolingPhase? _cooling;
-
-        // Derived once, on first use; Lazy keeps concurrent first uses safe.
-        private readonly Lazy<double> _mainPeakS;
-        private readonly Lazy<(double TimeS, double AbsV)> _peak;
-        private readonly Lazy<bool> _visiblePlateau;
-
-        private Curve()
-        {
-            _mainPeakS = new(() => ArnettDiffusion.Maximize(Main, Math.Max(StartS, 0.05 * DiffusionTimeS),
-                Math.Min(EndS, 10 * DiffusionTimeS)).TimeS);
-            _peak = new(FindPeak);
-            _visiblePlateau = new(() => Plateau && _l50 > Diffused(PlateauEndS));
-        }
-
-        public static Curve? Of(Outcome o) => Cache.GetValue(o, x => new Holder(Build(x))).Value;
-
-        private static Curve? Build(Outcome o)
-        {
-            if (o.Fate is not (Fate.Supernova or Fate.PairInstabilitySupernova)) return null;
-            if (o.Star is not { } star || o.ExplosionEnergyErg is not { Value: > 0 } energy ||
-                o.EjectaMass is not { Value: > 0 } ejecta) return null;
-
-            double e = energy.Value, m = ejecta.Value;
-            bool thermonuclear = o.Type is SupernovaType.Ia or SupernovaType.Ia91T or SupernovaType.Ia91bg or SupernovaType.Iax;
-            double envelope = star.HydrogenEnvelopeMass.Value;
-            bool hydrogenType = o.Type is SupernovaType.IIP or SupernovaType.IIL or SupernovaType.IIn or SupernovaType.SlsnII
-                                || (o.Type == SupernovaType.Pisn && envelope > 0);
-            bool plateau = !thermonuclear && hydrogenType && envelope >= PlateauMinEnvelope;
-            var cooling = thermonuclear ? null : Breakout.Cooling(o);
-            double breakoutS = thermonuclear ? double.NaN : Breakout.BreakoutTimeS(o);
-            double start = cooling?.StartS ?? (double.IsFinite(breakoutS) ? Math.Max(breakoutS, EarliestStartS) : EarliestStartS);
-            bool magnetar = o.MagnetarEnergyErg is { Value: > 0 } && o.MagnetarTimescaleS is { Value: > 0 };
-            double kappa = thermonuclear ? ThermonuclearOpacity : magnetar ? MagnetarOpacity : o.Inputs.Opacity;
-            double nickel = Math.Max(o.NickelMass?.Value ?? 0, 0);
-            double r = star.RadiusCm.Value;
-
-            return new Curve
-            {
-                Thermonuclear = thermonuclear,
-                Plateau = plateau,
-                Interacting = o.Inputs.DenseCsm || o.Type is SupernovaType.IIn or SupernovaType.Ibn or SupernovaType.Icn,
-                PairInstability = o.Fate == Fate.PairInstabilitySupernova,
-                BcSample = plateau ? BcSample.TypeII : BcSample.StrippedEnvelope,
-                StartS = start,
-                DiffusionTimeS = ArnettDiffusionTimeS(kappa, m, e),
-                PlateauEndS = plateau ? PlateauDurationS(e, m, nickel, r) : double.NaN,
-                _nickel = nickel,
-                _trappingS = GammaRayTrappingTimeS(m, e),
-                _magEnergy = o.MagnetarEnergyErg?.Value ?? 0,
-                _magTimeS = o.MagnetarTimescaleS?.Value ?? 0,
-                _ejecta = m,
-                _energy = e,
-                _l50 = plateau ? PlateauLuminosityErgS(e, m, r) : 0,
-                _cooling = cooling,
-            };
-        }
-
-        // ------------------------------------------------ luminosity
-
-        /// <summary>The ⁵⁶Ni/⁵⁶Co heating deposited in the ejecta, erg/s, with gamma-ray trapping.</summary>
-        private double NickelHeating(double t) => DepositedNickelHeatingErgS(_nickel, t, _trappingS);
-
-        /// <summary>
-        /// The diffused heating, erg/s. The kernel is linear, so it is the diffused ⁵⁶Ni plus the magnetar's
-        /// <see cref="MagnetarModel.DiffusedLuminosityErgS"/> — the very function the outcome engine's peak and SLSN-II
-        /// cut use (ruling R32; both with κ = 0.2 and the outcome's E_K and M_ej, hence the same τ_m).
-        /// </summary>
-        private double Diffused(double t)
-            => ArnettLuminosityErgS(NickelHeating, DiffusionTimeS, t)
-               + (HasMagnetar ? MagnetarModel.DiffusedLuminosityErgS(t, _magEnergy, _magTimeS, _ejecta, _energy) : 0);
-
-        /// <summary>
-        /// The plateau L50 held until t_p, then a Fermi-Dirac step, 1 / (1 + e^((t − t_p)/w)), onto the deposited ⁵⁶Ni
-        /// power (§4.3 steps 2–4).
-        /// </summary>
-        private double PlateauPart(double t)
-        {
-            double x = (t - PlateauEndS) / PlateauDropWidthS;
-            double s = x > 700 ? 0 : 1 / (1 + Math.Exp(x));
-            return _l50 * s + DepositedNickelHeatingErgS(_nickel, t, _trappingS) * (1 - s);
-        }
-
-        /// <summary>Everything except shock cooling: the diffused heating, or the plateau where it is brighter.</summary>
-        private double Main(double t) => Plateau ? Math.Max(PlateauPart(t), Diffused(t)) : Diffused(t);
-
-        private double Cooling(double t)
-            => _cooling is { } c && t >= c.StartS && c.FadingLuminosityErgS(t) is var l && l > 0 ? l : 0;
-
-        /// <summary>Bolometric luminosity at source time t (s), erg/s: the brighter of shock cooling and the rest.</summary>
-        public double Luminosity(double t) => Math.Max(Cooling(t), Main(t));
-
-        // ------------------------------------------------ colour and magnitude
-
-        /// <summary>
-        /// [APPROX] The photosphere's temperature once shock cooling is over (§4.5): hydrogen recombination for a plateau,
-        /// the hydrogen-free peak value otherwise.
-        /// </summary>
-        private double PhotosphereK => Plateau ? HydrogenPhotosphereK : HotPhotosphereK;
-
-        /// <summary>
-        /// The shock-cooling colour temperature (K), continued past the formula's end, but [APPROX] never below
-        /// <see cref="PhotosphereK"/>: the cooling envelope's photosphere stops cooling where its gas recombines. NaN
-        /// without cooling.
-        /// </summary>
-        private double CoolingColourK(double t)
-            => _cooling is { } c && t >= c.StartS ? Math.Max(c.FadingColourTemperatureK(t), PhotosphereK) : double.NaN;
-
-        /// <summary>
-        /// B−V of everything except shock cooling (§4.5). A plateau shares the cooling envelope's photosphere: the shock-
-        /// cooling colour temperature until it reaches hydrogen recombination's 6,000 K [APPROX].
-        /// </summary>
-        private double MainBMinusV(double t)
-        {
-            if (Plateau)
-                return BolometricCorrection.BlackbodyBMinusV(_cooling is null ? PhotosphereK : CoolingColourK(t));
-            double peakColour = BolometricCorrection.BlackbodyBMinusV(HotPhotosphereK);
-            if (!Thermonuclear) return peakColour;
-            // Type Ia: [APPROX] the peak colour until bolometric maximum (taken as V maximum), then linear to the Lira
-            // relation's start 30 d later; Lira 30–90 d; held at its 90 d value after.
-            double days = (t - MainPeakS) / Day;
-            if (days <= 0) return peakColour;
-            if (days < LiraStartDays)
-                return peakColour + (BolometricCorrection.LiraBMinusV(LiraStartDays) - peakColour) * days / LiraStartDays;
-            return BolometricCorrection.LiraBMinusV(Math.Min(days, LiraEndDays));
-        }
-
-        /// <summary>
-        /// Absolute V magnitude at source time t (s): M_bol of the total luminosity less BC_V at the luminosity-weighted
-        /// B−V of shock cooling (a blackbody at T_col, continued past the formula's end) and the rest [APPROX: the
-        /// weighting keeps the colour continuous]. NaN when there is no light.
-        /// </summary>
-        public double AbsoluteV(double t)
-        {
-            double lc = Cooling(t), lm = Main(t), l = Math.Max(lc, lm);
-            if (!(l > 0)) return double.NaN;
-            double bv = MainBMinusV(t);
-            if (lc > 0)
-                bv = (lc * BolometricCorrection.BlackbodyBMinusV(CoolingColourK(t)) + lm * bv) / (lc + lm);
-            return BolometricCorrection.AbsoluteV(l, bv, BcSample);
-        }
-
-        // ------------------------------------------------ peaks
-
-        /// <summary>The bolometric peak of <see cref="Main"/> (s), by golden-section search; for the Lira relation.</summary>
-        private double MainPeakS => _mainPeakS.Value;
-
-        /// <summary>The time (s) of the brightest absolute V, NaN if there is no light.</summary>
-        public double PeakTimeS => _peak.Value.TimeS;
-
-        /// <summary>The brightest absolute V.</summary>
-        public double PeakAbsoluteV => _peak.Value.AbsV;
-
-        private (double TimeS, double AbsV) FindPeak()
-        {
-            var (t, negV) = ArnettDiffusion.Maximize(
-                t => AbsoluteV(t) is var v && !double.IsNaN(v) ? -v : double.NegativeInfinity, StartS, EndS);
-            return double.IsFinite(negV) ? (t, -negV) : (double.NaN, double.NaN);
-        }
-
-        /// <summary>
-        /// A visible plateau: the plateau, not the diffused heating, sets the light as it ends (false for a compact blue
-        /// supergiant, whose ⁵⁶Ni dome outshines its faint plateau).
-        /// </summary>
-        public bool HasVisiblePlateau => _visiblePlateau.Value;
-    }
+        => PlateauModel.DurationS(energyErg, ejectaMsun, nickelMsun, radiusCm);
 
     // ---------------------------------------------------------------- helpers
 
@@ -486,7 +257,7 @@ public sealed class LightCurveModel : ISignalModel
     private static bool IsUnmodeledTransient(Outcome o)
         => o.Fate == Fate.PulsationalPairInstability && o.Type is SupernovaType.IIn or SupernovaType.Ibn or SupernovaType.Icn;
 
-    private static string Caveats(Curve c)
+    private static string Caveats(LightCurve c)
     {
         string text = "";
         if (c.Interacting)
@@ -518,11 +289,13 @@ public sealed class LightCurveModel : ISignalModel
     {
         Fate.NotDeadYet => "The star has not died yet, so there is no supernova to see.",
         Fate.WhiteDwarf => "The star ends as a white dwarf with no explosion, so there is no supernova light.",
-        Fate.FailedSupernova =>
-            "No supernova: the core collapses straight to a black hole, so there is no explosion to light up. The star may " +
-            "simply vanish, perhaps after a weak, red outburst of about a million Suns as its loosened envelope drifts off " +
-            "(Lovegrove & Woosley 2013). The red supergiant N6946-BH1 faded from view this way after 2009 (Adams et al. " +
-            "2017), though a merger of two stars hidden in dust is not ruled out.",
+        Fate.FailedSupernova => o.Star?.HydrogenEnvelopeMass.Value > 0
+            ? "No supernova: the core collapses straight to a black hole, so there is no explosion to light up. The star " +
+              "may simply vanish, perhaps after a weak, red outburst of about a million Suns as its loosely bound hydrogen " +
+              "envelope drifts off (Lovegrove & Woosley 2013). The red supergiant N6946-BH1 faded from view this way after " +
+              "2009 (Adams et al. 2017), though a merger of two stars hidden in dust is not ruled out."
+            : "No supernova: the core collapses straight to a black hole, so there is no explosion to light up, and with " +
+              "no hydrogen envelope to shed the star simply disappears.",
         Fate.PulsationalPairInstability =>
             "The pulses throw off too little mass to make a visible transient, and the core collapses to a black hole " +
             "without a supernova.",

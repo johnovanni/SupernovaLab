@@ -134,7 +134,7 @@ public sealed partial class OutcomeEngine
             if (pins.RadiusCm is double r) star = star with { RadiusCm = Pin(r, "cm") };
         }
 
-        var peak = PeakLuminosity(d, star, energy, ejecta, nickel);
+        var peak = PeakLuminosity(x, d, star, energy, ejecta, nickel);
         // Step 9 / ruling R21: the Phillips outputs for Type Ia outcomes.
         Quantity? magB = null, dm15 = null;
         if (x.Kind == StarKind.WhiteDwarf && peak is not null)
@@ -147,32 +147,37 @@ public sealed partial class OutcomeEngine
     }
 
     /// <summary>
-    /// Step 6 light-curve output. II-P / II-L: the day-50 plateau luminosity of S16 eq. 15 with M10 = M_H,env / 10.
-    /// Stripped supernovae and SNe Ia: Arnett's rule, L_peak = 2.0×10⁴³ (M_Ni / M☉) erg/s (§7.2). Magnetar-powered
-    /// superluminous supernovae (step 7b): the spin-down power at the diffusion time (<see cref="MagnetarModel"/>).
+    /// Step 6 light-curve output. II-P / II-L with at least 1 M☉ of hydrogen envelope: the day-50 plateau luminosity of
+    /// Goldberg, Bildsten &amp; Paxton 2019 (<see cref="PlateauModel"/>), the plateau the light curve draws (ruling R33c;
+    /// step 6 allows S16 or GBP19). Thinner II-L envelopes, stripped supernovae and SNe Ia: Arnett's rule,
+    /// L_peak = 2.0×10⁴³ (M_Ni / M☉) erg/s (§7.2). Magnetar-powered supernovae (step 7b): ruling R32's one magnetar
+    /// peak (<see cref="MagnetarModel.PeakLuminosityErgS"/>).
     /// </summary>
-    private static Quantity? PeakLuminosity(Draft d, PresupernovaStar star, Quantity? energy, Quantity? ejecta, Quantity? nickel)
+    private static Quantity? PeakLuminosity(LabInputs x, Draft d, PresupernovaStar star, Quantity? energy, Quantity? ejecta,
+        Quantity? nickel)
     {
-        // Ruling R32: the one magnetar peak, with the outcome's own (displayed or pinned) kinetic energy, as the light
-        // curve uses. [APPROX] The ⁵⁶Ni heating (~10⁴² erg/s) is left out next to the magnetar's heating.
+        // Ruling R32: the one magnetar peak, with the outcome's own (displayed or pinned) kinetic energy and ejecta and
+        // ruling R33a's opacity, as the light curve uses. [APPROX] The ⁵⁶Ni heating (~10⁴² erg/s) is left out next to
+        // the magnetar's heating.
+        var env = star.HydrogenEnvelopeMass;
         if (d.Peak == PeakRule.Magnetar && d.MagnetarEnergy is { } ep && d.MagnetarTimescale is { } tp &&
             ejecta is { Value: > 0 } && energy is { Value: > 0 })
-            return new Quantity(MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, energy.Value), "erg/s",
+            return new Quantity(MagnetarModel.PeakLuminosityErgS(ep.Value, tp.Value, ejecta.Value, energy.Value,
+                    MagnetarModel.EjectaOpacity(x.InitialMass, env.Value, ejecta.Value)), "erg/s",
                 Confidence.Speculative, MagnetarPeakSource);
 
-        var env = star.HydrogenEnvelopeMass;
-        if (d.Peak == PeakRule.Plateau && energy is { Value: > 0 } && env.Value > 0)
+        if (d.Peak == PeakRule.Plateau && energy is { Value: > 0 } && ejecta is { Value: > 0 } &&
+            env.Value >= PlateauModel.MinEnvelopeMsun)
         {
-            double e51 = energy.Value / 1e51, m10 = env.Value / 10, r500 = star.RadiusCm.Value / (500 * PhysicalConstants.RSun);
-            double l = 1.85e42 * Math.Pow(e51, 5.0 / 6) * Math.Pow(m10, -0.5) * Math.Pow(r500, 2.0 / 3);
-            // The refit is to II-P models; for II-L and interacting supernovae it is only a guide.
-            var conf = RemnantModel.Weakest(energy.Confidence, env.Confidence, star.RadiusCm.Confidence,
+            double l = PlateauModel.LuminosityErgS(energy.Value, ejecta.Value, star.RadiusCm.Value);
+            // The fit is to II-P models; for II-L and interacting supernovae it is only a guide.
+            var conf = RemnantModel.Weakest(energy.Confidence, ejecta.Confidence, star.RadiusCm.Confidence,
                 d.PeakSpeculative ? Confidence.Speculative : Confidence.ModelDependent);
             return new Quantity(l, "erg/s", conf,
-                new Source("Sukhbold et al. 2016, ApJ 821, 38, eq. 15 (Popov 1993 refit; plateau luminosity at day 50)",
-                    "outcomes §4.2, §8.2 step 6"));
+                new Source("Goldberg, Bildsten & Paxton 2019, ApJ 879, 3 (plateau luminosity at day 50; the plateau the " +
+                           "light curve draws)", "outcomes §8.2 step 6; signals §4.3"));
         }
-        if (d.Peak == PeakRule.Arnett && nickel is { Value: > 0 })
+        if (d.Peak is PeakRule.Arnett or PeakRule.Plateau && nickel is { Value: > 0 })
             return new Quantity(2.0e43 * nickel.Value, "erg/s",
                 RemnantModel.Weakest(nickel.Confidence, d.PeakSpeculative ? Confidence.Speculative : Confidence.ModelDependent),
                 new Source("Arnett 1982, ApJ 253, 785 (Arnett's rule, as used by Stritzinger et al. 2006, A&A 460, 793)",
