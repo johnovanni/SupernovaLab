@@ -41,4 +41,8 @@ public static class PhysicalConstants
     public const double BoltzmannEv = 8.617333262e-5;
     /// <summary>h c, eV nm (CODATA 2018, exact to the digits given).</summary>
     public const double HcEvNm = 1239.84198;
+    /// <summary>Planck constant h, erg s (CODATA 2018, exact: 6.62607015e-34 J s).</summary>
+    public const double Planck = 6.62607015e-27;
+    /// <summary>Boltzmann constant k_B, erg/K (CODATA 2018, exact: 1.380649e-23 J/K).</summary>
+    public const double Boltzmann = 1.380649e-16;
 }

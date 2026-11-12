@@ -194,6 +194,13 @@ public sealed class LightCurveModel : ISignalModel
     public double PeakTimeS(Outcome o) => LightCurve.Of(o)?.PeakTimeS ?? double.NaN;
 
     /// <summary>
+    /// The colour temperature (K) behind the light curve's V magnitudes at this source time (the blackbody with the
+    /// light curve's blended B−V, §4.5); the schematic spectrum uses it so the two agree. NaN when there is no
+    /// modeled light curve.
+    /// </summary>
+    public double ColourTemperatureK(Outcome o, double sourceTimeS) => LightCurve.Of(o)?.ColourTemperatureK(sourceTimeS) ?? double.NaN;
+
+    /// <summary>
     /// The end of the plateau t_p (Goldberg et al. 2019), s after bounce in source time, for the timeline marker. Null
     /// when there is no plateau, or when the diffused ⁵⁶Ni light outshines it (a compact blue supergiant such as SN 1987A).
     /// </summary>

@@ -209,11 +209,24 @@ internal sealed class LightCurve
     {
         double lc = Cooling(t), lm = Main(t), l = Math.Max(lc, lm);
         if (!(l > 0)) return double.NaN;
+        return BolometricCorrection.AbsoluteV(l, BlendedBMinusV(t, lc, lm), BcSample);
+    }
+
+    /// <summary>The luminosity-weighted B−V of shock cooling and the rest (see <see cref="AbsoluteV"/>).</summary>
+    private double BlendedBMinusV(double t, double lc, double lm)
+    {
         double bv = MainBMinusV(t);
         if (lc > 0)
             bv = (lc * BolometricCorrection.BlackbodyBMinusV(CoolingColourK(t)) + lm * bv) / (lc + lm);
-        return BolometricCorrection.AbsoluteV(l, bv, BcSample);
+        return bv;
     }
+
+    /// <summary>
+    /// The colour temperature (K) the light curve's magnitudes use at source time t: the blackbody whose B−V is the
+    /// blended colour of <see cref="AbsoluteV"/>, so the schematic spectrum and the light curve agree (Task 12).
+    /// </summary>
+    public double ColourTemperatureK(double t)
+        => BolometricCorrection.BlackbodyTemperatureForBMinusV(BlendedBMinusV(t, Cooling(t), Main(t)));
 
     // ---------------------------------------------------------------- peaks
 
