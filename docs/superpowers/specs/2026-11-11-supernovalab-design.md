@@ -112,8 +112,10 @@ SN 1998bw / GRB 980425, SN 2008D, SN 2023ixf, SN 2015bn, Tycho (SN 1572), Kepler
 failed supernova), and Betelgeuse ("if it exploded today").
 - A preset sets the lab inputs to its best match. It also **pins** the published explosion values (E, M_ej,
   M_Ni, R, distance, A_V) from presets.md, using one author's consistent set per object.
-- Pinned values show a "Published value" badge with the citation. Changing any input clears the pins and returns
-  to the model, with a status message.
+- Pinned values show a "Published value" badge with the citation. Changing any star or explosion input clears the
+  pins and returns to the model, with a status message. Changing only the observer (distance, dust, beam) keeps the
+  explosion pins, so you can see the same event from elsewhere ("SN 1987A seen from Andromeda"); the status message
+  says the observer is no longer the real one (ruling R49).
 - Each preset has a short "What was actually seen" note. Each instrument panel marks the real observation
   (for example the 24 neutrino events of SN 1987A) where one exists.
 
