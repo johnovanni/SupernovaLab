@@ -88,8 +88,8 @@ public static class Glossary
         "by a factor of 10, so A_V = 30 (toward the Galactic Center) dims it by 10¹². Dust also dims ultraviolet and " +
         "absorbs soft X-rays, but not gravitational waves, neutrinos, gamma rays or radio.";
     public const string Beam =
-        "Whether a jet or a beam points at Earth. A gamma-ray burst's two jets cover a small part of the sky: with jets 5° " +
-        "wide only about 1 observer in 260 sees the burst (signals §9.2). A young pulsar's radio beam sweeps more of the " +
+        "Whether a jet or a beam points at Earth. A gamma-ray burst's two jets cover a small part of the sky: with jets of " +
+        "5° half-opening angle (10° across) only about 1 observer in 260 sees the burst (signals §9.2). A young pulsar's radio beam sweeps more of the " +
         "sky, about half of all directions for a Crab-like pulsar (Tauris & Manchester 1998; signals §8.3).";
     public const string Redshift =
         "Beyond 50 Mpc the expansion of the universe matters: light is stretched to longer wavelengths by a factor 1 + z " +
@@ -172,7 +172,8 @@ public static class Glossary
     public const string Pisn = "Pair-instability supernova: the whole star is destroyed, often making several solar masses of radioactive nickel.";
 
     public const string NeutronStar =
-        "The collapsed core: more than the Sun's mass squeezed into a ball about 12 km across, as dense as an atomic nucleus.";
+        "The collapsed core: more than the Sun's mass squeezed into a ball about 24 km across (radius about 12 km), as dense " +
+        "as an atomic nucleus.";
     public const string Magnetar =
         "A neutron star with an extreme magnetic field, about 10¹⁴–10¹⁵ gauss. As it spins down it can pour energy into the " +
         "ejecta and make the supernova far brighter.";

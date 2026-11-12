@@ -22,7 +22,8 @@ public partial class App : Application
         }
         catch (ArgumentException ex)
         {
-            MessageBox.Show(ex.Message, "SupernovaLab --snapshot", MessageBoxButton.OK, MessageBoxImage.Error);
+            // An unattended diagnostic run must not block on a dialog: report and exit.
+            ReportBadSnapshotArguments(e.Args, ex.Message);
             Shutdown(2);
             return;
         }
@@ -41,5 +42,22 @@ public partial class App : Application
 
         new PlaybackClock(vm.Timeline).Start();
         main.Show();
+    }
+
+    /// <summary>Writes a bad --snapshot argument to stderr, and to snapshot.log when the output directory was given.</summary>
+    private static void ReportBadSnapshotArguments(string[] args, string message)
+    {
+        Console.Error.WriteLine($"SupernovaLab --snapshot: {message}");
+        int at = Array.IndexOf(args, "--snapshot");
+        if (at < 0 || at + 1 >= args.Length || args[at + 1].StartsWith("--", StringComparison.Ordinal)) return;
+        try
+        {
+            System.IO.Directory.CreateDirectory(args[at + 1]);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(args[at + 1], "snapshot.log"), $"ERROR: {message}{Environment.NewLine}");
+        }
+        catch (Exception io) when (io is System.IO.IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            // Nothing more can be reported.
+        }
     }
 }

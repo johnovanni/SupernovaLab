@@ -31,7 +31,6 @@
 
     <res:ConfidenceBrushConverter x:Key="ConfidenceBrush"/>
     <res:ConfidenceTextConverter x:Key="ConfidenceText"/>
-    <res:ConfidenceGlossaryConverter x:Key="ConfidenceGlossary"/>
     <res:GlossaryConverter x:Key="GlossaryText"/>
     <res:FateBrushConverter x:Key="FateBrush"/>
     <res:VisibleWhenConverter x:Key="VisibleWhen"/>
@@ -48,8 +47,8 @@
     </Style>
     <Style TargetType="Expander">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-        <Setter Property="Margin" Value="0,10,0,0"/>
-        <Setter Property="Padding" Value="0,4,0,4"/>
+        <Setter Property="Margin" Value="0,4,0,0"/>
+        <Setter Property="Padding" Value="0,2,0,2"/>
         <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
         <Setter Property="BorderThickness" Value="0,1,0,0"/>
     </Style>
@@ -248,6 +247,59 @@
         </Style.Triggers>
     </Style>
 
+    <!-- A small ▾ picker on a label row: an arrow-only dropdown (e.g. distance landmarks, dust presets). -->
+    <Style x:Key="PickerCombo" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Width" Value="24"/>
+        <Setter Property="Height" Value="18"/>
+        <Setter Property="Margin" Value="6,0,0,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton Focusable="False" ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource PanelBorderBrush}"
+                                            BorderThickness="1" CornerRadius="3">
+                                        <Path HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 4 4 L 8 0 Z"
+                                              Fill="{StaticResource TextBrush}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ControlHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True"
+                               Focusable="False" PopupAnimation="Fade">
+                            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}"
+                                    BorderThickness="1" MinWidth="200" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                <ScrollViewer>
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- "Published" badge for an input row (the preset's distance and dust); the tooltip is set where it is used. -->
+    <Style x:Key="PublishedChip" TargetType="Border">
+        <Setter Property="CornerRadius" Value="3"/>
+        <Setter Property="Padding" Value="4,0,4,1"/>
+        <Setter Property="Margin" Value="6,0,0,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Background" Value="{StaticResource PublishedBrush}"/>
+    </Style>
+
     <Style TargetType="Menu">
         <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
@@ -275,7 +327,7 @@
     <Style x:Key="SectionTitle" TargetType="TextBlock">
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
-        <Setter Property="Margin" Value="0,8,0,3"/>
+        <Setter Property="Margin" Value="0,4,0,2"/>
     </Style>
     <Style x:Key="FieldLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
@@ -309,20 +361,11 @@
         <Setter Property="CornerRadius" Value="6"/>
     </Style>
 
-    <!-- A confidence badge for a QuantityRow (Confidence, Citation, ResearchRef); the tooltip names the source. -->
+    <!-- A confidence badge for a QuantityRow; its tooltip (BadgeToolTip) explains the confidence and names the source. -->
     <DataTemplate x:Key="ConfidenceBadge">
-        <Border CornerRadius="3" Padding="5,0,5,1" VerticalAlignment="Center"
+        <!-- The tooltip binds a ready-made string: a MultiBinding StringFormat into ToolTip.Content (an object) shows nothing. -->
+        <Border CornerRadius="3" Padding="5,0,5,1" VerticalAlignment="Center" ToolTip="{Binding BadgeToolTip}"
                 Background="{Binding Confidence, Converter={StaticResource ConfidenceBrush}}">
-            <Border.ToolTip>
-                <ToolTip>
-                    <ToolTip.Content>
-                        <MultiBinding StringFormat="{}{0}&#x0a;&#x0a;Source: {1}">
-                            <Binding Path="Confidence" Converter="{StaticResource ConfidenceGlossary}"/>
-                            <Binding Path="SourceText"/>
-                        </MultiBinding>
-                    </ToolTip.Content>
-                </ToolTip>
-            </Border.ToolTip>
             <TextBlock Text="{Binding Confidence, Converter={StaticResource ConfidenceText}}" FontSize="10.5"
                        FontWeight="SemiBold" Foreground="{StaticResource BadgeTextBrush}"/>
         </Border>
@@ -332,17 +375,7 @@
     <DataTemplate x:Key="PublishedBadge">
         <Border CornerRadius="3" Padding="5,0,5,1" Margin="4,0,0,0" VerticalAlignment="Center"
                 Background="{StaticResource PublishedBrush}"
-                Visibility="{Binding Published, Converter={StaticResource VisibleWhen}}">
-            <Border.ToolTip>
-                <ToolTip>
-                    <ToolTip.Content>
-                        <MultiBinding StringFormat="{}{0}&#x0a;&#x0a;Source: {1}">
-                            <Binding Source="{x:Static text:Glossary.PublishedValue}"/>
-                            <Binding Path="SourceText"/>
-                        </MultiBinding>
-                    </ToolTip.Content>
-                </ToolTip>
-            </Border.ToolTip>
+                Visibility="{Binding Published, Converter={StaticResource VisibleWhen}}" ToolTip="{Binding PublishedToolTip}">
             <TextBlock Text="Published" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource BadgeTextBrush}"/>
         </Border>
     </DataTemplate>

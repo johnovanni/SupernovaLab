@@ -36,20 +36,6 @@ public sealed class ConfidenceTextConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
-/// <summary>Confidence → its glossary explanation, for the badge's tooltip header.</summary>
-public sealed class ConfidenceGlossaryConverter : IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value switch
-    {
-        Confidence.Established => Glossary.Established,
-        Confidence.ModelDependent => Glossary.ModelDependent,
-        Confidence.Speculative => Glossary.Speculative,
-        _ => "",
-    };
-
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
-}
-
 /// <summary>A glossary key (from a view model) → its text.</summary>
 public sealed class GlossaryConverter : IValueConverter
 {

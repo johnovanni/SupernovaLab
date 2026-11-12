@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core"
         Title="Outcome details" Width="820" Height="720" MinWidth="560" MinHeight="400"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" TextOptions.TextFormattingMode="Display"
         Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}" FontSize="13">
     <!-- DataContext: the shared MainViewModel. Every quantity of the outcome with its badge, range and source (spec §3). -->
     <Window.Resources>
@@ -27,7 +27,7 @@
                 <TextBlock TextWrapping="Wrap" ToolTip="{Binding GlossaryKey, Converter={StaticResource GlossaryText}}">
                     <Run Text="{Binding Label, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/>
                     <Run Text="  "/>
-                    <Run Text="{Binding ValueText, Mode=OneWay}" FontWeight="SemiBold"/>
+                    <Run Text="{Binding ValueNumber, Mode=OneWay}" FontWeight="SemiBold"/><Run Text="{Binding ValueUnit, Mode=OneWay}"/>
                 </TextBlock>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="8,1,0,0">
                     <ContentPresenter ContentTemplate="{StaticResource PublishedBadge}" Content="{Binding}"/>
@@ -37,12 +37,9 @@
                            Visibility="{Binding RangeText, Converter={StaticResource VisibleWhen}}">
                     <Run Text="Range: "/><Run Text="{Binding RangeText, Mode=OneWay}"/>
                 </TextBlock>
-                <!-- A preset's pinned values share the citation given once at the top. -->
-                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding SourceText}" Style="{StaticResource Muted}"
-                           Visibility="{Binding Published, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
-                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="Published value: the source is given at the top of this window."
-                           Style="{StaticResource Muted}" ToolTip="{Binding SourceText}"
-                           Visibility="{Binding Published, Converter={StaticResource VisibleWhen}}"/>
+                <!-- Pinned values share the citation given once at the top; drawn-curve rows the one under their heading. -->
+                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding SourceLine}" Style="{StaticResource Muted}"
+                           ToolTip="{Binding SourceText}"/>
             </Grid>
         </DataTemplate>
     </Window.Resources>
@@ -51,10 +48,10 @@
         <StackPanel DockPanel.Dock="Top" DataContext="{Binding Outcome}">
             <TextBlock FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap">
                 <Run Text="{Binding TypeText, Mode=OneWay}" ToolTip="{Binding TypeToolTip}"/>
-                <Run Text=" · " Foreground="{StaticResource MutedBrush}"/>
-                <Run Text="{Binding FateText, Mode=OneWay}" ToolTip="{Binding FateToolTip}" FontSize="16" FontWeight="Normal"/>
-                <Run Text=" · " Foreground="{StaticResource MutedBrush}"/>
-                <Run Text="{Binding RemnantText, Mode=OneWay}" ToolTip="{Binding RemnantToolTip}" FontSize="16" FontWeight="Normal"/>
+                <Run Text=" · " Foreground="{StaticResource MutedBrush}"/><Run Text="{Binding FateText, Mode=OneWay}"
+                     ToolTip="{Binding FateToolTip}" FontSize="16" FontWeight="Normal"/><Run Text="{Binding FateSeparator, Mode=OneWay}"
+                     Foreground="{StaticResource MutedBrush}" FontSize="16" FontWeight="Normal"/><Run Text="{Binding RemnantText, Mode=OneWay}"
+                     ToolTip="{Binding RemnantToolTip}" FontSize="16" FontWeight="Normal"/>
             </TextBlock>
             <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
             <TextBlock Text="{Binding PublishedText}" Style="{StaticResource Muted}" Foreground="{StaticResource PublishedBrush}"
@@ -86,6 +83,7 @@
                 <StackPanel Visibility="{Binding Outcome.CurveRows, Converter={StaticResource VisibleWhen}}">
                     <TextBlock Text="From the drawn light curve" Style="{StaticResource SectionTitle}"
                                ToolTip="{x:Static text:Glossary.PeakBrightness}"/>
+                    <TextBlock Text="{Binding Outcome.CurveSourceText}" Style="{StaticResource Muted}" Margin="0,0,0,2"/>
                     <ItemsControl ItemsSource="{Binding Outcome.CurveRows}" ItemTemplate="{StaticResource DetailRow}"/>
                 </StackPanel>
 

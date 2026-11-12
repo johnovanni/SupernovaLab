@@ -8,14 +8,24 @@ using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.App.ViewModels;
 
-/// <summary>What changed in the lab: a preset was applied, or an input was edited (which drops a preset's pins).</summary>
-public sealed class LabChangedEventArgs(Preset? appliedPreset, string? droppedPresetName) : EventArgs
+/// <summary>
+/// What changed in the lab: a preset was applied, a star input was edited (which drops a preset and its pins), or an
+/// observer input was edited (which keeps the explosion pins but leaves the preset's observed distance and dust, R49).
+/// </summary>
+public sealed class LabChangedEventArgs(Preset? appliedPreset, string? droppedPresetName, string? observerLeftPresetName = null)
+    : EventArgs
 {
     /// <summary>The preset just applied, or null for an input edit.</summary>
     public Preset? AppliedPreset { get; } = appliedPreset;
 
     /// <summary>The name of the preset whose published values this edit dropped, or null.</summary>
     public string? DroppedPresetName { get; } = droppedPresetName;
+
+    /// <summary>
+    /// The name of the preset whose published distance and dust this observer edit left behind (its explosion values
+    /// still apply), or null.
+    /// </summary>
+    public string? ObserverLeftPresetName { get; } = observerLeftPresetName;
 }
 
 /// <summary>A labelled value for the preset-info window: a published pin or an observed fact.</summary>
@@ -26,17 +36,18 @@ public sealed record InfoRow(string Label, string Value, string Citation, string
 
 /// <summary>
 /// The lab's inputs (spec §2): the star (§2.1), the observer (§2.2) and the presets (§2.3). Any edit raises
-/// <see cref="Changed"/> once. Ruling R44/R47e: a preset applies its inputs and pins; editing any input afterwards drops
-/// the preset (and with it the pins), and the change says so.
+/// <see cref="Changed"/> once. Rulings R44/R47e/R49: a preset applies its inputs, observer and pins. Editing a star or
+/// explosion input afterwards drops the preset and all its pins. Editing only the observer (distance, dust, beam) keeps
+/// the preset and its explosion pins, but the observer is no longer the real one. Each change says which happened.
 /// </summary>
 public sealed partial class LabViewModel : ObservableObject
 {
     /// <summary>Distances on the observer slider: 10 pc to 1 Gpc (spec §2.2).</summary>
     public const double MinDistancePc = 10, MaxDistancePc = 1e9;
     public const double MaxAv = 30;
-    private const double KCorrectionPc = 50e6;
 
     private bool _applying;
+    private bool _observerIsPublished;
 
     public LabViewModel() : this(PresetCatalog.LoadEmbedded()) { }
 
@@ -73,7 +84,7 @@ public sealed partial class LabViewModel : ObservableObject
 
     /// <summary>
     /// The chosen real supernova. Setting it applies its inputs, observer and pins at once (one <see cref="Changed"/>).
-    /// It returns to null when any input is edited afterwards (ruling R47e).
+    /// It returns to null when a star input is edited afterwards (ruling R47e); an observer edit keeps it (R49).
     /// </summary>
     public Preset? SelectedPreset
     {
@@ -92,7 +103,7 @@ public sealed partial class LabViewModel : ObservableObject
         }
     }
 
-    /// <summary>The selected preset's published values, or null (no preset, or the inputs were edited).</summary>
+    /// <summary>The selected preset's published explosion values, or null (no preset, or a star input was edited).</summary>
     public PresetPins? Pins => _selectedPreset?.Pins;
 
     public bool HasPreset => _selectedPreset is not null;
@@ -100,13 +111,15 @@ public sealed partial class LabViewModel : ObservableObject
     private void SetPreset(Preset? preset)
     {
         _selectedPreset = preset;
+        _observerIsPublished = preset is not null;
         OnPropertyChanged(nameof(SelectedPreset));
         OnPropertyChanged(nameof(HasPreset));
-        OnPropertyChanged(nameof(ObserverSourceText));
-        OnPropertyChanged(nameof(ObserverSourceNote));
+        NotifyObserverSource();
         OnPropertyChanged(nameof(PresetPinRows));
         OnPropertyChanged(nameof(PresetPinSourceText));
         OnPropertyChanged(nameof(PresetFactRows));
+        OnPropertyChanged(nameof(PresetObserverText));
+        OnPropertyChanged(nameof(PresetObserverSourceText));
     }
 
     private void Apply(Preset p)
@@ -139,7 +152,7 @@ public sealed partial class LabViewModel : ObservableObject
         Changed?.Invoke(this, new LabChangedEventArgs(p, null));
     }
 
-    /// <summary>An input was edited: drop the preset (its pins no longer apply) and report the change once.</summary>
+    /// <summary>A star or explosion input was edited: drop the preset and all its pins, and report the change once.</summary>
     private void Edited()
     {
         if (_applying) return;
@@ -148,13 +161,54 @@ public sealed partial class LabViewModel : ObservableObject
         Changed?.Invoke(this, new LabChangedEventArgs(null, dropped));
     }
 
-    /// <summary>A short line under the observer inputs when a preset set them; null without a preset.</summary>
-    public string? ObserverSourceNote => _selectedPreset?.ObserverSource is not null
-        ? $"Distance and dust: published values for {_selectedPreset.Name} (hover for the source)."
+    /// <summary>
+    /// Ruling R49: an observer input was edited. The preset and its explosion pins stay; its published distance and dust
+    /// no longer describe the lab's observer. Reported once.
+    /// </summary>
+    private void ObserverEdited()
+    {
+        if (_applying) return;
+        string? left = null;
+        if (_selectedPreset is not null && _observerIsPublished)
+        {
+            _observerIsPublished = false;
+            left = _selectedPreset.Name;
+            NotifyObserverSource();
+        }
+        Changed?.Invoke(this, new LabChangedEventArgs(null, null, left));
+    }
+
+    private void NotifyObserverSource()
+    {
+        OnPropertyChanged(nameof(IsObserverPublished));
+        OnPropertyChanged(nameof(ObserverSourceText));
+        OnPropertyChanged(nameof(ObserverChangedNote));
+    }
+
+    /// <summary>True while the observer is the selected preset's published one.</summary>
+    public bool IsObserverPublished => _selectedPreset is not null && _observerIsPublished;
+
+    /// <summary>The source of the preset's distance and dust while they are in use (the badge's tooltip); null otherwise.</summary>
+    public string? ObserverSourceText => IsObserverPublished && _selectedPreset!.ObserverSource is { } s
+        ? $"Published distance and dust of {_selectedPreset.Name}.\n\nSource: {s.Citation} ({s.ResearchRef})"
         : null;
 
-    /// <summary>The source of the preset's distance and dust; null without a preset.</summary>
-    public string? ObserverSourceText => _selectedPreset?.ObserverSource is { } s ? $"{s.Citation} ({s.ResearchRef})" : null;
+    /// <summary>For the Preset info window: the preset's real distance and dust.</summary>
+    public string? PresetObserverText => _selectedPreset is { } p
+        ? $"{UnitFormat.Distance(p.Observer.DistancePc * PhysicalConstants.Pc)}, " +
+          $"A_V = {p.Observer.Av.ToString("0.0#", System.Globalization.CultureInfo.InvariantCulture)} mag"
+        : null;
+
+    /// <summary>The source of the preset's real distance and dust, or null.</summary>
+    public string? PresetObserverSourceText => _selectedPreset?.ObserverSource is { } s
+        ? $"Source: {s.Citation} ({s.ResearchRef})"
+        : null;
+
+    /// <summary>Ruling R49: shown when a preset is selected but its observer was changed; null otherwise.</summary>
+    public string? ObserverChangedNote => _selectedPreset is not null && !_observerIsPublished
+        ? "The lab's observer has been moved: the explosion still uses the published values, but it is now seen from a " +
+          "different distance, through different dust or along a different line of sight than it really was."
+        : null;
 
     /// <summary>The published values the selected preset pins, for the Preset info window.</summary>
     public IReadOnlyList<InfoRow> PresetPinRows => _selectedPreset?.Pins is { } pins ? PinRows(pins) : Array.Empty<InfoRow>();
@@ -166,10 +220,21 @@ public sealed partial class LabViewModel : ObservableObject
 
     /// <summary>What was measured for the selected preset, with citations, for the Preset info window.</summary>
     public IReadOnlyList<InfoRow> PresetFactRows => _selectedPreset is { } p
-        ? p.Facts.Select(f => new InfoRow(f.Description,
-            FactValue(f.Value, f.Unit) + (f.SourceTimeS is double t ? $", {UnitFormat.Time(t)} after the explosion" : ""),
+        ? p.Facts.Select(f => new InfoRow(f.Description, FactValue(f.Value, f.Unit) + FactTime(f),
             f.Source.Citation, f.Source.ResearchRef)).ToList()
         : Array.Empty<InfoRow>();
+
+    /// <summary>
+    /// When a fact was measured: a count accumulates "in the first 12.4 s"; a value averaged over a window has no single
+    /// time (its description gives the window); otherwise "at 84.5 days after the explosion".
+    /// </summary>
+    internal static string FactTime(ObservedFact f)
+    {
+        if (f.SourceTimeS is not double t) return "";
+        if (f.ChannelId.StartsWith("cumulative", StringComparison.Ordinal)) return $" in the first {UnitFormat.Time(t)}";
+        if (f.Description.Contains("averag", StringComparison.OrdinalIgnoreCase)) return "";
+        return $" at {UnitFormat.Time(t)} after the explosion";
+    }
 
     /// <summary>
     /// A measured value with its unit, as published: masses and energies in the outcome's formats (three figures),
@@ -226,7 +291,7 @@ public sealed partial class LabViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(InitialMassLog), nameof(InitialMassText))]
+    [NotifyPropertyChangedFor(nameof(InitialMassLog), nameof(InitialMassNumber))]
     private double _initialMass;
 
     /// <summary>The log slider's position: log10 of the initial mass, rounded to three significant figures when set.</summary>
@@ -236,7 +301,8 @@ public sealed partial class LabViewModel : ObservableObject
         set => InitialMass = Math.Clamp(RoundSig(Math.Pow(10, value)), LabInputs.MinInitialMass, LabInputs.MaxInitialMass);
     }
 
-    public string InitialMassText => UnitFormat.Mass(InitialMass);
+    /// <summary>The mass without its unit; the view draws "M☉" at normal weight beside it.</summary>
+    public string InitialMassNumber => UnitFormat.Number(InitialMass);
     public double MinInitialMassLog => Math.Log10(LabInputs.MinInitialMass);
     public double MaxInitialMassLog => Math.Log10(LabInputs.MaxInitialMass);
 
@@ -259,19 +325,28 @@ public sealed partial class LabViewModel : ObservableObject
     [ObservableProperty] private CoreField _field;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWhiteDwarfMassEnabled), nameof(WhiteDwarfMassText))]
+    [NotifyPropertyChangedFor(nameof(IsWhiteDwarfMassEnabled), nameof(WhiteDwarfMassNumber), nameof(WhiteDwarfMassSlider))]
     private TypeIaChannel _iaChannel;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WhiteDwarfMassText))]
+    [NotifyPropertyChangedFor(nameof(WhiteDwarfMassNumber), nameof(WhiteDwarfMassSlider))]
     private double _whiteDwarfMass;
 
     /// <summary>The white-dwarf mass is fixed at 1.38 M☉ for the near-Chandrasekhar channel (spec §2.1).</summary>
     public bool IsWhiteDwarfMassEnabled => IaChannel != TypeIaChannel.NearChandrasekhar;
 
-    public string WhiteDwarfMassText => UnitFormat.Mass(IaChannel == TypeIaChannel.NearChandrasekhar
-        ? LabInputs.MaxWhiteDwarfMass
-        : WhiteDwarfMass);
+    /// <summary>The mass in use (1.38 when fixed), without its unit.</summary>
+    public string WhiteDwarfMassNumber => UnitFormat.Number(WhiteDwarfMassSlider);
+
+    /// <summary>The slider's value: the mass in use, so the disabled near-Chandrasekhar slider shows 1.38.</summary>
+    public double WhiteDwarfMassSlider
+    {
+        get => IaChannel == TypeIaChannel.NearChandrasekhar ? LabInputs.MaxWhiteDwarfMass : WhiteDwarfMass;
+        set
+        {
+            if (IaChannel != TypeIaChannel.NearChandrasekhar) WhiteDwarfMass = value;
+        }
+    }
 
     // ---------------------------------------------------------------- advanced (uncertain physics)
 
@@ -296,8 +371,8 @@ public sealed partial class LabViewModel : ObservableObject
     // ---------------------------------------------------------------- the observer (spec §2.2)
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DistanceLog), nameof(DistanceText), nameof(KCorrectionNote), nameof(RedshiftText),
-        nameof(IsDistanceLandmark))]
+    [NotifyPropertyChangedFor(nameof(DistanceLog), nameof(DistanceText), nameof(DistanceShortText), nameof(KCorrectionNote),
+        nameof(RedshiftText))]
     private double _distancePc;
 
     public double DistanceLog
@@ -310,6 +385,22 @@ public sealed partial class LabViewModel : ObservableObject
     public double MaxDistanceLog => Math.Log10(MaxDistancePc);
     public string DistanceText => UnitFormat.Distance(DistancePc * PhysicalConstants.Pc);
 
+    /// <summary>"51.4 kpc · 168,000 ly", short enough for the label row; the tooltip has <see cref="DistanceText"/>.</summary>
+    public string DistanceShortText
+    {
+        get
+        {
+            string pc = DistanceText;
+            int paren = pc.IndexOf(" (", StringComparison.Ordinal);
+            if (paren > 0) pc = pc[..paren];
+            double ly = DistancePc * PhysicalConstants.Pc / (PhysicalConstants.C * PhysicalConstants.Year);
+            string lyText = ly >= 1e9 ? $"{UnitFormat.Number(ly / 1e9)} billion"
+                : ly >= 1e6 ? $"{UnitFormat.Number(ly / 1e6)} million"
+                : UnitFormat.Number(ly);
+            return $"{pc} · {lyText} ly";
+        }
+    }
+
     /// <summary>The landmark distances of spec §2.2, for the "jump to" dropdown and the slider's ticks.</summary>
     public IReadOnlyList<Choice<double>> DistanceLandmarks { get; } = new Choice<double>[]
     {
@@ -321,11 +412,8 @@ public sealed partial class LabViewModel : ObservableObject
         new(16.5e6, "Virgo Cluster (16.5 Mpc)"),
     };
 
-    /// <summary>Whether the distance is one of the landmarks (the dropdown then shows it).</summary>
-    public bool IsDistanceLandmark => DistanceLandmarks.Any(l => l.Value == DistancePc);
-
     /// <summary>Spec §2.2: above 50 Mpc the app says the K-correction is not modeled; null below.</summary>
-    public string? KCorrectionNote => DistancePc > KCorrectionPc
+    public string? KCorrectionNote => Observer.Redshift > 0
         ? "Beyond 50 Mpc the shift of light between bands (K-correction) is not modeled."
         : null;
 
@@ -343,7 +431,7 @@ public sealed partial class LabViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(AvText), nameof(IsDustPreset))]
+    [NotifyPropertyChangedFor(nameof(AvText))]
     private double _av;
 
     public string AvText => $"A_V = {Av.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} mag";
@@ -356,9 +444,6 @@ public sealed partial class LabViewModel : ObservableObject
         new(2, "Across the Galactic disk (2)"),
         new(30, "Toward the Galactic Center (30)"),
     };
-
-    /// <summary>Whether A_V is one of the dust presets (the dropdown then shows it).</summary>
-    public bool IsDustPreset => DustPresets.Any(d => d.Value == Av);
 
     [ObservableProperty] private bool _beamTowardEarth;
 
@@ -407,7 +492,7 @@ public sealed partial class LabViewModel : ObservableObject
 
     public ObserverSetup Observer => new(DistancePc, Av, BeamTowardEarth);
 
-    // Every input edit goes through Edited (ruling R47e).
+    // Every star or explosion input edit goes through Edited (ruling R47e).
     partial void OnKindChanged(StarKind value) => Edited();
     partial void OnInitialMassChanged(double value) => Edited();
     partial void OnMetallicityChanged(double value) => Edited();
@@ -420,9 +505,10 @@ public sealed partial class LabViewModel : ObservableObject
     partial void OnYieldChanged(NickelYield value) => Edited();
     partial void OnDenseCsmChanged(bool value) => Edited();
     partial void OnOpacityChanged(double value) => Edited();
-    partial void OnDistancePcChanged(double value) => Edited();
-    partial void OnAvChanged(double value) => Edited();
-    partial void OnBeamTowardEarthChanged(bool value) => Edited();
+    // Ruling R49: observer edits keep the explosion pins.
+    partial void OnDistancePcChanged(double value) => ObserverEdited();
+    partial void OnAvChanged(double value) => ObserverEdited();
+    partial void OnBeamTowardEarthChanged(bool value) => ObserverEdited();
 
     /// <summary>Rounds to three significant figures, so slider values read as plain numbers (16.2, not 16.2183…).</summary>
     internal static double RoundSig(double v)

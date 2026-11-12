@@ -148,13 +148,20 @@ public static class OutcomeTexts
             Fate.PulsationalPairInstability =>
                 "Pair-instability pulses throw off shells of gas, and then the core collapses to a black hole.",
             Fate.Supernova when thermonuclear =>
-                $"Runaway carbon burning blows the white dwarf apart in a {TypeName(o.Type)} supernova, {leaves}.",
+                $"Runaway carbon burning blows the white dwarf apart in {TypePhrase(o.Type)}, {leaves}.",
             Fate.Supernova =>
-                $"The core collapses and the star explodes as a {TypeName(o.Type)} supernova, {leaves}" +
+                $"The core collapses and the star explodes as {TypePhrase(o.Type)}, {leaves}" +
                 (o.HasGrb ? ", and its jets launch a long gamma-ray burst." : "."),
             _ => throw new ArgumentOutOfRangeException(nameof(o)),
         };
     }
+
+    /// <summary>"a Type II-P supernova"; superluminous classes read "an SLSN-I (superluminous supernova)".</summary>
+    private static string TypePhrase(SupernovaType type) => type switch
+    {
+        SupernovaType.SlsnI or SupernovaType.SlsnII => $"an {TypeName(type)} (superluminous supernova)",
+        _ => $"a {TypeName(type)} supernova",
+    };
 
     /// <summary>
     /// Whether an engine note says an input had no effect (spec §9: such a note is shown in the outcome card). It matches

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -20,13 +21,17 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo }
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
-/// [--window main|instruments|details|presetinfo]</c>. To batch captures into one launch, <c>--size</c> and
-/// <c>--window</c> may be repeated or given comma-separated lists. Sizes apply to the main window (its outer size, as a
-/// user would set it); the other windows render at their own default size.
+/// [--window main|instruments|details|presetinfo]</c>. To batch captures into one launch, <c>--preset</c>,
+/// <c>--size</c> and <c>--window</c> may be repeated or given comma-separated lists: every requested window is captured
+/// for each preset in turn. Sizes apply to the main window (its outer size, as a user would set it); the other windows
+/// render at their own default size, and again scrolled to the end when they scroll.
 /// </summary>
-public sealed record SnapshotRequest(string OutDirectory, string? PresetId, double? ObserverTimeS,
+public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows)
 {
+    /// <summary>The first preset, or null for the lab's defaults.</summary>
+    public string? PresetId => PresetIds.Count > 0 ? PresetIds[0] : null;
+
     /// <summary>The request in these command-line arguments; null without <c>--snapshot</c>. Throws <see cref="ArgumentException"/> for bad arguments.</summary>
     public static SnapshotRequest? Parse(IReadOnlyList<string> args)
     {
@@ -36,7 +41,7 @@ public sealed record SnapshotRequest(string OutDirectory, string? PresetId, doub
             throw new ArgumentException("--snapshot needs an output directory.");
 
         string outDir = args[at + 1];
-        string? preset = null;
+        var presets = new List<string>();
         double? time = null;
         var sizes = new List<SnapshotSize>();
         var windows = new List<SnapshotWindow>();
@@ -49,7 +54,7 @@ public sealed record SnapshotRequest(string OutDirectory, string? PresetId, doub
             switch (option)
             {
                 case "--preset":
-                    preset = value;
+                    presets.AddRange(value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
                     break;
                 case "--time":
                     if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double t) || !(t > 0))
@@ -68,7 +73,7 @@ public sealed record SnapshotRequest(string OutDirectory, string? PresetId, doub
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, preset, time, sizes, windows);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows);
     }
 
     private static SnapshotSize ParseSize(string text)
@@ -94,7 +99,8 @@ public sealed record SnapshotRequest(string OutDirectory, string? PresetId, doub
 /// <summary>
 /// Renders windows to PNG with <see cref="RenderTargetBitmap"/> (ruling R19: never a screen capture). The windows are
 /// placed off-screen, laid out, given one rendered frame, drawn into a bitmap at 96 dpi, written to the output directory
-/// and closed; then the app exits. A log of what was written goes to snapshot.log in the same directory.
+/// and closed; then the app exits, with exit code 1 if anything failed. A log of what was written (and any error) goes
+/// to snapshot.log in the same directory.
 /// </summary>
 public static class SnapshotRenderer
 {
@@ -102,44 +108,80 @@ public static class SnapshotRenderer
     {
         Directory.CreateDirectory(request.OutDirectory);
         var log = new List<string> { $"SupernovaLab snapshot {DateTime.Now:O}" };
+        int exitCode = 0;
         try
         {
-            if (request.PresetId is { } id) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
-            if (request.ObserverTimeS is double t) vm.Timeline.ObserverTimeS = t;
-            string suffix = request.PresetId is { } p ? $"-{p}" : "";
-
             PlaceOffScreen(main);
             main.Show();
-            foreach (var kind in request.Windows)
+            var presets = request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
+            foreach (string? id in presets)
             {
-                if (kind == SnapshotWindow.Main)
-                {
-                    foreach (var size in request.Sizes)
-                    {
-                        main.Width = size.Width;
-                        main.Height = size.Height;
-                        await NextFrame(main);
-                        log.Add(Save(main, Path.Combine(request.OutDirectory, $"main{suffix}-{size}.png")));
-                    }
-                    continue;
-                }
-
-                Window? window = Open(kind, windows);
-                if (window is null) { log.Add($"{kind}: no window opened"); continue; }
-                PlaceOffScreen(window);
-                await NextFrame(window);
-                log.Add(Save(window, Path.Combine(request.OutDirectory, $"{kind.ToString().ToLowerInvariant()}{suffix}.png")));
+                if (id is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
+                if (request.ObserverTimeS is double t) vm.Timeline.ObserverTimeS = t;
+                string suffix = id is null ? "" : $"-{id}";
+                await Capture(request, main, windows, suffix, log);
             }
         }
         catch (Exception e)
         {
             log.Add($"ERROR: {e}");
+            exitCode = 1;
         }
         finally
         {
             File.WriteAllLines(Path.Combine(request.OutDirectory, "snapshot.log"), log);
-            Application.Current.Shutdown();
+            Application.Current.Shutdown(exitCode);
         }
+    }
+
+    /// <summary>The requested windows for the current preset: the main window at each size, the others top and end.</summary>
+    private static async Task Capture(SnapshotRequest request, Window main, WindowService windows, string suffix, List<string> log)
+    {
+        foreach (var kind in request.Windows)
+        {
+            if (kind == SnapshotWindow.Main)
+            {
+                foreach (var size in request.Sizes)
+                {
+                    main.Width = size.Width;
+                    main.Height = size.Height;
+                    await NextFrame(main);
+                    log.Add(Save(main, Path.Combine(request.OutDirectory, $"main{suffix}-{size}.png")));
+                }
+                continue;
+            }
+
+            Window? window = Open(kind, windows);
+            if (window is null) { log.Add($"{kind}: no window opened"); continue; }
+            PlaceOffScreen(window);
+            string name = $"{kind.ToString().ToLowerInvariant()}{suffix}";
+            var scroller = MainScrollViewer(window);
+            scroller?.ScrollToHome();
+            await NextFrame(window);
+            log.Add(Save(window, Path.Combine(request.OutDirectory, $"{name}.png")));
+            if (scroller is { ScrollableHeight: > 0 })
+            {
+                scroller.ScrollToEnd();
+                await NextFrame(window);
+                log.Add(Save(window, Path.Combine(request.OutDirectory, $"{name}-end.png")));
+                scroller.ScrollToHome();
+            }
+        }
+    }
+
+    /// <summary>The window's tallest scroll viewer (its main content), or null.</summary>
+    private static ScrollViewer? MainScrollViewer(DependencyObject root)
+    {
+        ScrollViewer? best = null;
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is ScrollViewer sv && (best is null || sv.ExtentHeight > best.ExtentHeight)) best = sv;
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++) stack.Push(VisualTreeHelper.GetChild(node, i));
+        }
+        return best;
     }
 
     private static Window? Open(SnapshotWindow kind, WindowService windows)

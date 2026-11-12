@@ -65,9 +65,17 @@ public sealed partial class MainViewModel : ObservableObject
         private set => SetProperty(ref _currentObserver, value);
     }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(RunText))]
     private int _runNumber = 1;
+
+    /// <summary>The seed of EventSampler (spec §2.4); Re-roll increments it.</summary>
+    public int RunNumber
+    {
+        get => _runNumber;
+        private set
+        {
+            if (SetProperty(ref _runNumber, value)) OnPropertyChanged(nameof(RunText));
+        }
+    }
 
     /// <summary>"Run #1": the seed of the displayed random events (spec §2.4).</summary>
     public string RunText => $"Run #{RunNumber}";
@@ -94,6 +102,9 @@ public sealed partial class MainViewModel : ObservableObject
             StatusMessage = $"{p.Name}: the lab is set to its best match, with its published values pinned.";
         else if (e.DroppedPresetName is { } name)
             StatusMessage = $"Inputs changed, so {name}'s published values no longer apply: the lab shows its own model.";
+        else if (e.ObserverLeftPresetName is { } moved)
+            StatusMessage = $"Observer changed: {moved}'s published explosion values still apply, but this is no longer " +
+                            "the distance and dust it was really seen at.";
 
         CurrentOutcome = Recompute();
         CurrentObserver = Lab.Observer;

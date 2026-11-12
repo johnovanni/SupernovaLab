@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core"
         Title="Preset info" Width="720" Height="680" MinWidth="480" MinHeight="360"
-        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" TextOptions.TextFormattingMode="Display"
         Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}" FontSize="13">
     <!-- DataContext: the shared MainViewModel. The selected preset's story, measurements and published values (spec §2.3, §5.0). -->
     <Window.Resources>
@@ -51,11 +51,11 @@
                            Visibility="{Binding Lab.PresetPinSourceText, Converter={StaticResource VisibleWhen}}"/>
 
                 <TextBlock Text="Distance and dust" Style="{StaticResource SectionTitle}" ToolTip="{x:Static text:Glossary.ObserverSource}"/>
-                <TextBlock TextWrapping="Wrap">
-                    <Run Text="{Binding Lab.DistanceText, Mode=OneWay}" FontWeight="SemiBold"/><Run Text=", "/><Run
-                         Text="{Binding Lab.AvText, Mode=OneWay}" FontWeight="SemiBold"/>
-                </TextBlock>
-                <TextBlock Text="{Binding Lab.ObserverSourceText}" Style="{StaticResource Muted}"/>
+                <TextBlock Text="{Binding Lab.PresetObserverText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Lab.PresetObserverSourceText}" Style="{StaticResource Muted}"/>
+                <!-- Ruling R49: the observer was moved; the explosion values still apply. -->
+                <TextBlock Text="{Binding Lab.ObserverChangedNote}" Style="{StaticResource Warning}" Margin="0,4,0,0"
+                           Visibility="{Binding Lab.ObserverChangedNote, Converter={StaticResource VisibleWhen}}"/>
             </StackPanel>
         </ScrollViewer>
     </Grid>

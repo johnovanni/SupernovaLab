@@ -92,7 +92,7 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Margin="0,1,9,1">
+                        <StackPanel Orientation="Horizontal" Margin="0,1,9,1" Background="Transparent" ToolTip="{Binding ToolTip}">
                             <Rectangle Width="10" Height="10" Fill="{Binding Fate, Converter={StaticResource FateBrush}}"
                                        VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding Label}" Style="{StaticResource Muted}" FontSize="10.5" Margin="3,0,0,0"/>

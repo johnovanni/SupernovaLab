@@ -18,6 +18,7 @@ public class SnapshotRequestTests
 
         Assert.Equal(@"C:\out", r.OutDirectory);
         Assert.Null(r.PresetId);
+        Assert.Empty(r.PresetIds);
         Assert.Null(r.ObserverTimeS);
         Assert.Equal(new[] { new SnapshotSize(1366, 768) }, r.Sizes);
         Assert.Equal(new[] { SnapshotWindow.Main }, r.Windows);
@@ -46,8 +47,10 @@ public class SnapshotRequestTests
         {
             "--snapshot", "out", "--size", "1366x768,1920x1080", "--size", "1366X728",
             "--window", "main,details", "--window", "presetinfo", "--window", "instruments",
+            "--preset", "sn1987a,sn2011fe", "--preset", "sn1998bw",
         })!;
 
+        Assert.Equal(new[] { "sn1987a", "sn2011fe", "sn1998bw" }, r.PresetIds);
         Assert.Equal(new[] { new SnapshotSize(1366, 768), new SnapshotSize(1920, 1080), new SnapshotSize(1366, 728) }, r.Sizes);
         Assert.Equal(new[] { SnapshotWindow.Main, SnapshotWindow.Details, SnapshotWindow.PresetInfo, SnapshotWindow.Instruments },
             r.Windows);

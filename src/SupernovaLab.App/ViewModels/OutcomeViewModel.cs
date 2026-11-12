@@ -22,6 +22,50 @@ public sealed record QuantityRow(string Group, string Label, string GlossaryKey,
     public string ResearchRef => Quantity.Source.ResearchRef;
     public string SourceText => $"{Citation} ({ResearchRef})";
 
+    /// <summary>The confidence badge's tooltip: what the confidence means, then the source (a string, so it shows).</summary>
+    public string BadgeToolTip => $"{ConfidenceText(Confidence)}{Environment.NewLine}{Environment.NewLine}Source: {SourceText}";
+
+    /// <summary>The "Published" badge's tooltip: what a published value is, then its paper.</summary>
+    public string PublishedToolTip => $"{Glossary.PublishedValue}{Environment.NewLine}{Environment.NewLine}Source: {SourceText}";
+
+    /// <summary>
+    /// <see cref="ValueText"/> split into its number and its unit, so the view can draw the unit (e.g. "M☉") at normal
+    /// weight: the unit is the last word when it has no digit ("1.1 × 10⁵¹" + "erg"); otherwise there is no unit
+    /// ("M_V −15.81").
+    /// </summary>
+    public string ValueNumber => SplitUnit(ValueText).Number;
+
+    /// <inheritdoc cref="ValueNumber"/>
+    public string ValueUnit => SplitUnit(ValueText).Unit;
+
+    private static (string Number, string Unit) SplitUnit(string text)
+    {
+        // A unit is a last word without digits that follows a word with digits ("10⁵¹ erg"), not prose ("naked eye").
+        int space = text.LastIndexOf(' ');
+        if (space <= 0 || text[(space + 1)..].Any(char.IsDigit)) return (text, "");
+        int before = text.LastIndexOf(' ', space - 1);
+        if (!text[(before + 1)..space].Any(char.IsDigit)) return (text, "");
+        return (text[..space], text[space..]);
+    }
+
+    /// <summary>
+    /// When true, the row shares a source listed once under its heading (the drawn light curve's), so the details window
+    /// shows a short pointer instead of repeating it; the badge tooltip still gives the full source.
+    /// </summary>
+    public bool SharedSource { get; init; }
+
+    /// <summary>The details window's source line: the full source, or a pointer to where a shared source is given.</summary>
+    public string SourceLine => Published ? "Published value: the source is given at the top of this window."
+        : SharedSource ? "Source: given under this heading."
+        : SourceText;
+
+    private static string ConfidenceText(Confidence c) => c switch
+    {
+        Confidence.Established => Glossary.Established,
+        Confidence.ModelDependent => Glossary.ModelDependent,
+        _ => Glossary.Speculative,
+    };
+
     public static QuantityRow From(OutcomeQuantity q) => new(q.Group, q.Label, q.GlossaryKey, q.Quantity, OutcomeTexts.Format(q.Quantity));
 }
 
@@ -32,7 +76,10 @@ public sealed record MapSegment(double Start, double End, Fate Fate, RemnantKind
 }
 
 /// <summary>A fate shown on the outcome map, for its legend.</summary>
-public sealed record MapLegendItem(Fate Fate, string Label);
+public sealed record MapLegendItem(Fate Fate, string Label)
+{
+    public string ToolTip => Glossary.Get(OutcomeTexts.FateGlossaryKey(Fate));
+}
 
 /// <summary>
 /// The outcome summary, details and map (spec §3). <see cref="KeyNumbers"/> are three or four numbers with badges;
@@ -42,9 +89,14 @@ public sealed record MapLegendItem(Fate Fate, string Label);
 public sealed partial class OutcomeViewModel : ObservableObject
 {
     private static readonly LightCurveModel LightCurve = new();
+    // The drawn curve's provenance (ruling R34) followed by the light-curve model's own literature sources.
     private static readonly Source DrawnCurveSource = new(
-        "Peak of the light curve drawn in the visible-light panel (LightCurveModel), not the engine's classification " +
-        "estimate (ruling R34)", "signals §4");
+        "Read off the light curve drawn in the visible-light panel (LightCurveModel), not the engine's classification " +
+        "estimate (ruling R34). The curve's sources: " + string.Join("; ", LightCurve.Sources.Select(s => s.Citation)),
+        string.Join("; ", LightCurve.Sources.Select(s => s.ResearchRef).Distinct()));
+
+    /// <summary>The drawn light curve's source, given once under its heading in the details window.</summary>
+    public string CurveSourceText { get; } = $"Source: {DrawnCurveSource.Citation} ({DrawnCurveSource.ResearchRef})";
 
     private readonly OutcomeEngine _engine;
     private readonly LabViewModel _lab;
@@ -60,6 +112,7 @@ public sealed partial class OutcomeViewModel : ObservableObject
     [ObservableProperty] private string? _typeToolTip;
     [ObservableProperty] private string _fateText = "";
     [ObservableProperty] private string _fateToolTip = "";
+    [ObservableProperty] private string _fateSeparator = "";
     [ObservableProperty] private string _remnantText = "";
     [ObservableProperty] private string? _remnantToolTip;
     [ObservableProperty] private string _summaryText = "";
@@ -78,9 +131,12 @@ public sealed partial class OutcomeViewModel : ObservableObject
     /// <summary>Refreshes every text and row for a new outcome or observer.</summary>
     internal void Update(Outcome o, ObserverSetup obs)
     {
-        TypeText = OutcomeTexts.TypeName(o.Type) ?? (o.Fate == Fate.FailedSupernova ? "No explosion" : "No supernova");
-        TypeToolTip = OutcomeTexts.TypeGlossaryKey(o.Type) is { } tk ? Glossary.Get(tk) : Glossary.SupernovaType;
-        FateText = OutcomeTexts.FateName(o.Fate);
+        // Without a supernova type the fate is the headline ("Failed supernova"), and the line below names the remnant.
+        bool typed = o.Type != SupernovaType.None;
+        TypeText = OutcomeTexts.TypeName(o.Type) ?? OutcomeTexts.FateName(o.Fate);
+        TypeToolTip = OutcomeTexts.TypeGlossaryKey(o.Type) is { } tk ? Glossary.Get(tk) : Glossary.Get(OutcomeTexts.FateGlossaryKey(o.Fate));
+        FateText = typed ? OutcomeTexts.FateName(o.Fate) : "";
+        FateSeparator = typed ? " · " : "";
         FateToolTip = Glossary.Get(OutcomeTexts.FateGlossaryKey(o.Fate));
         // The remnant's mass is a key number (with its badge), so the headline names only the kind.
         RemnantText = OutcomeTexts.RemnantName(o.Remnant.Kind);
@@ -117,15 +173,15 @@ public sealed partial class OutcomeViewModel : ObservableObject
         var rows = new List<QuantityRow>
         {
             new(group, "Peak brightness (absolute V)", nameof(Glossary.PeakBrightness),
-                new Quantity(absV, "mag", conf, DrawnCurveSource), $"M_V {OutcomeTexts.Magnitude(absV)}"),
+                new Quantity(absV, "mag", conf, DrawnCurveSource), $"M_V {OutcomeTexts.Magnitude(absV)}") { SharedSource = true },
         };
         if (double.IsFinite(appV))
             rows.Add(new(group, "Peak brightness seen from here (V, with dust)", nameof(Glossary.ApparentMagnitude),
                 new Quantity(appV, "mag", conf, DrawnCurveSource),
-                $"m_V {OutcomeTexts.Magnitude(appV)}: {Comparisons.ForApparentMagnitude(appV)}"));
+                $"m_V {OutcomeTexts.Magnitude(appV)}: {Comparisons.ForApparentMagnitude(appV)}") { SharedSource = true });
         double tObs = tPeak * obs.TimeDilation;
         rows.Add(new(group, "Time of the peak, as seen from here", nameof(Glossary.ObserverTime),
-            new Quantity(tObs, "s", conf, DrawnCurveSource), UnitFormat.Time(tObs)));
+            new Quantity(tObs, "s", conf, DrawnCurveSource), UnitFormat.Time(tObs)) { SharedSource = true });
         return rows;
     }
 

@@ -10,6 +10,12 @@ namespace SupernovaLab.App.ViewModels;
 /// <summary>A labelled tick under the scrubber, at a position 0..1 on the log axis.</summary>
 public sealed record AxisLabel(string Text, double Fraction);
 
+/// <summary>A marker's label placed above the scrubber: its row (0–2), left edge and width in pixels.</summary>
+public sealed record MarkerLabel(EventMarker Marker, int Row, double Left, double Width)
+{
+    public double Top => Row * TimelineViewModel.MarkerRowHeight;
+}
+
 /// <summary>
 /// The timeline (spec §4): observer time on a log axis from 1 ms to 1,000 years, playback at a speed in decades per
 /// second, event markers, and the "light left … ago" line. Changing the outcome never moves the time (Review Focus 4).
@@ -17,6 +23,17 @@ public sealed record AxisLabel(string Text, double Fraction);
 public sealed partial class TimelineViewModel : ObservableObject
 {
     public const double MinDecadesPerSecond = 0.1, MaxDecadesPerSecond = 3, DefaultDecadesPerSecond = 1.0 / 3;
+
+    /// <summary>Marker labels: three rows this far apart (px), each label about this wide per character (10.5 px text).</summary>
+    public const double MarkerRowHeight = 13, MarkerCharWidth = 5.6, MarkerLabelGap = 8;
+    public const int MarkerRows = 3;
+
+    /// <summary>Which labels win when the timeline is crowded (most important first); a label that fits nowhere is hidden.</summary>
+    private static readonly string[] LabelPriority =
+    {
+        "PeakBrightness", "NeutrinoBurst", "GammaRayBurst", "ShockBreakout", "BlackHoleForms", "PlateauEnd",
+        "RadioPeak", "GammaRayLines", "GravitationalWaves", "PulsarEmerges", "RemnantResolvable",
+    };
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
     private static readonly double AxisDecades = Math.Log10(TimeAxis.MaxS / TimeAxis.MinS);
@@ -74,7 +91,56 @@ public sealed partial class TimelineViewModel : ObservableObject
     public IReadOnlyList<EventMarker> Markers
     {
         get => _markers;
-        private set => SetProperty(ref _markers, value);
+        private set
+        {
+            if (SetProperty(ref _markers, value)) LayoutMarkerLabels(_trackWidth);
+        }
+    }
+
+    private double _trackWidth;
+    private IReadOnlyList<MarkerLabel> _markerLabels = Array.Empty<MarkerLabel>();
+
+    /// <summary>The markers' labels as laid out for the last track width; every marker keeps its tick either way.</summary>
+    public IReadOnlyList<MarkerLabel> MarkerLabels
+    {
+        get => _markerLabels;
+        private set => SetProperty(ref _markerLabels, value);
+    }
+
+    /// <summary>
+    /// Places the marker labels over a track this many pixels wide: each label is centered on its marker (held inside
+    /// the track) in the first of three rows where it overlaps no other label, in order of importance. A label with no
+    /// free row is hidden; its marker's tick and tooltip remain.
+    /// </summary>
+    public void LayoutMarkerLabels(double trackWidth)
+    {
+        _trackWidth = trackWidth;
+        if (!(trackWidth > 0))
+        {
+            MarkerLabels = Array.Empty<MarkerLabel>();
+            return;
+        }
+        var rows = Enumerable.Range(0, MarkerRows).Select(_ => new List<(double From, double To)>()).ToArray();
+        var placed = new List<MarkerLabel>();
+        foreach (var m in Markers.OrderBy(m => Priority(m.GlossaryKey)).ThenBy(m => m.ObserverTimeS))
+        {
+            double width = Math.Min(trackWidth, m.Label.Length * MarkerCharWidth + 6);
+            double left = Math.Clamp(m.Fraction * trackWidth - width / 2, 0, trackWidth - width);
+            for (int r = 0; r < MarkerRows; r++)
+            {
+                if (rows[r].Any(x => left < x.To + MarkerLabelGap && x.From < left + width + MarkerLabelGap)) continue;
+                rows[r].Add((left, left + width));
+                placed.Add(new MarkerLabel(m, r, left, width));
+                break;
+            }
+        }
+        MarkerLabels = placed;
+    }
+
+    private static int Priority(string key)
+    {
+        int i = Array.IndexOf(LabelPriority, key);
+        return i < 0 ? LabelPriority.Length : i;
     }
 
     /// <summary>Ticks under the scrubber at round times.</summary>

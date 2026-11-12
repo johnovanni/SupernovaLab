@@ -21,9 +21,9 @@
                         </Border>
                     </Grid>
                     <TextBlock FontSize="14" TextWrapping="Wrap" Margin="0,1,0,0">
-                        <Run Text="{Binding FateText, Mode=OneWay}" ToolTip="{Binding FateToolTip}"/>
-                        <Run Text="·" Foreground="{StaticResource MutedBrush}"/>
-                        <Run Text="{Binding RemnantText, Mode=OneWay}" ToolTip="{Binding RemnantToolTip}"/>
+                        <Run Text="{Binding FateText, Mode=OneWay}" ToolTip="{Binding FateToolTip}"/><Run
+                             Text="{Binding FateSeparator, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/><Run
+                             Text="{Binding RemnantText, Mode=OneWay}" ToolTip="{Binding RemnantToolTip}"/>
                     </TextBlock>
                     <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap" Margin="0,5,0,0" FontSize="12.5"/>
 
@@ -42,8 +42,12 @@
                                     </Grid.RowDefinitions>
                                     <TextBlock Grid.ColumnSpan="2" Text="{Binding Label}" Style="{StaticResource Muted}"
                                                ToolTip="{Binding GlossaryKey, Converter={StaticResource GlossaryText}}"/>
-                                    <TextBlock Grid.Row="1" Text="{Binding ValueText}" FontSize="14.5" FontWeight="SemiBold"
-                                               TextWrapping="Wrap" ToolTip="{Binding GlossaryKey, Converter={StaticResource GlossaryText}}"/>
+                                    <!-- The unit at normal weight keeps small glyphs such as ☉ crisp. -->
+                                    <TextBlock Grid.Row="1" FontSize="14.5" TextWrapping="Wrap"
+                                               ToolTip="{Binding GlossaryKey, Converter={StaticResource GlossaryText}}">
+                                        <Run Text="{Binding ValueNumber, Mode=OneWay}" FontWeight="SemiBold"/><Run
+                                             Text="{Binding ValueUnit, Mode=OneWay}"/>
+                                    </TextBlock>
                                     <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                         <ContentPresenter ContentTemplate="{StaticResource PublishedBadge}" Content="{Binding}"/>
                                         <ContentPresenter ContentTemplate="{StaticResource ConfidenceBadge}" Content="{Binding}" Margin="4,0,0,0"/>

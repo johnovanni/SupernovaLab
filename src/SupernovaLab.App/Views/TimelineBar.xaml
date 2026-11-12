@@ -35,9 +35,10 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Marker labels in three staggered rows, so neighbours do not overlap; the ticks sit on the scrubber. -->
-            <Grid Grid.Row="1" Margin="5,3,5,0" Height="34" x:Name="Track">
-                <ItemsControl ItemsSource="{Binding Markers}" AlternationCount="3">
+            <!-- Marker labels, placed by TimelineViewModel.LayoutMarkerLabels in three rows without overlaps; a label
+                 with no room is hidden, and its tick below keeps the tooltip and the jump. -->
+            <Grid Grid.Row="1" Margin="5,3,5,0" Height="39" x:Name="Track" SizeChanged="OnTrackSizeChanged">
+                <ItemsControl ItemsSource="{Binding MarkerLabels}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <Canvas/>
@@ -45,33 +46,18 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemContainerStyle>
                         <Style TargetType="ContentPresenter">
-                            <Setter Property="Canvas.Left">
-                                <Setter.Value>
-                                    <MultiBinding Converter="{StaticResource CenteredLabelOffset}" ConverterParameter="104">
-                                        <Binding Path="Fraction"/>
-                                        <Binding Path="ActualWidth" ElementName="Track"/>
-                                    </MultiBinding>
-                                </Setter.Value>
-                            </Setter>
-                            <Setter Property="Canvas.Top" Value="0"/>
-                            <Style.Triggers>
-                                <Trigger Property="ItemsControl.AlternationIndex" Value="1">
-                                    <Setter Property="Canvas.Top" Value="11"/>
-                                </Trigger>
-                                <Trigger Property="ItemsControl.AlternationIndex" Value="2">
-                                    <Setter Property="Canvas.Top" Value="22"/>
-                                </Trigger>
-                            </Style.Triggers>
+                            <Setter Property="Canvas.Left" Value="{Binding Left}"/>
+                            <Setter Property="Canvas.Top" Value="{Binding Top}"/>
                         </Style>
                     </ItemsControl.ItemContainerStyle>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Button Width="104" Padding="0" Margin="0" Background="Transparent" BorderThickness="0"
+                            <Button Width="{Binding Width}" Padding="0" Margin="0" Background="Transparent" BorderThickness="0"
                                     Command="{Binding DataContext.JumpToMarkerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}" ToolTip="{Binding ToolTip}">
+                                    CommandParameter="{Binding Marker}" ToolTip="{Binding Marker.ToolTip}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
-                                        <TextBlock Text="{Binding Label}" FontSize="10.5" Foreground="{StaticResource AccentBrush}"
+                                        <TextBlock Text="{Binding Marker.Label}" FontSize="10.5" Foreground="{StaticResource AccentBrush}"
                                                    TextAlignment="Center" TextTrimming="CharacterEllipsis" Background="Transparent"/>
                                     </ControlTemplate>
                                 </Button.Template>
@@ -85,7 +71,7 @@
             <Grid Grid.Row="2">
                 <Slider Minimum="0" Maximum="1" Value="{Binding ScrubFraction}" SmallChange="0.002" LargeChange="0.02"
                         Margin="0" ToolTip="{x:Static text:Glossary.LogTimeline}"/>
-                <Grid Margin="5,0" x:Name="TickTrack" IsHitTestVisible="False">
+                <Grid Margin="5,0" x:Name="TickTrack">
                     <ItemsControl ItemsSource="{Binding Markers}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -96,7 +82,7 @@
                             <Style TargetType="ContentPresenter">
                                 <Setter Property="Canvas.Left">
                                     <Setter.Value>
-                                        <MultiBinding Converter="{StaticResource FractionToOffset}" ConverterParameter="1">
+                                        <MultiBinding Converter="{StaticResource FractionToOffset}" ConverterParameter="3">
                                             <Binding Path="Fraction"/>
                                             <Binding Path="ActualWidth" ElementName="TickTrack"/>
                                         </MultiBinding>
@@ -106,7 +92,17 @@
                         </ItemsControl.ItemContainerStyle>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Rectangle Width="2" Height="7" Fill="{StaticResource AccentBrush}" Opacity="0.9"/>
+                                <Button Width="6" Height="9" Padding="0" Margin="0" Cursor="Hand" ToolTip="{Binding ToolTip}"
+                                        Command="{Binding DataContext.JumpToMarkerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                        CommandParameter="{Binding}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="Transparent">
+                                                <Rectangle Width="2" Fill="{StaticResource AccentBrush}" Opacity="0.9"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
