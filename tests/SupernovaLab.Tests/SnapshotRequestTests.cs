@@ -97,4 +97,13 @@ public class SnapshotRequestTests
         Assert.Equal(("sn1054", (double?)2.9e10), SnapshotRequest.SplitPreset(r.PresetIds[1]));
         Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1054@soon" }));
     }
+
+    [Fact]
+    public void APresetsOwnTime_GoesInTheFileName_SoOnePresetCanBeTakenAtSeveralTimes()
+    {
+        Assert.Equal("", SnapshotRequest.FileSuffix(null));
+        Assert.Equal("-sn1987a", SnapshotRequest.FileSuffix("sn1987a"));
+        Assert.Equal("-sn1987a-t86400", SnapshotRequest.FileSuffix("sn1987a@86400"));
+        Assert.Equal("-sn1987a-t0.001", SnapshotRequest.FileSuffix("sn1987a@1e-3"));
+    }
 }

@@ -46,6 +46,21 @@ public class UnitsTests
         => Assert.Equal("1,000 Mpc (3,260,000,000 light-years)", UnitFormat.Distance(1e9 * 3.0857e18));
 
     [Fact]
+    public void Distance_StarSized_InKm()
+        // A 43 R☉ star: 3e12 cm = 30,000,000 km (by hand), under 1 AU.
+        => Assert.Equal("30,000,000 km", UnitFormat.Distance(3e12));
+
+    [Fact]
+    public void Distance_AFewAu()
+        // 6.5e13 cm / 1.495978707e13 cm = 4.34498 AU (by hand), three figures 4.34.
+        => Assert.Equal("4.34 AU", UnitFormat.Distance(6.5e13));
+
+    [Fact]
+    public void Distance_UnderALightYear_KeepsThreeFigures()
+        // 0.77 pc = 2.376e18 cm; / 9.4614e17 cm per light-year = 2.511 ly (by hand).
+        => Assert.Equal("0.77 pc (2.51 light-years)", UnitFormat.Distance(0.77 * 3.0857e18));
+
+    [Fact]
     public void Mass_Thousand() => Assert.Equal("1,000 M☉", UnitFormat.Mass(1000));
 
     [Theory]

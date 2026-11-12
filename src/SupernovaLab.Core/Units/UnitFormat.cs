@@ -94,10 +94,20 @@ public static class UnitFormat
         new(1e6, double.PositiveInfinity, "Mpc"),
     };
 
+    /// <summary>Below this many AU a distance is given in AU (or km below 1 AU) instead of parsecs and light-years.</summary>
+    private const double MaxAu = 1e4;
+
+    /// <summary>
+    /// A distance or size: "51 kpc (166,000 light-years)", "0.77 pc (2.51 light-years)"; below 10,000 AU (0.05 pc), as
+    /// a star or young ejecta measure, "4.34 AU", or under 1 AU "30,000,000 km".
+    /// </summary>
     public static string Distance(double cm)
     {
-        double ly = Round3(cm / (PhysicalConstants.C * PhysicalConstants.Year));
-        return $"{Scaled(cm / PhysicalConstants.Pc, DistanceUnits)} ({ly.ToString("N0", Inv)} light-years)";
+        double au = Math.Abs(cm) / PhysicalConstants.Au;
+        if (Round3(au) < 1) return $"{Sig(cm / 1e5)} km";
+        if (Round3(au) < MaxAu) return $"{Sig(cm / PhysicalConstants.Au)} AU";
+        double ly = cm / PhysicalConstants.LightYear;
+        return $"{Scaled(cm / PhysicalConstants.Pc, DistanceUnits)} ({Sig(ly)} light-years)";
     }
 
     private static string Superscript(int n)

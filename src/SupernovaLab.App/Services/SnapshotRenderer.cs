@@ -106,6 +106,17 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
             : (entry[..at], null);
     }
 
+    /// <summary>
+    /// The file-name suffix for a preset entry: "" for the lab's defaults, "-sn1987a", or with its own time
+    /// "-sn1987a-t86400" (so one preset at several times gives several files).
+    /// </summary>
+    public static string FileSuffix(string? entry)
+    {
+        var (id, own) = SplitPreset(entry);
+        if (id is null) return "";
+        return own is double t ? $"-{id}-t{t.ToString("0.###", CultureInfo.InvariantCulture)}" : $"-{id}";
+    }
+
     private static SnapshotSize ParseSize(string text)
     {
         var parts = text.Split('x', 'X');
@@ -152,7 +163,7 @@ public static class SnapshotRenderer
                 var (id, own) = SnapshotRequest.SplitPreset(entry);
                 if (id is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
-                string suffix = id is null ? "" : $"-{id}";
+                string suffix = SnapshotRequest.FileSuffix(entry);
                 await Capture(request, main, windows, suffix, log);
             }
             await RunBench(request, main, vm, windows, log);
@@ -181,7 +192,7 @@ public static class SnapshotRenderer
                     main.Width = size.Width;
                     main.Height = size.Height;
                     await NextFrame(main);
-                    log.Add(Save(main, Path.Combine(request.OutDirectory, $"main{suffix}-{size}.png")));
+                    await SaveMain(main, Path.Combine(request.OutDirectory, $"main{suffix}-{size}.png"), log);
                 }
                 continue;
             }
@@ -234,7 +245,7 @@ public static class SnapshotRenderer
         bool was = expander.IsExpanded;
         expander.IsExpanded = true;
         await NextFrame(main);
-        log.Add(Save(main, Path.Combine(request.OutDirectory, $"main-advanced{suffix}-{size}.png")));
+        await SaveMain(main, Path.Combine(request.OutDirectory, $"main-advanced{suffix}-{size}.png"), log);
         var scroller = Ancestor<ScrollViewer>(expander);
         if (scroller is { ScrollableHeight: > 0 })
         {
@@ -246,6 +257,21 @@ public static class SnapshotRenderer
         else log.Add("main-advanced: the lab panel does not scroll with Advanced open");
         expander.IsExpanded = was;
         await NextFrame(main);
+    }
+
+    /// <summary>
+    /// Saves the main window with its 3D view: the GL frame is read back with GL.ReadPixels and shown in place of the GL
+    /// control for the RenderTargetBitmap (which cannot see GL content), then the live control returns.
+    /// </summary>
+    private static async Task SaveMain(Window main, string path, List<string> log)
+    {
+        if (main is MainWindow mw)
+        {
+            log.Add(await mw.ShowSceneFrameForSnapshotAsync());
+            await NextFrame(main);
+        }
+        log.Add(Save(main, path));
+        if (main is MainWindow shown) shown.HideSceneFrameForSnapshot();
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
@@ -329,12 +355,15 @@ public static class SnapshotRenderer
             last = now;
             frames++;
         }
+        var scene = (main as MainWindow)?.Scene;
+        long sceneFrames0 = scene?.FramesDrawn ?? 0;
         CompositionTarget.Rendering += OnRendering;
         vm.Timeline.IsPlaying = true;
         while (vm.Timeline.IsPlaying && watch.Elapsed.TotalSeconds < seconds * 1.5 + 5)
             await Task.Delay(100);
         CompositionTarget.Rendering -= OnRendering;
         double elapsed = watch.Elapsed.TotalSeconds;
+        long sceneFrames = (scene?.FramesDrawn ?? 0) - sceneFrames0;
         intervals.Sort();
         double p95 = intervals.Count > 0 ? intervals[(int)(0.95 * (intervals.Count - 1))] * 1000 : double.NaN;
         double worst = intervals.Count > 0 ? intervals[^1] * 1000 : double.NaN;
@@ -348,6 +377,9 @@ public static class SnapshotRenderer
             $"playing the whole timeline ({decades.ToString("0.0", inv)} decades) at {vm.Timeline.DecadesPerSecond.ToString("0.###", inv)} decades/s",
             $"frames {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps",
             $"frame interval p95 {p95.ToString("0.0", inv)} ms, worst {worst.ToString("0.0", inv)} ms",
+            scene is null ? "3D view: none" : scene.IsFailed ? $"3D view: failed ({scene.FailureMessage})" :
+                $"3D view frames drawn {sceneFrames} in {elapsed.ToString("0.00", inv)} s: " +
+                $"{(sceneFrames / elapsed).ToString("0.0", inv)} fps (GL draws counted by the scene controller)",
             $"reached the end of the timeline: {(vm.Timeline.ObserverTimeS >= TimeAxis.MaxS ? "yes" : "no")}",
         };
         File.WriteAllLines(Path.Combine(request.OutDirectory, "bench.log"), lines);

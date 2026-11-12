@@ -15,6 +15,10 @@ public static class PhysicalConstants
     public const double Pc = 3.0857e18;
     public const double Kpc = 3.0857e21;
     public const double Mpc = 3.0857e24;
+    /// <summary>Astronomical unit, cm (exact; IAU 2012 Resolution B2). For display only (the 3D view's scale).</summary>
+    public const double Au = 1.495978707e13;
+    /// <summary>Light-year, cm: c × the year above (the app's display convention).</summary>
+    public const double LightYear = C * Year;
     /// <summary>Day, s.</summary>
     public const double Day = 86400;
     /// <summary>Year, s.</summary>
