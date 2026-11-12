@@ -275,11 +275,11 @@ public sealed class ShockBreakoutModel : ISignalModel
 
         /// <summary>Bolometric luminosity, erg/s.</summary>
         public double LuminosityErgS(double sourceTimeS)
-            => InRange(sourceTimeS) ? _b.At(sourceTimeS - _b.DelayS).Luminosity : double.NaN;
+            => InRange(sourceTimeS) ? _b.CoolingAt(sourceTimeS - _b.DelayS).Luminosity : double.NaN;
 
         /// <summary>Colour temperature T_col = 1.2 T_ph, K.</summary>
         public double ColourTemperatureK(double sourceTimeS)
-            => InRange(sourceTimeS) ? _b.At(sourceTimeS - _b.DelayS).ThermalEv / BoltzmannEv : double.NaN;
+            => InRange(sourceTimeS) ? _b.CoolingAt(sourceTimeS - _b.DelayS).ThermalEv / BoltzmannEv : double.NaN;
 
         private bool InRange(double t) => t >= StartS && t <= EndS;
     }
@@ -370,8 +370,12 @@ public sealed class ShockBreakoutModel : ISignalModel
             return sum;
         }
 
-        /// <summary>The cooling emission τ seconds after breakout: a blackbody at T_col = 1.2 T_ph (§3.3).</summary>
-        private State CoolingAt(double tau)
+        /// <summary>
+        /// The cooling emission τ seconds after breakout: a blackbody at T_col = 1.2 T_ph (§3.3). The cooling formula
+        /// itself, whatever phase τ falls in (<see cref="CoolingPhase"/> calls it directly, so at its start, where the
+        /// cooling phase begins as the flash ends, it never returns the flash: Task 8 review N1).
+        /// </summary>
+        internal State CoolingAt(double tau)
         {
             double l, tPhEv;
             if (HydrogenRich)

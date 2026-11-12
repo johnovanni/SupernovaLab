@@ -550,8 +550,6 @@ public static class ProgenitorModel
     private static bool HasExtendedEnvelope(Structure s)
         => s.HydrogenEnvelope > 0 && s.Radius.Value >= ExtendedEnvelopeMinRadiusCm;
 
-    private const double StefanBoltzmann = 5.670374e-5; // erg cm^-2 s^-1 K^-4 (CODATA)
-
     private static Quantity SurfaceTemperature(Structure s)
     {
         if (IsRedSupergiant(s))
@@ -565,7 +563,7 @@ public static class ProgenitorModel
         // ~3700 K at an 846 R☉ RSG and ~15,000 K at a 50 R☉ BSG, close to the observed values above.
         double l = Math.Pow(10, 5.1) * PhysicalConstants.LSun;
         double r = s.Radius.Value;
-        double t = Math.Pow(l / (4 * Math.PI * StefanBoltzmann * r * r), 0.25);
+        double t = Math.Pow(l / (4 * Math.PI * PhysicalConstants.StefanBoltzmann * r * r), 0.25);
         return Q(t, "K", Confidence.Speculative,
             new Source("Stefan–Boltzmann law with L = 10^5.1 L☉ (Jencson et al. 2023, ApJL 952, L30) [APPROX]", "presets §9, outcomes §3.3"));
     }

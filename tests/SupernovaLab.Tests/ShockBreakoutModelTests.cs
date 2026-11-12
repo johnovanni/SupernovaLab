@@ -285,6 +285,30 @@ public class ShockBreakoutModelTests
         Assert.Null(Model.Cooling(TestOutcomes.TypeIa()));
     }
 
+    [Theory]
+    [InlineData(1.0e11)]
+    [InlineData(1.1e11)]
+    [InlineData(1.2e11)]
+    [InlineData(1.3e11)]
+    [InlineData(1.4e11)]
+    [InlineData(1.5e11)]
+    [InlineData(1.7e11)]
+    [InlineData(2.0e11)]
+    public void CoolingPhase_AtItsStart_UsesTheCoolingFormula_NotTheFlash(double radiusCm)
+    {
+        // Task 8 review N1. A very energetic, compact, hydrogen-free star: E = 1e53 erg, M_ej = 1 M☉, R = 1–2e11 cm. The
+        // cooling formula's own start, 1.2 · 1^0.4 · 10^-1 · (R/1e13)^1.3 h, is 1.1–2.7 s, shorter than the flash
+        // (R/c = 3.3–6.7 s), so the cooling phase starts when the flash ends. There the luminosity must be the Rabinak &
+        // Waxman helium formula, L ∝ t^−0.03, which changes by about 3e-11 per 1e-9 relative step — not the flash's
+        // E_BO / duration, orders of magnitude brighter.
+        var o = TestOutcomes.Custom(SupernovaType.Ic, 1e53, 1, 0.1, radiusCm);
+        var cooling = Model.Cooling(o)!;
+        double start = cooling.StartS, after = start * (1 + 1e-9);
+        double l0 = cooling.LuminosityErgS(start), l1 = cooling.LuminosityErgS(after);
+        Assert.Equal(1, l0 / l1, 1e-6);
+        Assert.Equal(1, cooling.ColourTemperatureK(start) / cooling.ColourTemperatureK(after), 1e-6);
+    }
+
     [Fact]
     public void UltrasatChannel_IsAnAbMagnitude()
     {

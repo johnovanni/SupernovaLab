@@ -239,6 +239,17 @@ public class ProgenitorModelTests
     }
 
     [Fact]
+    public void CompactStarTemperature_UsesTheCodataStefanBoltzmannConstant()
+    {
+        // The 40 M☉, Z = 0.9 star above has a 1.96 M☉ envelope, so its radius is 10^12.16 cm (the thin-envelope fit's
+        // top). T = (10^5.1 L☉ / (4π σ R²))^(1/4) with L☉ = 3.828e33 and σ = 5.670374419e-5 (CODATA 2018) is
+        // 23,852.701983 K, by hand to 40 digits. The old 6-digit σ = 5.670374e-5 gave 23,852.702424 K, 4.4e-4 K higher.
+        var (_, star, _) = Evolve(40, z: 0.9);
+        Assert.Equal(1e12 * Math.Pow(10, 0.16), star.RadiusCm.Value, 1e-3);
+        Assert.Equal(23_852.701983, star.SurfaceTemperatureK.Value, 2e-5);
+    }
+
+    [Fact]
     public void AboveSolarZ_WolfRayetFinalMass_IsFloored()
     {
         // S16 100 M☉: M_f☉ = 6.03642. The anchored law alone gives ~0.63 M☉ at 2 Z☉; the floor is
