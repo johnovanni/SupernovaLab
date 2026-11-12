@@ -39,8 +39,10 @@ public static class Detectors
                        "2-event rule [APPROX]", "signals §1.4, §11"), Speculative),
 
         // ---- gravitational waves (signals §2.3, §11): signal-to-noise ratio 8, as signals §2.3 uses for the ET range.
-        new("aligo", "Advanced LIGO", Messenger.GravitationalWaves, 8, "SNR (optimal orientation)",
-            new Source("Gossan et al. 2016, PRD 93, 042002; SNR 8 as for the ET range [DERIVED]", "signals §2.3, §11"),
+        // "aligo" is the 3-detector Advanced LIGO/Virgo design network, whose ~5.5 kpc range signals §2.3 quotes (R27).
+        new("aligo", "LIGO/Virgo network (3 detectors)", Messenger.GravitationalWaves, 8, "network SNR (optimal orientation)",
+            new Source("Gossan et al. 2016, PRD 93, 042002 (3-detector Advanced LIGO/Virgo design network); SNR 8 as for " +
+                       "the ET range [DERIVED]", "signals §2.3, §11"),
             ModelDependent),
         new("et", "Einstein Telescope", Messenger.GravitationalWaves, 8, "SNR (optimal orientation)",
             new Source("Radice et al. 2019; Abdikamalov et al. 2020 (range for SNR 8)", "signals §2.3, §11"), ModelDependent),

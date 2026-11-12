@@ -14,7 +14,7 @@ namespace SupernovaLab.Core.Signals;
 /// step 3).
 /// <para>Channels: <c>strain</c> (dimensionless h at Earth, signed) and, per detector, <c>snr@id</c>: the optimal
 /// signal-to-noise ratio accumulated since bounce, SNR² = 4∫|h̃(f)|²/S_n(f) df evaluated along the track (each piece is
-/// narrow-band, so it is ∫ 2⟨h²⟩/S_n(f(t)) dt, §2.4 step 2). A bare <c>snr</c> is Advanced LIGO. <c>aligo</c> stands for
+/// narrow-band, so it is ∫ 2⟨h²⟩/S_n(f(t)) dt, §2.4 step 2). A bare <c>snr</c> is aligo, which stands for
 /// the Advanced LIGO/Virgo design network of three detectors, whose quoted range (about 5.5 kpc, §2.3) is a network
 /// figure.</para>
 /// Only core collapse makes this signal; white dwarfs, thermonuclear (Type Ia, Iax) and pair-instability explosions have
@@ -52,10 +52,11 @@ public sealed class GravitationalWaveModel : ISignalModel
     private const double TrackCapS = TrackStartS + (TrackCapHz - TrackStartHz) / TrackSlopeHzPerS; // 1.178 s
 
     /// <summary>
-    /// [APPROX] The track of an exploding star (neutron star or magnetar) ends at 1.0 s: §2.1 gives a duration of about
-    /// 0.3 to more than 1 s. The rms amplitude rises (w² linear) over the first 50 ms and fades (w² linear) over the last
-    /// 0.2 s. A black hole instead ends the track abruptly at t_BH: the proto-neutron star accretes and rings until it
-    /// collapses.
+    /// [APPROX] The track of an exploding star ends at 1.0 s: §2.1 gives a duration of about 0.3 to more than 1 s. The
+    /// rms amplitude rises (w² linear) over the first 50 ms and fades (w² linear) over the last 0.2 s. A black hole formed
+    /// after an explosion (fallback, collapsar) keeps this shape, cut at t_BH if that comes first (ruling R27). Only a
+    /// failed supernova (no explosion) runs the track at full strength until t_BH: the proto-neutron star keeps accreting
+    /// and ringing until it collapses (as NeutrinoModel's accretion phase does).
     /// </summary>
     private const double ExplosionTrackEndS = 1.0, TrackRampUpS = 0.05, TrackRampDownS = 0.2;
 
@@ -160,26 +161,39 @@ public sealed class GravitationalWaveModel : ISignalModel
     /// [DERIVED] ∫ Σ r² w² f² dt over an exploding star's shape (Hz² s): the integral that turns E_GW into the main
     /// track's rms hD. About 8.14e5 Hz² s.
     /// </summary>
-    private static readonly double ReferenceShapeIntegral = Integrate(t =>
+    private static readonly double ReferenceShapeIntegral = ShapeIntegral(Shape.Reference);
+
+    /// <summary>∫ Σ r² w² f² dt (Hz² s) over a shape's whole stochastic signal.</summary>
+    private static double ShapeIntegral(Shape shape) => Integrate(t =>
     {
         double sum = 0;
-        foreach (var c in Stochastic(Shape.Reference, t)) sum += c.W2 * c.Hz * c.Hz;
+        foreach (var c in Stochastic(shape, t)) sum += c.W2 * c.Hz * c.Hz;
         return sum;
-    }, 0, ExplosionTrackEndS, Shape.Reference);
+    }, 0, shape.SignalEndS, shape);
 
-    /// <summary>The main track's rms strain × distance in the flat part of the track, cm: √(G E / (π² c³ I)).</summary>
+    /// <summary>
+    /// The main track's rms strain × distance in the flat part of the track, cm: √(G E / (π² c³ I)), 0.555 cm.
+    /// §2.4 step 1 writes E_GW = (π² c³ / G) D² f0² h_rss² for one frequency f0; a chirp sweeps 100 Hz to 1.7 kHz, so
+    /// each piece is weighted by its own f(t)², E_GW = (π² c³ / G) D² ∫ Σ⟨h²⟩ f² dt. The resulting ∫⟨h²⟩ dt equals §2.4's
+    /// h_rss² at the energy-weighted frequency f0_eff = √(∫⟨h²⟩f² dt / ∫⟨h²⟩ dt) ≈ 1,051 Hz; normalizing at the worked
+    /// example's 800 Hz instead would overstate the amplitude by 31%.
+    /// </summary>
     private static readonly double ReferenceRmsHdCm = Math.Sqrt(EnergyToStrain * DefaultEnergyErg / ReferenceShapeIntegral);
 
     // ---------------------------------------------------------------- ISignalModel
 
-    /// <summary>The detectors whose SNR this model gives: Advanced LIGO/Virgo, Einstein Telescope and Cosmic Explorer.</summary>
+    /// <summary>The detectors whose SNR this model gives: the LIGO/Virgo network, Einstein Telescope and Cosmic Explorer.</summary>
     public static IReadOnlyList<string> DetectorIds { get; } = new[] { "aligo", "et", "ce" };
 
     private const string DefaultDetectorId = "aligo";
 
     public string Id => "gw";
     public Messenger Messenger => Messenger.GravitationalWaves;
-    public Confidence Confidence => Confidence.ModelDependent;
+    /// <summary>
+    /// Speculative (ruling R27): the strain rests on the research's [APPROX] track and noise curves (signals §2.4) and on
+    /// this model's own [APPROX] envelope choices, and E_GW itself spans about 3 orders of magnitude (§2.1, §12.2).
+    /// </summary>
+    public Confidence Confidence => Confidence.Speculative;
 
     public IReadOnlyList<SignalChannel> Channels { get; } = BuildChannels();
 
@@ -188,14 +202,18 @@ public sealed class GravitationalWaveModel : ISignalModel
         var list = new List<SignalChannel> { new("strain", "Strain h at Earth", "", false, MayBeNegative: true) };
         foreach (string id in DetectorIds)
         {
-            string name = id == "aligo" ? "Advanced LIGO/Virgo network" : Detectors.Get(id).Name;
-            list.Add(new(ChannelId.Compose("snr", id), $"{name} signal-to-noise ratio since bounce", "", false));
+            list.Add(new(ChannelId.Compose("snr", id), $"{Detectors.Get(id).Name} signal-to-noise ratio since bounce", "", false));
         }
         return list;
     }
 
+    private static readonly Source EnergySource = new(
+        "E_GW is the recipe's default, 1e45 erg; across 3D models it spans about 3 orders of magnitude, 7.2e43 erg " +
+        "(9 M☉) to about 2e45 erg (13 M☉) (Abdikamalov et al. 2020; Radice et al. 2019) [APPROX]", "signals §2.1, §2.4, §12");
+
     public IReadOnlyList<Source> Sources { get; } = new Source[]
     {
+        EnergySource,
         new("Abdikamalov, Pagliaroli & Radice 2020, arXiv:2010.04356; Morozova et al. 2018, ApJ 861, 10; Radice et al. " +
             "2019, ApJL 876, L9 (time-frequency structure, energies)", "signals §2.1"),
         new("Sutton 2013, arXiv:1304.0210 (energy-strain relation for bursts)", "signals §2.4"),
@@ -242,8 +260,7 @@ public sealed class GravitationalWaveModel : ISignalModel
         double d = observer.LuminosityDistanceCm;
         double end = ValidRange(outcome).EndS;
         double total = Snr(shape, detector.Id, d, end);
-        string name = detector.Id == "aligo" ? "The Advanced LIGO/Virgo network" : detector.Name;
-        string expected = $"{name} expects a signal-to-noise ratio of {FormatSnr(total)} over the whole signal";
+        string expected = $"{detector.Name} expects a signal-to-noise ratio of {FormatSnr(total)} over the whole signal";
         string rule = $"a detection needs {FormatSnr(detector.Threshold)}";
 
         if (sourceTimeS > end)
@@ -316,14 +333,17 @@ public sealed class GravitationalWaveModel : ISignalModel
     }
 
     /// <summary>
-    /// How firmly this outcome's waveform is known: Speculative when it includes the rotating bounce or a black hole's
-    /// ring-down (amplitudes and damping are [APPROX]), otherwise the model's ModelDependent.
+    /// E_GW (erg) radiated by the stochastic part (prompt convection, SASI and the main track) of this outcome's
+    /// waveform: (π² c³ / G) D² ∫ Σ⟨h²⟩ f² dt, i.e. the default 1e45 erg scaled by this shape's integral over the
+    /// exploding star's. The rotating bounce and the black hole's ring-down are not included. Speculative (ruling R27);
+    /// null when the model does not apply.
     /// </summary>
-    public Confidence ConfidenceFor(Outcome outcome)
+    public Quantity? StochasticEnergyErg(Outcome outcome)
     {
-        if (!Applies(outcome)) return Confidence;
+        if (!Applies(outcome)) return null;
         var shape = Shape.Of(outcome);
-        return shape.BounceHdCm > 0 || shape.TbhS is not null ? Confidence.Speculative : Confidence;
+        return new Quantity(DefaultEnergyErg * ShapeIntegral(shape) / ReferenceShapeIntegral, "erg", Confidence.Speculative,
+            EnergySource);
     }
 
     /// <summary>
@@ -420,9 +440,11 @@ public sealed class GravitationalWaveModel : ISignalModel
                 Rotation.Extreme => (BounceStrainDistanceCm(InnerCoreMass, InnerCoreRadiusKm, ExtremeTOverW), ExtremeBounceHz),
                 _ => (0.0, 0.0),
             };
-            return tBh is double t
+            // A failed supernova (or the collapsing core of a pulsational pair-instability star) accretes until t_BH; an
+            // explosion keeps its shape, and a later black hole only cuts it (ruling R27, NeutrinoModel.Profile.Of).
+            return tBh is double t && o.Fate != Fate.Supernova
                 ? new Shape(t, false, t, bounceHd, bounceHz)
-                : new Shape(ExplosionTrackEndS, true, null, bounceHd, bounceHz);
+                : new Shape(ExplosionTrackEndS, true, tBh, bounceHd, bounceHz);
         }
     }
 

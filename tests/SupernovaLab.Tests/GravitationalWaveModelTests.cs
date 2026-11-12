@@ -154,10 +154,6 @@ public class GravitationalWaveModelTests
         Assert.Equal(471.2, extreme!.Value, 0.5);
         Assert.Equal(Confidence.Speculative, fast.Confidence);
         Assert.Null(Model.BounceAmplitudeCm(Star12));
-        Assert.Equal(Confidence.Speculative, Model.ConfidenceFor(Rotating(12, Rotation.Fast)));
-        Assert.Equal(Confidence.ModelDependent, Model.ConfidenceFor(Star12));
-        // A black hole's ring-down is [APPROX] too.
-        Assert.Equal(Confidence.Speculative, Model.ConfidenceFor(Failed23));
     }
 
     [Fact]
@@ -211,6 +207,68 @@ public class GravitationalWaveModelTests
     }
 
     [Fact]
+    public void TheWholeModel_IsSpeculative_AndSaysTheEnergyIsADefault()
+    {
+        // Ruling R27: the strain rests on [APPROX] track, ASDs and envelope choices. Signals §2.1/§12.2: E_GW spans about
+        // 3 orders of magnitude across 3D models, and 1e45 erg is the recipe's default.
+        Assert.Equal(Confidence.Speculative, Model.Confidence);
+        Assert.Contains(Model.Sources, s => s.Citation.Contains("1e45 erg") && s.Citation.Contains("3 orders of magnitude"));
+        var e = Model.StochasticEnergyErg(Star12);
+        Assert.NotNull(e);
+        Assert.Equal(Confidence.Speculative, e!.Confidence);
+        Assert.Equal(1e45, e.Value, 1e45 * 1e-3);
+        Assert.Null(Model.StochasticEnergyErg(TestOutcomes.TypeIa()));
+    }
+
+    /// <summary>A black hole after a successful explosion (fallback or collapsar), formed at t_BH.</summary>
+    private static Outcome ExplosionThenBlackHole(double tBh)
+        => TestOutcomes.Custom(SupernovaType.IIP, 1e51, 10, 0.05, 5e13, TestOutcomes.BlackHole(5, tBh));
+
+    [Fact]
+    public void FallbackBlackHole_RadiatesLikeTheExplodingStar_ThenRingsDownAtTbh()
+    {
+        // Ruling R27: Fate.Supernova + black hole uses the exploding star's shape (tapered, ends at 1.0 s), cut at
+        // min(t_BH, 1.0 s), with the ring-down at t_BH. With t_BH = 3.0 s (RemnantModel's fallback value) the track ends
+        // before t_BH, so the strain matches the neutron-star case and E_GW is the default 1e45 erg.
+        var fallback = ExplosionThenBlackHole(3.0);
+        Assert.Equal(Fate.Supernova, fallback.Fate);
+        foreach (double t in new[] { 0.02, 0.3, 0.6, 0.95 })
+            Assert.Equal(Strain(Star12, t), Strain(fallback, t));
+        Assert.Equal(1e45, Model.StochasticEnergyErg(fallback)!.Value, 1e45 * 1e-3);
+        Assert.Equal(0, Strain(fallback, 1.5));
+        Assert.Contains(Series(fallback, 3.0, 3.002, 1e-5), p => p.H != 0);
+        // The modelled range ends with the 2 ms ring-down, so later times are outside it (NaN, the contract).
+        Assert.Equal(3.002, Model.ValidRange(fallback).EndS, 1e-12);
+        Assert.True(double.IsNaN(Strain(fallback, 3.01)));
+    }
+
+    [Fact]
+    public void EarlyCollapsarBlackHole_CutsTheExplodingShapeAtTbh()
+    {
+        // t_BH = 0.5 s: the exploding shape up to 0.5 s. Hand integrals of w² f² dt (Hz² s): ramp-up 5,112.99; flat from
+        // s = 0.05 to 0.35, (944.6³ − 477.8³) / 4,668 = (842,837,448.5 − 109,078,319) / 4,668 = 157,189.2; prompt 37.5;
+        // SASI (ends at 0.40 s) 189.84; total 162,529.5. E = 1e45 × 162,529.5 / 814,383.2 = 1.99569e44 erg.
+        var collapsar = ExplosionThenBlackHole(0.5);
+        Assert.Equal(1.99569e44, Model.StochasticEnergyErg(collapsar)!.Value, 1.99569e44 * 0.005);
+        Assert.Equal(Strain(Star12, 0.45), Strain(collapsar, 0.45));
+        Assert.Equal(0, Strain(collapsar, 0.51));
+    }
+
+    [Fact]
+    public void LateFailedSupernova_StaysInsideThe2DEnergyRange()
+    {
+        // A failed supernova accretes at full strength until t_BH; the latest t_BH the engine produces is 4.7 s. Hand:
+        // ramp-up 5,112.99; flat from s = 0.05 to the 2 kHz cap at s = 1.028278, (2000³ − 477.8³) / 4,668 = 1,690,428.8;
+        // capped 2000² × (4.7 − 1.178278) = 14,086,888; prompt 37.5; SASI 189.84; total 15,782,657.1.
+        // E = 1e45 × 15,782,657.1 / 814,383.2 = 1.93797e46 erg, inside signals §2.1's 2D range (3.2e42 to 2.0e46).
+        var failed = TestOutcomes.Custom(SupernovaType.None, null, null, null, 5e13, TestOutcomes.BlackHole(10, 4.7),
+            Fate.FailedSupernova);
+        double e = Model.StochasticEnergyErg(failed)!.Value;
+        Assert.Equal(1.93797e46, e, 1.93797e46 * 0.005);
+        Assert.True(e <= 2.0e46);
+    }
+
+    [Fact]
     public void IsDeterministic_AcrossInstances()
     {
         var other = new GravitationalWaveModel();
@@ -226,6 +284,8 @@ public class GravitationalWaveModelTests
         double tBh = Failed23.Remnant.FormationTimeS!.Value;
         Assert.True(tBh > 0.3, $"t_BH {tBh}");
         Assert.Contains(Series(Failed23, tBh - 0.02, tBh - 0.001, 1e-4), p => p.H != 0);
+        // The ring-down (signals §2.4 step 3) fills the 2 ms after t_BH.
+        Assert.Contains(Series(Failed23, tBh, tBh + 0.002, 1e-5), p => p.H != 0);
         foreach (double t in new[] { tBh + 0.01, tBh + 0.1 })
             if (t <= Model.ValidRange(Failed23).EndS) Assert.Equal(0, Strain(Failed23, t));
         // The SNR stops growing once the black hole has formed.
