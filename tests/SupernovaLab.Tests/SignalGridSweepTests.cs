@@ -64,7 +64,12 @@ public class SignalGridSweepTests
     /// </summary>
     private static double Brightest(SignalChannel c) => c.Id == "afterglowOpt" ? -40 : -30;
 
+    /// <remarks>
+    /// About 30 s alone and 45 s inside the full suite, so it carries the "Sweep" category: <c>dotnet test --filter
+    /// "Category!=Sweep"</c> skips it for a quick run (review M2).
+    /// </remarks>
     [Fact]
+    [Trait("Category", "Sweep")]
     public void EveryModel_OverTheTrimmedLabGrid_GivesSaneSamplesAndReasons()
     {
         var problems = new ConcurrentBag<string>();
