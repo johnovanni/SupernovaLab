@@ -281,6 +281,37 @@ public sealed class ShockBreakoutModel : ISignalModel
         public double ColourTemperatureK(double sourceTimeS)
             => InRange(sourceTimeS) ? _b.CoolingAt(sourceTimeS - _b.DelayS).ThermalEv / BoltzmannEv : double.NaN;
 
+        /// <summary>
+        /// [APPROX] The cooling luminosity (erg/s) continued past <see cref="EndS"/>, where the formula's validity ends: its
+        /// value at EndS times Sapir &amp; Waxman 2017's late suppression exp(−(a t / t_tr)^α) relative to its value at EndS
+        /// (§3.3: a = 4.57, α = 0.73 for n = 3; a = 1.67, α = 0.8 for n = 3/2), with t_tr = 19.5 d (κ_0.34 M_env /
+        /// v_s*,8.5)^(1/2) and M_env the hydrogen envelope (Type II) or the helium envelope (hydrogen-free stars), as §3.3
+        /// says. The research gives the suppression inside the formula's validity only; carrying it past the end, and
+        /// onto the helium (Rabinak &amp; Waxman) formula, lets the cooling glow fade instead of stopping. Inside
+        /// [<see cref="StartS"/>, EndS] this is <see cref="LuminosityErgS"/>; NaN before StartS.
+        /// </summary>
+        public double FadingLuminosityErgS(double sourceTimeS)
+        {
+            if (!(sourceTimeS >= StartS)) return double.NaN;
+            if (sourceTimeS <= EndS) return LuminosityErgS(sourceTimeS);
+            double ttr = _b.TransparencyTimeS;
+            if (!(ttr > 0)) return 0;
+            return LuminosityErgS(EndS) * Math.Exp(_b.SuppressionExponent(EndS - _b.DelayS, ttr)
+                                                   - _b.SuppressionExponent(sourceTimeS - _b.DelayS, ttr));
+        }
+
+        /// <summary>
+        /// [APPROX] The colour temperature (K) continued past <see cref="EndS"/> as T_col(EndS) (τ / τ_end)^(−1/2), τ the
+        /// time since breakout: the t^(−1/2) of Sapir &amp; Waxman 2017's T_ph (§3.3) carried past its validity. Inside
+        /// [<see cref="StartS"/>, EndS] this is <see cref="ColourTemperatureK"/>; NaN before StartS.
+        /// </summary>
+        public double FadingColourTemperatureK(double sourceTimeS)
+        {
+            if (!(sourceTimeS >= StartS)) return double.NaN;
+            if (sourceTimeS <= EndS) return ColourTemperatureK(sourceTimeS);
+            return ColourTemperatureK(EndS) / Math.Sqrt((sourceTimeS - _b.DelayS) / _b.EndS);
+        }
+
         private bool InRange(double t) => t >= StartS && t <= EndS;
     }
 
@@ -368,6 +399,28 @@ public sealed class ShockBreakoutModel : ISignalModel
                 sum += acc * h / 3;
             }
             return sum;
+        }
+
+        /// <summary>
+        /// Sapir &amp; Waxman 2017's t_tr = 19.5 d (κ_0.34 M_env / v_s*,8.5)^(1/2) (§3.3), s, with κ_0.34 = 1 for a hydrogen
+        /// envelope and 0.2 / 0.34 for a hydrogen-free one, and v_s* = 1.05 √(E/M) (f_ρ = 1). 0 without an envelope.
+        /// </summary>
+        internal double TransparencyTimeS
+        {
+            get
+            {
+                if (!(EnvelopeMass > 0)) return 0;
+                double kappa34 = (HydrogenRich ? KappaHydrogen : KappaHeliumOrHeavier) / 0.34;
+                double v = 1.05 * Math.Sqrt(EnergyE51 * 1e51 / (EjectaMass * MSun)) / Math.Pow(10, 8.5);
+                return 19.5 * PhysicalConstants.Day * Math.Sqrt(kappa34 * EnvelopeMass / v);
+            }
+        }
+
+        /// <summary>(a τ / t_tr)^α of Sapir &amp; Waxman 2017's late suppression, for this breakout's polytrope (§3.3).</summary>
+        internal double SuppressionExponent(double tau, double ttr)
+        {
+            (double a, double alpha) = PolytropeIndex < 2 ? (1.67, 0.8) : (4.57, 0.73);
+            return Math.Pow(a * tau / ttr, alpha);
         }
 
         /// <summary>
