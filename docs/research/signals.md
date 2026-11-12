@@ -796,8 +796,8 @@ alpha = eps_e/eps_B; f = emitting-volume filling factor (0.5) [SOURCE]:
    Use a smooth join, e.g. L_nu = L_p [ (nu/nu_p)^(-5/2 s) + (nu/nu_p)^(s) ]^(-1/s) with s of about 1
    [APPROX shape].
    [CONTROLLER NOTE 2026-11-11 (ruling R42): as written this join peaks at 0.55 L_p at 1.30 nu_p (with s = 1).
-   The app rescales it so the maximum is L_p at nu_p: L_nu = 1.81907 L_p / ((x0 x)^(-5/2) + x0 x), x = nu/nu_p,
-   x0 = 2.5^(2/7) = 1.29935. The asymptotic slopes are unchanged.]
+   The app rescales it so the maximum is L_p at nu_p: L_nu = 1.81897 L_p / ((x0 x)^(-5/2) + x0 x), x = nu/nu_p,
+   x0 = 2.5^(2/7) = 1.29926. The asymptotic slopes are unchanged.]
 
 Check [DERIVED]: SN 1994I (t_p = 36 d, 4.86 GHz, 17 mJy, 8.3 Mpc) gives R = 1.17e16 cm and B = 0.51 G.
 Reinserting gives L_p = 1.42e27 erg/s/Hz at 4.88 GHz, which matches the observed 1.40e27.
