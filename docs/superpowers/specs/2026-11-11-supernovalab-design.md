@@ -323,7 +323,7 @@ xUnit tests in `SupernovaLab.Tests`.
   - Crab: P = 33 ms, and a spin-down age within 50% of its true age.
   - SN 2008D: X-ray breakout luminosity within a factor of 3 of 6×10⁴³ erg/s.
   - Betelgeuse: Super-K count of 10⁶–10⁸; peak apparent V brighter than −8.
-- **Detection logic:** for example, a non-rotating collapse at 8 kpc is detected by Advanced LIGO but not at
+- **Detection logic:** for example, a non-rotating collapse at 5 kpc is detected by Advanced LIGO but not at
   50 kpc, and Super-K detects to about 200 kpc but not at Andromeda (signals §11).
 - **Timeline:** log mapping round trips and (1 + z) stretching.
 - **Visual and performance checks:** screenshots of each panel for SN 1987A, SN 1998bw and Betelgeuse, and the
