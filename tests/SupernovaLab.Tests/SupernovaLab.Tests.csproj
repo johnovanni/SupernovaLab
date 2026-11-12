@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SupernovaLab.Core\SupernovaLab.Core.csproj" />
     <ProjectReference Include="..\..\src\SupernovaLab.Rendering\SupernovaLab.Rendering.csproj" />
+    <ProjectReference Include="..\..\src\SupernovaLab.App\SupernovaLab.App.csproj" />
   </ItemGroup>
 
 </Project>

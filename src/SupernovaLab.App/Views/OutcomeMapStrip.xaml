@@ -1,0 +1,108 @@
+<UserControl x:Class="SupernovaLab.App.Views.OutcomeMapStrip"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core">
+    <!-- DataContext: MainViewModel. Fate against initial mass (spec §3); clicking sets the mass. -->
+    <Border Style="{StaticResource Panel}" Padding="12,6,12,8" DataContext="{Binding Outcome}">
+        <StackPanel>
+            <TextBlock Style="{StaticResource SectionTitle}" Margin="0,0,0,4" ToolTip="{x:Static text:Glossary.OutcomeMap}">
+                <Run Text="Outcome map"/><Run Text="  by initial mass (M☉)" FontWeight="Normal" FontSize="11.5"
+                     Foreground="{StaticResource MutedBrush}"/>
+            </TextBlock>
+            <Grid x:Name="Strip" Height="22" Background="Transparent" Cursor="Hand" ClipToBounds="True"
+                  MouseLeftButtonDown="OnStripClick">
+                <ItemsControl ItemsSource="{Binding MapSegments}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource FractionToOffset}">
+                                        <Binding Path="Start"/>
+                                        <Binding Path="ActualWidth" ElementName="Strip"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Rectangle Height="22" Fill="{Binding Fate, Converter={StaticResource FateBrush}}" ToolTip="{Binding ToolTip}">
+                                <Rectangle.Width>
+                                    <MultiBinding Converter="{StaticResource FractionToOffset}">
+                                        <Binding Path="Span"/>
+                                        <Binding Path="ActualWidth" ElementName="Strip"/>
+                                    </MultiBinding>
+                                </Rectangle.Width>
+                            </Rectangle>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <!-- The current star. -->
+                <Canvas IsHitTestVisible="False">
+                    <Rectangle Width="3" Height="22" Fill="White" Stroke="Black" StrokeThickness="0.5">
+                        <Canvas.Left>
+                            <MultiBinding Converter="{StaticResource FractionToOffset}" ConverterParameter="1.5">
+                                <Binding Path="MapMarkerFraction"/>
+                                <Binding Path="ActualWidth" ElementName="Strip"/>
+                            </MultiBinding>
+                        </Canvas.Left>
+                    </Rectangle>
+                </Canvas>
+            </Grid>
+            <!-- Mass ticks (log scale, 0.8–300 M☉). -->
+            <Grid Height="15">
+                <TextBlock Text="0.8" Style="{StaticResource Muted}" FontSize="10.5" HorizontalAlignment="Left"/>
+                <ItemsControl ItemsSource="{Binding MapAxisLabels}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource FractionToOffset}" ConverterParameter="12">
+                                        <Binding Path="Fraction"/>
+                                        <Binding Path="ActualWidth" ElementName="Strip"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Text}" Width="24" TextAlignment="Center" Style="{StaticResource Muted}" FontSize="10.5"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="300" Style="{StaticResource Muted}" FontSize="10.5" HorizontalAlignment="Right"/>
+            </Grid>
+            <!-- Legend: the fates on this strip. -->
+            <ItemsControl ItemsSource="{Binding MapLegend}" Margin="0,3,0,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Margin="0,1,9,1">
+                            <Rectangle Width="10" Height="10" Fill="{Binding Fate, Converter={StaticResource FateBrush}}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Label}" Style="{StaticResource Muted}" FontSize="10.5" Margin="3,0,0,0"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="The map shows massive stars; a white dwarf's explosion is not on it." Style="{StaticResource Muted}"
+                       Margin="0,2,0,0"
+                       Visibility="{Binding IsMapForThisStar, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+        </StackPanel>
+    </Border>
+</UserControl>

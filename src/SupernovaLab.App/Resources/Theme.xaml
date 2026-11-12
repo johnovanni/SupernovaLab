@@ -1,0 +1,349 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:res="clr-namespace:SupernovaLab.App.Resources"
+                    xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core">
+    <!-- Dark palette copied from Universe3D (Resources/Theme.xaml), after SolarSystem3D. -->
+    <SolidColorBrush x:Key="WindowBrush" Color="#070A12"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#111827"/>
+    <SolidColorBrush x:Key="PanelBorderBrush" Color="#243049"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#D8DEE9"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#8792A8"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#FFD84D"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFB060"/>
+    <SolidColorBrush x:Key="ControlBrush" Color="#1B2436"/>
+    <SolidColorBrush x:Key="ControlHoverBrush" Color="#26324A"/>
+    <SolidColorBrush x:Key="SelectedBrush" Color="#2B3D63"/>
+
+    <!-- Confidence badges: Established green, model-dependent amber, speculative red; published values blue. -->
+    <SolidColorBrush x:Key="EstablishedBrush" Color="#4CC26A"/>
+    <SolidColorBrush x:Key="ModelDependentBrush" Color="#E3B341"/>
+    <SolidColorBrush x:Key="SpeculativeBrush" Color="#F2706A"/>
+    <SolidColorBrush x:Key="PublishedBrush" Color="#6CB6FF"/>
+    <SolidColorBrush x:Key="BadgeTextBrush" Color="#0B0F17"/>
+
+    <!-- Outcome-map fates. -->
+    <SolidColorBrush x:Key="FateNotDeadYetBrush" Color="#3A4458"/>
+    <SolidColorBrush x:Key="FateWhiteDwarfBrush" Color="#8FB3D9"/>
+    <SolidColorBrush x:Key="FateSupernovaBrush" Color="#F2A03D"/>
+    <SolidColorBrush x:Key="FateFailedSupernovaBrush" Color="#7A3B8F"/>
+    <SolidColorBrush x:Key="FatePairInstabilitySupernovaBrush" Color="#E8508A"/>
+    <SolidColorBrush x:Key="FatePulsationalPairInstabilityBrush" Color="#B0457A"/>
+
+    <res:ConfidenceBrushConverter x:Key="ConfidenceBrush"/>
+    <res:ConfidenceTextConverter x:Key="ConfidenceText"/>
+    <res:ConfidenceGlossaryConverter x:Key="ConfidenceGlossary"/>
+    <res:GlossaryConverter x:Key="GlossaryText"/>
+    <res:FateBrushConverter x:Key="FateBrush"/>
+    <res:VisibleWhenConverter x:Key="VisibleWhen"/>
+    <res:FractionToOffsetConverter x:Key="FractionToOffset"/>
+    <res:CenteredLabelOffsetConverter x:Key="CenteredLabelOffset"/>
+
+    <Style TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Margin" Value="0,3"/>
+    </Style>
+    <Style TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Margin" Value="0,2,14,2"/>
+    </Style>
+    <Style TargetType="Expander">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Margin" Value="0,10,0,0"/>
+        <Setter Property="Padding" Value="0,4,0,4"/>
+        <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,1,0,0"/>
+    </Style>
+    <Style TargetType="Slider">
+        <Setter Property="Margin" Value="0,1,0,2"/>
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
+    </Style>
+    <Style TargetType="Button">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Background" Value="{StaticResource ControlBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
+        <Setter Property="Padding" Value="10,4"/>
+        <Setter Property="Margin" Value="2"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ControlHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- The main action. -->
+    <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="#3A3214"/>
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- Dark dropdowns: the system template ignores Background, so this one replaces it. -->
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Padding" Value="6,3"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ControlHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource SelectedBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Background" Value="{StaticResource ControlBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
+        <Setter Property="Margin" Value="0,1"/>
+        <Setter Property="MinHeight" Value="23"/>
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource PanelBorderBrush}"
+                                            BorderThickness="1" CornerRadius="3">
+                                        <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0"
+                                              Data="M 0 0 L 4 4 L 8 0 Z" Fill="{StaticResource MutedBrush}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource ControlHoverBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter Margin="7,3,24,3" VerticalAlignment="Center" IsHitTestVisible="False"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                          ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True"
+                               Focusable="False" PopupAnimation="Fade">
+                            <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource PanelBorderBrush}"
+                                    BorderThickness="1" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                    MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                <ScrollViewer>
+                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Thin dark scrollbars. -->
+    <Style x:Key="ScrollThumb" TargetType="Thumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="Bd" CornerRadius="3" Background="#3A465E"/>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#55637F"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="ScrollPage" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Background="Transparent"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Width" Value="8"/>
+        <Setter Property="MinWidth" Value="8"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Grid Background="{TemplateBinding Background}">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageUpCommand"/>
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource ScrollThumb}" Margin="1,0"/>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageDownCommand"/>
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Width" Value="Auto"/>
+                <Setter Property="MinWidth" Value="0"/>
+                <Setter Property="Height" Value="8"/>
+                <Setter Property="MinHeight" Value="8"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ScrollBar">
+                            <Grid Background="{TemplateBinding Background}">
+                                <Track x:Name="PART_Track">
+                                    <Track.DecreaseRepeatButton>
+                                        <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageLeftCommand"/>
+                                    </Track.DecreaseRepeatButton>
+                                    <Track.Thumb>
+                                        <Thumb Style="{StaticResource ScrollThumb}" Margin="0,1"/>
+                                    </Track.Thumb>
+                                    <Track.IncreaseRepeatButton>
+                                        <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageRightCommand"/>
+                                    </Track.IncreaseRepeatButton>
+                                </Track>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style TargetType="Menu">
+        <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="Padding" Value="4,1"/>
+    </Style>
+
+    <!-- Glossary tooltips are paragraphs: wrap them. -->
+    <Style TargetType="ToolTip">
+        <Setter Property="MaxWidth" Value="380"/>
+        <Setter Property="Background" Value="#1E2738"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="Margin" Value="0,8,0,3"/>
+    </Style>
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="FieldValue" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="Muted" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="FontSize" Value="11.5"/>
+    </Style>
+    <Style x:Key="Warning" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+        <Setter Property="Foreground" Value="{StaticResource WarningBrush}"/>
+    </Style>
+    <Style x:Key="Panel" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="12,8"/>
+    </Style>
+    <Style x:Key="Placeholder" TargetType="Border">
+        <Setter Property="Background" Value="#0B101C"/>
+        <Setter Property="BorderBrush" Value="{StaticResource PanelBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="6"/>
+    </Style>
+
+    <!-- A confidence badge for a QuantityRow (Confidence, Citation, ResearchRef); the tooltip names the source. -->
+    <DataTemplate x:Key="ConfidenceBadge">
+        <Border CornerRadius="3" Padding="5,0,5,1" VerticalAlignment="Center"
+                Background="{Binding Confidence, Converter={StaticResource ConfidenceBrush}}">
+            <Border.ToolTip>
+                <ToolTip>
+                    <ToolTip.Content>
+                        <MultiBinding StringFormat="{}{0}&#x0a;&#x0a;Source: {1}">
+                            <Binding Path="Confidence" Converter="{StaticResource ConfidenceGlossary}"/>
+                            <Binding Path="SourceText"/>
+                        </MultiBinding>
+                    </ToolTip.Content>
+                </ToolTip>
+            </Border.ToolTip>
+            <TextBlock Text="{Binding Confidence, Converter={StaticResource ConfidenceText}}" FontSize="10.5"
+                       FontWeight="SemiBold" Foreground="{StaticResource BadgeTextBrush}"/>
+        </Border>
+    </DataTemplate>
+
+    <!-- "Published value" badge, shown for a preset's pinned values. -->
+    <DataTemplate x:Key="PublishedBadge">
+        <Border CornerRadius="3" Padding="5,0,5,1" Margin="4,0,0,0" VerticalAlignment="Center"
+                Background="{StaticResource PublishedBrush}"
+                Visibility="{Binding Published, Converter={StaticResource VisibleWhen}}">
+            <Border.ToolTip>
+                <ToolTip>
+                    <ToolTip.Content>
+                        <MultiBinding StringFormat="{}{0}&#x0a;&#x0a;Source: {1}">
+                            <Binding Source="{x:Static text:Glossary.PublishedValue}"/>
+                            <Binding Path="SourceText"/>
+                        </MultiBinding>
+                    </ToolTip.Content>
+                </ToolTip>
+            </Border.ToolTip>
+            <TextBlock Text="Published" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource BadgeTextBrush}"/>
+        </Border>
+    </DataTemplate>
+</ResourceDictionary>

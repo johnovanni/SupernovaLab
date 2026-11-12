@@ -1,0 +1,145 @@
+<UserControl x:Class="SupernovaLab.App.Views.TimelineBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core">
+    <!-- DataContext: TimelineViewModel. Spec §4: Play/Pause, a log scrubber with event markers, speed, time readouts. -->
+    <Border Style="{StaticResource Panel}" Padding="10,4,10,3">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Controls and readouts. -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button Content="{Binding PlayPauseText}" Command="{Binding PlayPauseCommand}" Width="64" Margin="0,0,10,0"/>
+                <TextBlock Grid.Column="1" Text="{Binding ObserverTimeText}" FontSize="15" FontWeight="SemiBold"
+                           VerticalAlignment="Center" ToolTip="{x:Static text:Glossary.ObserverTime}"/>
+                <TextBlock Grid.Column="2" Text="{Binding LightLeftText}" Style="{StaticResource Muted}" FontSize="12"
+                           VerticalAlignment="Center" Margin="16,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                           ToolTip="{x:Static text:Glossary.LightTravelTime}"/>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" ToolTip="{x:Static text:Glossary.PlaybackSpeed}">
+                    <TextBlock Text="Speed" Style="{StaticResource FieldLabel}" Margin="0,0,6,0"/>
+                    <Slider Width="120" Minimum="0.1" Maximum="3" Value="{Binding DecadesPerSecond}" VerticalAlignment="Center"
+                            SmallChange="0.05" LargeChange="0.25"/>
+                    <TextBlock Text="{Binding SpeedText}" Style="{StaticResource Muted}" FontSize="11.5" Width="215"
+                               Margin="6,0,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Marker labels in three staggered rows, so neighbours do not overlap; the ticks sit on the scrubber. -->
+            <Grid Grid.Row="1" Margin="5,3,5,0" Height="34" x:Name="Track">
+                <ItemsControl ItemsSource="{Binding Markers}" AlternationCount="3">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource CenteredLabelOffset}" ConverterParameter="104">
+                                        <Binding Path="Fraction"/>
+                                        <Binding Path="ActualWidth" ElementName="Track"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                            <Setter Property="Canvas.Top" Value="0"/>
+                            <Style.Triggers>
+                                <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                    <Setter Property="Canvas.Top" Value="11"/>
+                                </Trigger>
+                                <Trigger Property="ItemsControl.AlternationIndex" Value="2">
+                                    <Setter Property="Canvas.Top" Value="22"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Width="104" Padding="0" Margin="0" Background="Transparent" BorderThickness="0"
+                                    Command="{Binding DataContext.JumpToMarkerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" ToolTip="{Binding ToolTip}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <TextBlock Text="{Binding Label}" FontSize="10.5" Foreground="{StaticResource AccentBrush}"
+                                                   TextAlignment="Center" TextTrimming="CharacterEllipsis" Background="Transparent"/>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+
+            <!-- The scrubber (log time) with the marker ticks over it. -->
+            <Grid Grid.Row="2">
+                <Slider Minimum="0" Maximum="1" Value="{Binding ScrubFraction}" SmallChange="0.002" LargeChange="0.02"
+                        Margin="0" ToolTip="{x:Static text:Glossary.LogTimeline}"/>
+                <Grid Margin="5,0" x:Name="TickTrack" IsHitTestVisible="False">
+                    <ItemsControl ItemsSource="{Binding Markers}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left">
+                                    <Setter.Value>
+                                        <MultiBinding Converter="{StaticResource FractionToOffset}" ConverterParameter="1">
+                                            <Binding Path="Fraction"/>
+                                            <Binding Path="ActualWidth" ElementName="TickTrack"/>
+                                        </MultiBinding>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Rectangle Width="2" Height="7" Fill="{StaticResource AccentBrush}" Opacity="0.9"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </Grid>
+
+            <!-- Round times under the scrubber. -->
+            <Grid Grid.Row="3" Margin="5,0" Height="14" x:Name="AxisTrack">
+                <ItemsControl ItemsSource="{Binding AxisLabels}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left">
+                                <Setter.Value>
+                                    <MultiBinding Converter="{StaticResource CenteredLabelOffset}" ConverterParameter="56">
+                                        <Binding Path="Fraction"/>
+                                        <Binding Path="ActualWidth" ElementName="AxisTrack"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Text}" Width="56" TextAlignment="Center" Style="{StaticResource Muted}" FontSize="10.5"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

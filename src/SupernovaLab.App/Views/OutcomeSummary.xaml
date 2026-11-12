@@ -1,0 +1,70 @@
+<UserControl x:Class="SupernovaLab.App.Views.OutcomeSummary"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core">
+    <!-- DataContext: MainViewModel. The outcome summary (spec §3): type, fate and remnant, one sentence, key numbers. -->
+    <Border Style="{StaticResource Panel}" Padding="12,8,10,8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel DataContext="{Binding Outcome}" Margin="0,0,4,0">
+                    <Grid>
+                        <TextBlock Text="{Binding TypeText}" FontSize="22" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AccentBrush}" ToolTip="{Binding TypeToolTip}" Margin="0,0,70,0"/>
+                        <Border CornerRadius="3" Padding="5,1" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Background="{StaticResource PublishedBrush}" ToolTip="{Binding PublishedText}"
+                                Visibility="{Binding UsesPublishedValues, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock Text="Published" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource BadgeTextBrush}"/>
+                        </Border>
+                    </Grid>
+                    <TextBlock FontSize="14" TextWrapping="Wrap" Margin="0,1,0,0">
+                        <Run Text="{Binding FateText, Mode=OneWay}" ToolTip="{Binding FateToolTip}"/>
+                        <Run Text="·" Foreground="{StaticResource MutedBrush}"/>
+                        <Run Text="{Binding RemnantText, Mode=OneWay}" ToolTip="{Binding RemnantToolTip}"/>
+                    </TextBlock>
+                    <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap" Margin="0,5,0,0" FontSize="12.5"/>
+
+                    <!-- Three or four key numbers, each with its confidence badge; the source is in the badge's tooltip. -->
+                    <ItemsControl ItemsSource="{Binding KeyNumbers}" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3,0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Grid.ColumnSpan="2" Text="{Binding Label}" Style="{StaticResource Muted}"
+                                               ToolTip="{Binding GlossaryKey, Converter={StaticResource GlossaryText}}"/>
+                                    <TextBlock Grid.Row="1" Text="{Binding ValueText}" FontSize="14.5" FontWeight="SemiBold"
+                                               TextWrapping="Wrap" ToolTip="{Binding GlossaryKey, Converter={StaticResource GlossaryText}}"/>
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <ContentPresenter ContentTemplate="{StaticResource PublishedBadge}" Content="{Binding}"/>
+                                        <ContentPresenter ContentTemplate="{StaticResource ConfidenceBadge}" Content="{Binding}" Margin="4,0,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Spec §9: inputs that had no effect. -->
+                    <ItemsControl ItemsSource="{Binding InputNotes}" Margin="0,4,0,0" ToolTip="{x:Static text:Glossary.Notes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Style="{StaticResource Warning}" Margin="0,2"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+            <Button Grid.Row="1" Content="Details…" HorizontalAlignment="Right" Margin="0,4,0,0" Padding="10,3"
+                    Command="{Binding ShowOutcomeDetailsCommand}" ToolTip="{x:Static text:Glossary.OutcomeDetails}"/>
+        </Grid>
+    </Border>
+</UserControl>

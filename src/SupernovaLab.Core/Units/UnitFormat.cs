@@ -50,15 +50,24 @@ public static class UnitFormat
     /// </summary>
     public static string Figure(double v) => v.ToString(v >= 0.01 && v < 1e4 ? "0.###" : "0.##e0", Inv);
 
-    public static string Energy(double erg)
+    public static string Energy(double erg) => Scientific(erg, "erg");
+
+    /// <summary>
+    /// Three significant figures as mantissa × 10 to a superscript power, then the unit: "4.2 × 10⁴² erg/s". Zero is
+    /// "0 unit".
+    /// </summary>
+    public static string Scientific(double v, string unit)
     {
-        if (erg == 0) return "0 erg";
-        int exp = (int)Math.Floor(Math.Log10(Math.Abs(erg)));
-        double mant = Round3(erg / Math.Pow(10, exp));
+        if (v == 0) return $"0 {unit}";
+        int exp = (int)Math.Floor(Math.Log10(Math.Abs(v)));
+        double mant = Round3(v / Math.Pow(10, exp));
         // Rounding to 3 figures can push the mantissa to 10.
         if (Math.Abs(mant) >= 10) { mant /= 10; exp++; }
-        return $"{Sig(mant)} × 10{Superscript(exp)} erg";
+        return $"{Sig(mant)} × 10{Superscript(exp)} {unit}";
     }
+
+    /// <summary>A bare number to three significant figures, never scientific notation, with thousands separators from 100.</summary>
+    public static string Number(double v) => Sig(v);
 
     private static readonly Unit[] TimeUnits =
     {

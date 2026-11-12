@@ -1,0 +1,13 @@
+<Window x:Class="SupernovaLab.App.Windows.InstrumentsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core"
+        Title="Instruments" Width="1200" Height="760" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}" FontSize="13">
+    <!-- DataContext: the shared MainViewModel. An empty shell: Task 15 adds the six panels in a 3×2 grid (spec §5.0, §5.1). -->
+    <Border x:Name="PanelsHost" Margin="10" Style="{StaticResource Placeholder}" ToolTip="{x:Static text:Glossary.Instruments}">
+        <TextBlock Text="The six instrument panels will appear here." Style="{StaticResource Muted}" FontSize="14"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+</Window>

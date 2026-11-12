@@ -20,6 +20,15 @@ public class UnitsTests
     public void Energy_UsesSuperscriptExponent() => Assert.Equal("1.2 × 10⁵¹ erg", UnitFormat.Energy(1.2e51));
 
     [Fact]
+    public void Scientific_TakesAnyUnit() => Assert.Equal("4.2 × 10⁴² erg/s", UnitFormat.Scientific(4.2e42, "erg/s"));
+
+    [Fact]
+    public void Scientific_NegativeExponent() => Assert.Equal("1.5 × 10⁻⁴ M☉", UnitFormat.Scientific(1.5e-4, "M☉"));
+
+    [Fact]
+    public void Number_ThreeFiguresWithSeparators() => Assert.Equal("12,300", UnitFormat.Number(12_345));
+
+    [Fact]
     public void Distance_KpcWithLightYears() => Assert.Equal("51 kpc (166,000 light-years)", UnitFormat.Distance(51 * 3.0857e21));
 
     [Fact]

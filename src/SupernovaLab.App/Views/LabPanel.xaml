@@ -1,0 +1,203 @@
+<UserControl x:Class="SupernovaLab.App.Views.LabPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core">
+    <!-- DataContext: MainViewModel. The lab's inputs (spec §2). -->
+    <Border Style="{StaticResource Panel}" Padding="10,6,10,8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Presets with the ⓘ button. -->
+            <Grid Grid.Row="0" Margin="0,2,0,2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox ItemsSource="{Binding Lab.Presets}" SelectedItem="{Binding Lab.SelectedPreset}"
+                          DisplayMemberPath="Name" ToolTip="{x:Static text:Glossary.Preset}"/>
+                <TextBlock Text="Real supernovae…" Style="{StaticResource Muted}" FontSize="13" Margin="8,0,0,0"
+                           VerticalAlignment="Center" IsHitTestVisible="False"
+                           Visibility="{Binding Lab.HasPreset, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+                <Button Grid.Column="1" Content="ⓘ" Margin="4,2,0,2" Padding="8,2" FontSize="14"
+                        Command="{Binding ShowPresetInfoCommand}" ToolTip="{x:Static text:Glossary.PresetInfo}"/>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="0,0,4,0">
+                    <!-- Star (spec §2.1). -->
+                    <TextBlock Text="Star" Style="{StaticResource SectionTitle}" Margin="0,4,0,2"/>
+                    <StackPanel Orientation="Horizontal" ToolTip="{x:Static text:Glossary.StarKind}">
+                        <RadioButton Content="Massive star" IsChecked="{Binding Lab.IsMassiveStar}"
+                                     ToolTip="{x:Static text:Glossary.MassiveStar}"/>
+                        <RadioButton Content="White dwarf in a binary" IsChecked="{Binding Lab.IsWhiteDwarf}"
+                                     ToolTip="{x:Static text:Glossary.WhiteDwarfBinary}"/>
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding Lab.IsMassiveStar, Converter={StaticResource VisibleWhen}}">
+                        <Grid Margin="0,4,0,0">
+                            <TextBlock Text="Initial mass" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.InitialMass}"/>
+                            <TextBlock Text="{Binding Lab.InitialMassText}" Style="{StaticResource FieldValue}"
+                                       ToolTip="{x:Static text:Glossary.SolarMass}"/>
+                        </Grid>
+                        <Slider Minimum="{Binding Lab.MinInitialMassLog}" Maximum="{Binding Lab.MaxInitialMassLog}"
+                                Value="{Binding Lab.InitialMassLog}" SmallChange="0.005" LargeChange="0.05"
+                                ToolTip="{x:Static text:Glossary.InitialMass}"/>
+
+                        <Grid>
+                            <TextBlock Text="Metal content" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.Metallicity}"/>
+                            <TextBlock Text="{Binding Lab.MetallicityText}" Style="{StaticResource FieldValue}"
+                                       ToolTip="{x:Static text:Glossary.Metallicity}"/>
+                        </Grid>
+                        <!-- Ticks at 0.01, 0.1, 0.3, 1 (the Sun) and 2. -->
+                        <Slider Minimum="{Binding Lab.MinMetallicityLog}" Maximum="{Binding Lab.MaxMetallicityLog}"
+                                Value="{Binding Lab.MetallicityLog}" SmallChange="0.01" LargeChange="0.1"
+                                TickPlacement="BottomRight" Ticks="-2,-1,-0.5229,0,0.30103"
+                                ToolTip="{x:Static text:Glossary.Metallicity}"/>
+
+                        <Grid Margin="0,3,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Stripping" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.Stripping}"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Lab.StrippingChoices}" DisplayMemberPath="Label"
+                                      SelectedValuePath="Value" SelectedValue="{Binding Lab.Stripping}"
+                                      ToolTip="{x:Static text:Glossary.Stripping}"/>
+                            <TextBlock Grid.Row="1" Text="Rotation" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.Rotation}"/>
+                            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Lab.RotationChoices}" DisplayMemberPath="Label"
+                                      SelectedValuePath="Value" SelectedValue="{Binding Lab.Rotation}"
+                                      ToolTip="{x:Static text:Glossary.Rotation}"/>
+                            <TextBlock Grid.Row="2" Text="Core field" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.CoreField}"/>
+                            <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding Lab.FieldChoices}" DisplayMemberPath="Label"
+                                      SelectedValuePath="Value" SelectedValue="{Binding Lab.Field}"
+                                      ToolTip="{x:Static text:Glossary.CoreField}"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Visibility="{Binding Lab.IsWhiteDwarf, Converter={StaticResource VisibleWhen}}">
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Channel" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.IaChannel}"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Lab.IaChannelChoices}" DisplayMemberPath="Label"
+                                      SelectedValuePath="Value" SelectedValue="{Binding Lab.IaChannel}"
+                                      ToolTip="{x:Static text:Glossary.IaChannel}"/>
+                        </Grid>
+                        <Grid Margin="0,4,0,0">
+                            <TextBlock Text="White dwarf mass" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.WhiteDwarfMass}"/>
+                            <TextBlock Text="{Binding Lab.WhiteDwarfMassText}" Style="{StaticResource FieldValue}"
+                                       ToolTip="{x:Static text:Glossary.WhiteDwarfMass}"/>
+                        </Grid>
+                        <Slider Minimum="0.85" Maximum="1.38" Value="{Binding Lab.WhiteDwarfMass}" TickFrequency="0.01"
+                                IsSnapToTickEnabled="True" SmallChange="0.01" LargeChange="0.05"
+                                IsEnabled="{Binding Lab.IsWhiteDwarfMassEnabled}" ToolTip="{x:Static text:Glossary.WhiteDwarfMass}"/>
+                    </StackPanel>
+
+                    <!-- Observer (spec §2.2). -->
+                    <TextBlock Text="Observer" Style="{StaticResource SectionTitle}"/>
+                    <Grid>
+                        <TextBlock Text="Distance" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.Distance}"/>
+                        <TextBlock Text="{Binding Lab.DistanceText}" Style="{StaticResource FieldValue}" ToolTip="{x:Static text:Glossary.Parsec}"/>
+                    </Grid>
+                    <!-- Ticks: Betelgeuse, Galactic Center, LMC, Andromeda, M51, Virgo Cluster (log10 pc). -->
+                    <Slider Minimum="{Binding Lab.MinDistanceLog}" Maximum="{Binding Lab.MaxDistanceLog}"
+                            Value="{Binding Lab.DistanceLog}" SmallChange="0.01" LargeChange="0.1"
+                            TickPlacement="BottomRight" Ticks="2.30103,3.91381,4.69897,5.89209,6.93450,7.21748"
+                            ToolTip="{x:Static text:Glossary.Distance}"/>
+                    <Grid>
+                        <ComboBox ItemsSource="{Binding Lab.DistanceLandmarks}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding Lab.DistancePc}" ToolTip="{x:Static text:Glossary.Distance}"/>
+                        <TextBlock Text="Jump to a landmark…" Style="{StaticResource Muted}" FontSize="12.5" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" IsHitTestVisible="False"
+                                   Visibility="{Binding Lab.IsDistanceLandmark, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+                    </Grid>
+                    <TextBlock Text="{Binding Lab.RedshiftText}" Style="{StaticResource Muted}" Margin="0,2,0,0"
+                               ToolTip="{x:Static text:Glossary.Redshift}"
+                               Visibility="{Binding Lab.RedshiftText, Converter={StaticResource VisibleWhen}}"/>
+                    <TextBlock Text="{Binding Lab.KCorrectionNote}" Style="{StaticResource Warning}" Margin="0,2,0,0"
+                               ToolTip="{x:Static text:Glossary.KCorrection}"
+                               Visibility="{Binding Lab.KCorrectionNote, Converter={StaticResource VisibleWhen}}"/>
+
+                    <Grid Margin="0,4,0,0">
+                        <TextBlock Text="Dust" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.Dust}"/>
+                        <TextBlock Text="{Binding Lab.AvText}" Style="{StaticResource FieldValue}" ToolTip="{x:Static text:Glossary.Dust}"/>
+                    </Grid>
+                    <Slider Minimum="0" Maximum="30" Value="{Binding Lab.Av}" TickFrequency="0.1" IsSnapToTickEnabled="True"
+                            SmallChange="0.1" LargeChange="1" ToolTip="{x:Static text:Glossary.Dust}"/>
+                    <Grid>
+                        <ComboBox ItemsSource="{Binding Lab.DustPresets}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding Lab.Av}" ToolTip="{x:Static text:Glossary.Dust}"/>
+                        <TextBlock Text="Typical dust…" Style="{StaticResource Muted}" FontSize="12.5" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" IsHitTestVisible="False"
+                                   Visibility="{Binding Lab.IsDustPreset, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+                    </Grid>
+                    <CheckBox Content="Jet or beam points toward Earth" IsChecked="{Binding Lab.BeamTowardEarth}"
+                              ToolTip="{x:Static text:Glossary.Beam}" Margin="0,4,0,0"/>
+                    <TextBlock Text="{Binding Lab.ObserverSourceNote}" Style="{StaticResource Muted}" Margin="0,1,0,0"
+                               ToolTip="{Binding Lab.ObserverSourceText}"
+                               Visibility="{Binding Lab.ObserverSourceNote, Converter={StaticResource VisibleWhen}}"/>
+
+                    <!-- Advanced (uncertain physics). -->
+                    <Expander Header="Advanced (uncertain physics)" ToolTip="{x:Static text:Glossary.AdvancedPhysics}">
+                        <StackPanel Margin="0,4,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition/>
+                                    <RowDefinition/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Nickel mixing" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.NickelMixing}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding Lab.MixingChoices}" DisplayMemberPath="Label"
+                                          SelectedValuePath="Value" SelectedValue="{Binding Lab.Mixing}"
+                                          ToolTip="{x:Static text:Glossary.NickelMixing}"/>
+                                <TextBlock Grid.Row="1" Text="Nickel yield" Style="{StaticResource FieldLabel}" ToolTip="{x:Static text:Glossary.NickelYield}"/>
+                                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Lab.YieldChoices}" DisplayMemberPath="Label"
+                                          SelectedValuePath="Value" SelectedValue="{Binding Lab.Yield}"
+                                          ToolTip="{x:Static text:Glossary.NickelYield}"/>
+                            </Grid>
+                            <CheckBox Content="Dense gas around the star" IsChecked="{Binding Lab.DenseCsm}"
+                                      ToolTip="{x:Static text:Glossary.DenseGas}"/>
+                            <Grid Margin="0,4,0,0">
+                                <TextBlock Text="Ejecta opacity κ" Style="{StaticResource FieldLabel}" ToolTip="{Binding Lab.OpacityToolTip}"/>
+                                <TextBlock Text="{Binding Lab.OpacityText}" Style="{StaticResource FieldValue}" ToolTip="{Binding Lab.OpacityToolTip}"/>
+                            </Grid>
+                            <!-- Ruling R31: disabled for Type Ia/Iax, with the reason in the tooltip. -->
+                            <Slider Minimum="0.05" Maximum="0.10" Value="{Binding Lab.Opacity}" TickFrequency="0.005"
+                                    IsSnapToTickEnabled="True" SmallChange="0.005" LargeChange="0.01"
+                                    IsEnabled="{Binding Lab.IsOpacityEnabled}" ToolTip="{Binding Lab.OpacityToolTip}"/>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Explode, Re-roll and the run number (spec §2.4). -->
+            <Grid Grid.Row="2" Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Button Content="Explode" Style="{StaticResource AccentButton}" Padding="10,6" Margin="0,0,4,0"
+                        Command="{Binding ExplodeCommand}" ToolTip="{x:Static text:Glossary.Explode}"/>
+                <Button Grid.Column="1" Content="Re-roll" Padding="12,6" Command="{Binding RerollCommand}"
+                        ToolTip="{x:Static text:Glossary.RunNumber}"/>
+                <TextBlock Grid.Column="2" Text="{Binding RunText}" Style="{StaticResource Muted}" FontSize="12"
+                           VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="{x:Static text:Glossary.RunNumber}"/>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>
