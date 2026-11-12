@@ -78,9 +78,10 @@ public class ShockBreakoutModelTests
         double tPeak = Model.BreakoutTimeS(Sn2008DLike) + 1; // inside the 3.3-s flash
         double lx = Model.Sample(Sn2008DLike, obs, tPeak, "flux@swift-xrt") * 4 * Math.PI * Math.Pow(obs.LuminosityDistanceCm, 2);
         Assert.InRange(lx, 6e43 / 3, 6e43 * 3);
-        // Hand computation (independent script): bolometric 1.9496e44 erg/s (below); the blackbody-plus-Comptonized-plateau
-        // spectrum (kT_eq = 197.1 eV, hν_peak = 444 keV) puts 41.7% in 0.3-10 keV: 8.14e43 erg/s, 1.33 × 6.1e43.
-        Assert.Equal(8.135e43, lx, 8.135e43 * 0.01);
+        // Hand computation (independent script): bolometric 1.0084e44 erg/s with v_bo capped at 0.3c (below); the
+        // blackbody-plus-Comptonized-plateau spectrum (kT_eq = 167.1 eV, hν_peak = 38.53 keV) puts 61.15% in 0.3-10 keV:
+        // 6.166e43 erg/s, 1.03 × 6e43.
+        Assert.Equal(6.166e43, lx, 6.166e43 * 0.01);
     }
 
     [Fact]
@@ -88,10 +89,14 @@ public class ShockBreakoutModelTests
     {
         // Waxman & Katz 2017 (signals §3.2), n = 3, He envelope κ = 0.2 (κ_0.34 = 0.5882):
         // v_* = √(6e51 / 7 M☉) = 6.5646e8 cm/s (v_*,8.5 = 2.0759); v_bo/v_* = 13 · 0.7^0.16 · 2.0759^0.16 · 0.1^-0.32 ·
-        // 0.5882^0.16 = 26.488, so v_bo = 1.7388e10 cm/s. E_BO = 2.2e47 · (0.01)² · 17.388 / 0.5882 = 6.503e44 erg.
-        // t_bo = 90 s / 0.5882 / 73.62 / 17.388² = 0.0069 s < R/c = 3.3356 s, so L = 6.503e44 / 3.3356 = 1.9496e44 erg/s.
+        // 0.5882^0.16 = 26.488, so v_bo = 1.7388e10 cm/s = 0.58c. Ruling R28 caps it at 0.3c = 8.9938e9 cm/s:
+        // E_BO = 2.2e47 · (0.01)² · 8.9938 / 0.5882 = 3.3637e44 erg; t_bo = 90 s / 0.5882 / 73.62 / 8.9938² = 0.026 s
+        // < R/c = 3.3356 s, so L = 3.3637e44 / 3.3356 = 1.0084e44 erg/s.
         double t = Model.BreakoutTimeS(Sn2008DLike) + 1;
-        Assert.Equal(1.9496e44, Model.Sample(Sn2008DLike, At(10e6), t, "lum"), 1.9496e44 * 0.002);
+        Assert.Equal(1.0084e44, Model.Sample(Sn2008DLike, At(10e6), t, "lum"), 1.0084e44 * 0.002);
+        // hν_peak = 10^(1.4 + √8.9938 + (0.25 − 0.05 √8.9938) log10 73.62) = 38.53 keV; temp = hν_peak / (3.9207 k_B)
+        // = 1.1403e8 K (no longer ~1e9 K).
+        Assert.Equal(1.1403e8, Model.Sample(Sn2008DLike, At(10e6), t, "temp"), 1.1403e8 * 0.002);
     }
 
     [Fact]
@@ -159,34 +164,135 @@ public class ShockBreakoutModelTests
     // ---------------------------------------------------------------- detection
 
     [Fact]
-    public void SwiftXrt_ExposureScaledThreshold_Is1_27e11At300s()
+    public void XrayFluenceThresholds_AreTheRegistryFluxTimesExposure()
     {
-        // SN 2008D (L_X = 6.1e43, about 5 minutes) seen to about 200 Mpc (signals §11): 6.1e43 / (4π (200 · 3.0857e24)²)
-        // = 1.2745e-11 erg cm⁻² s⁻¹ for a 300-s flash; background-limited, ∝ 1/√t: 1.2745e-10 for a 3-s flash.
+        // Ruling R29: Swift XRT 1e-13 erg cm⁻² s⁻¹ × 10 ks = 1e-9 erg cm⁻²; Einstein Probe WXT 2.5e-11 × 1,000 s = 2.5e-8.
         var xrt = Detectors.Get("swift-xrt");
-        Assert.Equal(1.2745e-11, ShockBreakoutModel.FlashThreshold(xrt, 300), 1.2745e-11 * 0.001);
-        Assert.Equal(1.2745e-10, ShockBreakoutModel.FlashThreshold(xrt, 3), 1.2745e-10 * 0.001);
-        // Einstein Probe WXT: 2.5e-11 in 1,000 s (signals §3.3, §6.2), ∝ 1/√t below 1,000 s: 2.5e-10 for a 10-s flash.
         var ep = Detectors.Get("einstein-probe");
-        Assert.Equal(2.5e-11, ShockBreakoutModel.FlashThreshold(ep, 1000), 1e-15);
-        Assert.Equal(2.5e-10, ShockBreakoutModel.FlashThreshold(ep, 10), 2.5e-10 * 0.001);
+        Assert.Equal(1e-9, ShockBreakoutModel.FluenceThreshold(xrt), 1e-9 * 1e-9);
+        Assert.Equal(10_000, ShockBreakoutModel.ExposureS(xrt));
+        Assert.Equal(2.5e-8, ShockBreakoutModel.FluenceThreshold(ep), 2.5e-8 * 1e-9);
+        Assert.Equal(1_000, ShockBreakoutModel.ExposureS(ep));
     }
 
     [Fact]
     public void Sn2008DLike_SwiftXrt_DetectedAt27Mpc_TooFaintAt1Gpc()
     {
         var xrt = Detectors.Get("swift-xrt");
-        double t = Model.BreakoutTimeS(Sn2008DLike) + 1;
-        // 8.14e43 erg/s for a 3.34-s flash needs 1.209e-10 erg cm⁻² s⁻¹: a horizon of about 75 Mpc (hand computation).
+        double t = Model.BreakoutTimeS(Sn2008DLike) + 10;
+        // The flash's 0.3-10 keV fluence: 6.166e43 erg/s × 3.3356 s = 2.06e44 erg (plus a little from the bridge). At
+        // 27 Mpc (4πD² = 8.722e52 cm²) that is 2.4e-9 erg cm⁻² ≥ 1e-9: Detected. The horizon is about √(2.06e44 /
+        // (4π · 1e-9)) = 1.28e26 cm ≈ 41 Mpc for the flash alone.
         var near = Model.Detect(Sn2008DLike, At(27e6), t, xrt);
         Assert.Equal(DetectionStatus.Detected, near.Status);
         Assert.Contains("pointed", near.Reason);
-        Assert.Equal(DetectionStatus.Detected, Model.Detect(Sn2008DLike, At(70e6), t, xrt).Status);
-        Assert.Equal(DetectionStatus.TooFaint, Model.Detect(Sn2008DLike, At(80e6), t, xrt).Status);
+        Assert.Equal(DetectionStatus.Detected, Model.Detect(Sn2008DLike, At(38e6), t, xrt).Status);
+        Assert.Equal(DetectionStatus.TooFaint, Model.Detect(Sn2008DLike, At(60e6), t, xrt).Status); // horizon ≈ 47 Mpc
         var far = Model.Detect(Sn2008DLike, At(1e9), t, xrt);
         Assert.Equal(DetectionStatus.TooFaint, far.Status);
-        // The exposure is the observed flash, stretched by 1 + z (about 1.25 at 1 Gpc): R/c = 3.3356 s × (1 + z).
+        // The flash is stretched by 1 + z (about 1.25 at 1 Gpc): R/c = 3.3356 s × (1 + z).
         Assert.Contains(UnitFormat.Time(3.3356 * At(1e9).TimeDilation), far.Reason);
+    }
+
+    [Fact]
+    public void XrayVerdict_NeverTurnsTooFaintIntoDetected()
+    {
+        // Ruling R29 (review I2): with one fluence criterion the verdict runs NotYet → Detected → TooFaint (faded), or is
+        // TooFaint throughout; it never flips from TooFaint to Detected at the end of the flash.
+        int Rank(DetectionStatus s) => s switch
+        {
+            DetectionStatus.NotYet => 0,
+            DetectionStatus.Detected => 1,
+            DetectionStatus.TooFaint => 2,
+            _ => throw new InvalidOperationException($"unexpected {s}"),
+        };
+        var cases = new[]
+        {
+            (RedSupergiant16, 300e6), (Sn2008DLike, 300e6), (Sn2008DLike, 100e6), (Sn2008DLike, 27e6),
+            (RedSupergiant16, 10e6), (FullStripped15, 30e6),
+        };
+        foreach (var (o, d) in cases)
+        foreach (string id in new[] { "swift-xrt", "einstein-probe" })
+        {
+            var det = Detectors.Get(id);
+            var (start, end) = Model.ValidRange(o);
+            double flashS = o.Star!.RadiusCm.Value / PhysicalConstants.C; // R/c sets these flashes' length
+            var times = new List<double> { start + flashS * 0.99, start + flashS * 1.01 };
+            for (int i = 0; i <= 400; i++) times.Add(start + (end - start) * Math.Pow(10, -6 + 6.0 * i / 400));
+            times.Sort();
+            int previous = 0;
+            foreach (double t in times)
+            {
+                int rank = Rank(Model.Detect(o, At(d), t, det).Status);
+                Assert.True(rank >= previous, $"{o.Type} at {d / 1e6} Mpc, {id}: verdict went back at τ = {t - start} s");
+                previous = rank;
+            }
+        }
+    }
+
+    [Fact]
+    public void HydrogenFreeAndRelativisticBreakouts_CarryTheirCaveats()
+    {
+        var xrt = Detectors.Get("swift-xrt");
+        // SN 2008D-like: hydrogen-free (R30) and v_bo = 0.58c (R28).
+        string reason = Model.Detect(Sn2008DLike, At(27e6), Model.BreakoutTimeS(Sn2008DLike) + 10, xrt).Reason;
+        Assert.Contains("dense stellar wind", reason);
+        Assert.Contains("Relativistic breakout", reason);
+        Assert.Contains("outside the Waxman & Katz formulas' range", reason);
+        // A red supergiant has neither caveat.
+        string rsg = Model.Detect(RedSupergiant16, At(10e6), Model.BreakoutTimeS(RedSupergiant16) + 100, xrt).Reason;
+        Assert.DoesNotContain("dense stellar wind", rsg);
+        Assert.DoesNotContain("Relativistic", rsg);
+        Assert.Contains(Model.Sources, s => s.Citation.Contains("outside the Waxman & Katz formulas' range"));
+        Assert.Contains(Model.Sources, s => s.Citation.Contains("dense stellar wind"));
+    }
+
+    [Fact]
+    public void MagnetarPoweredStrippedStar_TemperatureIsCapped()
+    {
+        // Review I1: a Full-stripped 16 M☉ star with Extreme rotation and a strong field (SLSN-I) breaks out at about
+        // 0.88c uncapped, which gave ~1e10 K. With v_bo ≤ 0.3c, hν_peak ≤ 10^(4.40 + 0.10 log10 ρ_-9): ≲ 50 keV, ≲ 2e8 K.
+        var slsn = TestOutcomes.Engine.Compute(LabInputs.Default with
+        {
+            InitialMass = 16, Stripping = Stripping.Full, Rotation = Rotation.Extreme, Field = CoreField.Strong,
+        });
+        Assert.True(Model.Applies(slsn));
+        double t = Model.BreakoutTimeS(slsn) + 0.1;
+        Assert.InRange(Model.Sample(slsn, At(10e6), t, "temp"), 1e6, 2e8);
+        Assert.Contains("Relativistic breakout", Model.Detect(slsn, At(10e6), t, Detectors.Get("swift-xrt")).Reason);
+    }
+
+    [Fact]
+    public void KistlerDelay_ClampsTheRemnantToEjectaRatioAtOne()
+    {
+        // An ultra-stripped explosion, M_ej = 0.1 M☉ and a 1.26 M☉ neutron star (x = 12.6), is evaluated at x = 1:
+        // 6851 × √(1e51/1e51) × √(0.1/10) × (3/50) × (1 − 0.407 + 0.285) = 6851 × 0.1 × 0.06 × 0.878 = 36.091 s.
+        Assert.Equal(36.091, ShockBreakoutModel.KistlerDelayS(3, 1e51, 0.1, 3, 1.26), 36.091 * 1e-4);
+    }
+
+    [Fact]
+    public void CoolingPhase_GivesOnlyTheCoolingFormula()
+    {
+        // Ruling R28: Task 9's accessor. RSG example (n = 3/2): cooling valid from 1.2 · 10^0.4 · 1 · 3.4785^1.3 h =
+        // 54,865 s to 7.4 · 3.4785^0.55 d = 1,269,144 s after breakout; at 2 d L = 3.5902e42 erg/s, T_col = 20,788 K.
+        var cooling = Model.Cooling(RsgExample)!;
+        double tb = Model.BreakoutTimeS(RsgExample);
+        Assert.Equal(tb + 54_865, cooling.StartS, 54_865 * 0.001);
+        Assert.Equal(tb + 1_269_144, cooling.EndS, 1_269_144 * 0.001);
+        Assert.Equal(3.5902e42, cooling.LuminosityErgS(tb + 2 * Day), 3.5902e42 * 0.002);
+        Assert.Equal(20_788, cooling.ColourTemperatureK(tb + 2 * Day), 20_788 * 0.002);
+        Assert.True(double.IsNaN(cooling.LuminosityErgS(tb + 600)), "the flash is not part of the cooling phase");
+        Assert.Null(Model.Cooling(TestOutcomes.TypeIa()));
+    }
+
+    [Fact]
+    public void UltrasatChannel_IsAnAbMagnitude()
+    {
+        var mag = Assert.Single(Model.Channels, c => c.Id == "mag@ultrasat");
+        Assert.Equal("AB mag", mag.Unit);
+        Assert.True(mag.MayBeNegative);
+        Assert.DoesNotContain(Model.Channels, c => c.Id == "flux@ultrasat");
+        Assert.Throws<ArgumentException>(() => Model.Sample(RsgExample, At(10e6), Model.BreakoutTimeS(RsgExample), "flux@ultrasat"));
     }
 
     [Fact]
@@ -228,8 +334,9 @@ public class ShockBreakoutModelTests
             Model.Detect(RedSupergiant16, ObserverSetup.Default, tb / 2, Detectors.Get("swift-xrt")).Status);
         Assert.Equal(DetectionStatus.NotModeled,
             Model.Detect(RedSupergiant16, ObserverSetup.Default, tb + 10, Detectors.Get("chandra")).Status);
-        Assert.Equal(DetectionStatus.NotModeled,
-            Model.Detect(RedSupergiant16, ObserverSetup.Default, tb + 10, Detectors.Get("superk")).Status);
+        var superk = Model.Detect(RedSupergiant16, ObserverSetup.Default, tb + 10, Detectors.Get("superk"));
+        Assert.Equal(DetectionStatus.NotModeled, superk.Status);
+        Assert.Contains("not modeled in this view", superk.Reason);
     }
 
     [Fact]

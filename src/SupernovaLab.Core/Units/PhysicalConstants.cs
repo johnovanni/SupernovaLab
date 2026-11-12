@@ -1,6 +1,6 @@
 namespace SupernovaLab.Core.Units;
 
-/// <summary>cgs constants from docs/research/signals.md section 0.2.</summary>
+/// <summary>cgs constants from docs/research/signals.md section 0.2, plus a few CODATA 2018 radiation constants.</summary>
 public static class PhysicalConstants
 {
     /// <summary>Speed of light, cm/s (exact).</summary>
@@ -25,4 +25,12 @@ public static class PhysicalConstants
     public const double LSun = 3.828e33;
     /// <summary>M_bol zero-point luminosity, erg/s (IAU 2015 B2); M_bol = -2.5 log10(L / this).</summary>
     public const double MbolZeroPointLum = 3.0128e35;
+
+    // Not in signals section 0.2: CODATA 2018 values (k_B and h c exact in SI; sigma_SB derived from them).
+    /// <summary>Stefan-Boltzmann constant, erg cm^-2 s^-1 K^-4 (CODATA 2018).</summary>
+    public const double StefanBoltzmann = 5.670374419e-5;
+    /// <summary>Boltzmann constant, eV/K (CODATA 2018, exact).</summary>
+    public const double BoltzmannEv = 8.617333262e-5;
+    /// <summary>h c, eV nm (CODATA 2018, exact to the digits given).</summary>
+    public const double HcEvNm = 1239.84198;
 }

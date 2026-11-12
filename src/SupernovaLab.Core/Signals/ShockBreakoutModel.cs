@@ -10,15 +10,17 @@ namespace SupernovaLab.Core.Signals;
 /// cooling glow of the expanding envelope over the following hours to days.
 /// <list type="bullet">
 /// <item>Delay after bounce: Kistler, Haxton &amp; Yüksel 2013, Eq. 5 (§3.1).</item>
-/// <item>Flash: Waxman &amp; Katz 2017 breakout velocity, density, energy E_BO and diffusion time t_bo; observed duration
-/// max(R/c, t_bo); luminosity E_BO / duration (§3.2, "peak luminosity for the app").</item>
+/// <item>Flash: Waxman &amp; Katz 2017 breakout velocity (capped at 0.3c, ruling R28), density, energy E_BO and
+/// diffusion time t_bo; observed duration max(R/c, t_bo); luminosity E_BO / duration (§3.2, "peak luminosity for the
+/// app").</item>
 /// <item>Cooling: Sapir &amp; Waxman 2017 for hydrogen envelopes (with its late suppression), Rabinak &amp; Waxman 2011 for
-/// helium envelopes (§3.3), each inside its stated validity.</item>
+/// helium envelopes (§3.3), each inside its stated validity; <see cref="Cooling"/> exposes this phase alone.</item>
 /// </list>
-/// <para>Channels: <c>lum</c> (bolometric erg/s at the source), <c>temp</c> (colour temperature, K: the blackbody
-/// temperature whose νL_ν peaks where the spectrum does), and per detector <c>flux@id</c>: Swift XRT (0.3–10 keV) and
-/// Einstein Probe WXT (0.5–4 keV) in erg cm⁻² s⁻¹ after absorption by the interstellar gas, and ULTRASAT (230–290 nm) as
-/// an AB magnitude including dust extinction. A bare <c>flux</c> is Swift XRT.</para>
+/// <para>Channels: <c>lum</c> (bolometric erg/s at the source); <c>temp</c> (characteristic temperature, K: the
+/// blackbody temperature whose νL_ν peaks where the spectrum does; only in the cooling phase is it the colour temperature
+/// T_col); <c>flux@swift-xrt</c> (0.3–10 keV) and <c>flux@einstein-probe</c> (0.5–4 keV) in erg cm⁻² s⁻¹ after
+/// absorption by the interstellar gas (a bare <c>flux</c> is Swift XRT); and <c>mag@ultrasat</c>, the 230–290 nm AB
+/// magnitude including dust extinction.</para>
 /// <para>The model is valid from breakout to the end of the cooling formula's validity (a few hours for a compact star,
 /// up to about 3 weeks for a red supergiant); the light-curve model takes over after that. Source time throughout;
 /// the timeline stretches it by (1 + z). [APPROX] Band fluxes use the luminosity distance with no K-correction (spec
@@ -35,14 +37,16 @@ public sealed class ShockBreakoutModel : ISignalModel
 
     private const double C = PhysicalConstants.C, MSun = PhysicalConstants.MSun, RSun = PhysicalConstants.RSun;
 
-    /// <summary>Stefan-Boltzmann constant, erg cm⁻² s⁻¹ K⁻⁴ (CODATA 2018; not in signals §0.2).</summary>
-    private const double StefanBoltzmann = 5.670374419e-5;
+    private const double StefanBoltzmann = PhysicalConstants.StefanBoltzmann, BoltzmannEv = PhysicalConstants.BoltzmannEv,
+        HcEvNm = PhysicalConstants.HcEvNm;
 
-    /// <summary>Boltzmann constant, eV/K (CODATA 2018, exact).</summary>
-    private const double BoltzmannEv = 8.617333262e-5;
-
-    /// <summary>h c, eV nm (CODATA 2018, exact).</summary>
-    private const double HcEvNm = 1239.84198;
+    /// <summary>
+    /// [APPROX] Ruling R28: the Waxman &amp; Katz breakout formulas are non-relativistic, so the breakout velocity used for
+    /// the flash's energy, diffusion time and peak photon energy is capped at 0.3c. Faster breakouts (very compact,
+    /// energetic stars such as SN 2008D's parameters, 0.58c, or magnetar-powered stripped stars) are flagged in the
+    /// Detect reason and are a rough sketch only; pair production, not in the research, would regulate their spectra.
+    /// </summary>
+    public const double MaxBreakoutBeta = 0.3;
 
     // ---------------------------------------------------------------- envelope classification
 
@@ -70,7 +74,8 @@ public sealed class ShockBreakoutModel : ISignalModel
     /// <summary>A blackbody's ∫ νL_ν d ln ν in units of its peak νL_ν: (π⁴/15) / g(x*), g(x) = x⁴/(e^x − 1). About 1.3586.</summary>
     private static readonly double PlanckWidth = Math.Pow(Math.PI, 4) / 15 / PlanckG(PlanckPeakX);
 
-    private const int BandIntervals = 200;
+    /// <summary>Simpson intervals across a band in log photon energy: 200 for a sampled value, 64 inside fluence integrals.</summary>
+    private const int BandIntervals = 200, FluenceBandIntervals = 64;
 
     // ---------------------------------------------------------------- bands and detectors
 
@@ -91,13 +96,13 @@ public sealed class ShockBreakoutModel : ISignalModel
     private const double PhotoCrossSection1KeV = 2.4e-22, PhotoCrossSectionSlope = -8.0 / 3;
 
     /// <summary>
-    /// [DERIVED, APPROX] Swift XRT's threshold for a breakout flash: SN 2008D (peak L_X = 6.1e43 erg/s, about 5 minutes)
-    /// was detectable to about 200 Mpc (signals §3.2, §11; Soderberg et al. 2008): 6.1e43 / (4π (200 Mpc)²) =
-    /// 1.2745e-11 erg cm⁻² s⁻¹ for a 300-s flash.
+    /// [APPROX] Ruling R29: the X-ray detectors' registry exposures, t_reg. Swift XRT's 1e-13 erg cm⁻² s⁻¹ is a ~10 ks
+    /// figure (signals §6.2); Einstein Probe WXT's 2.5e-11 is for 1,000 s (§3.3, §6.2).
     /// </summary>
-    private static readonly double XrtFlashThresholdAt300S = 6.1e43 / (4 * Math.PI * Math.Pow(200 * PhysicalConstants.Mpc, 2));
+    private const double XrtExposureS = 10_000, EpExposureS = 1_000;
 
-    private const double XrtFlashReferenceS = 300, EpReferenceS = 1000;
+    /// <summary>Simpson intervals per segment of the fluence integral, in log time.</summary>
+    private const int FluenceIntervals = 48;
 
     /// <summary>AB magnitudes: m_AB = −2.5 log10 f_ν − 48.60, f_ν in erg cm⁻² s⁻¹ Hz⁻¹ (Oke &amp; Gunn 1983; signals §4.5).</summary>
     private const double AbZeroPoint = 48.60;
@@ -116,11 +121,11 @@ public sealed class ShockBreakoutModel : ISignalModel
     public IReadOnlyList<SignalChannel> Channels { get; } = new SignalChannel[]
     {
         new("lum", "Breakout and cooling luminosity (bolometric)", "erg/s", true),
-        new("temp", "Colour temperature", "K", true),
+        new("temp", "Characteristic temperature (spectral peak)", "K", true),
         new(ChannelId.Compose("flux", "swift-xrt"), "Swift XRT flux (0.3–10 keV, after gas absorption)", "erg cm⁻² s⁻¹", true),
         new(ChannelId.Compose("flux", "einstein-probe"), "Einstein Probe WXT flux (0.5–4 keV, after gas absorption)",
             "erg cm⁻² s⁻¹", true),
-        new(ChannelId.Compose("flux", "ultrasat"), "ULTRASAT near-UV brightness (230–290 nm, after dust)", "AB mag", false,
+        new(ChannelId.Compose("mag", "ultrasat"), "ULTRASAT near-UV brightness (230–290 nm, after dust)", "AB mag", false,
             MayBeNegative: true),
     };
 
@@ -133,9 +138,17 @@ public sealed class ShockBreakoutModel : ISignalModel
         new("Spectrum: a blackbody at the equilibrium temperature with a flat Comptonized νL_ν plateau up to the W&K peak " +
             "[APPROX]; gas absorption σ ∝ E^(−8/3) (Morrison & McCammon 1983) with N_H = 2.2e21 A_V [APPROX]",
             "signals §3.2, §8.4"),
-        new("Thresholds: Swift XRT calibrated on SN 2008D seen to ~200 Mpc (Soderberg et al. 2008, Nature 453, 469); " +
-            "Einstein Probe WXT 2.5e-11 erg cm⁻² s⁻¹ in 1,000 s; both ∝ 1/√t for shorter flashes [APPROX]; ULTRASAT " +
-            "22.5 AB mag (Shvartzvald et al. 2024, ApJ 964, 74)", "signals §3.3, §6.2, §11"),
+        new("Breakout velocity capped at 0.3c (the formulas are non-relativistic); faster, relativistic breakouts — " +
+            "outside the Waxman & Katz formulas' range — are shown as a rough sketch [APPROX]", "signals §3.2"),
+        new("Hydrogen-free stars are drawn as bare-star breakouts. Observed flashes such as SN 2008D lasted minutes and " +
+            "carried ~2e46 erg — likely breakout in a dense stellar wind, which this model does not include (Soderberg et " +
+            "al. 2008, Nature 453, 469). Ic/Ic-BL/SLSN-I (C/O) envelopes use the helium cooling formula [APPROX]",
+            "signals §3.2, §3.3, §12"),
+        new("X-ray detection: the fluence over the last registry exposure since breakout must reach the registry flux × " +
+            "exposure (Swift XRT 1e-13 × 10 ks; Einstein Probe WXT 2.5e-11 × 1,000 s), photon-count limited [APPROX]. " +
+            "The observed SN 2008D flash (≈6e43 erg/s for ≈300 s) then reaches ≈390 Mpc with XRT (research: ~200 Mpc) " +
+            "and ≈78 Mpc with Einstein Probe (research §11's [DERIVED] peak-flux figure: ~140 Mpc). ULTRASAT 22.5 AB mag " +
+            "(Shvartzvald et al. 2024, ApJ 964, 74)", "signals §3.3, §6.2, §11"),
     };
 
     public bool Applies(Outcome outcome) => AppliesTo(outcome);
@@ -161,9 +174,8 @@ public sealed class ShockBreakoutModel : ISignalModel
         {
             "lum" => s.Luminosity,
             "temp" => s.PeakEv / (PlanckPeakX * BoltzmannEv),
-            "flux" => detectorId == "ultrasat"
-                ? UltrasatMagnitude(s, observer, withDust: true)
-                : XrayFlux(s, observer, detectorId!, absorbed: true),
+            "flux" => XrayFlux(s, observer, detectorId!, absorbed: true),
+            "mag" => UltrasatMagnitude(s, observer, withDust: true),
             _ => throw new InvalidOperationException(),
         };
     }
@@ -172,7 +184,7 @@ public sealed class ShockBreakoutModel : ISignalModel
     {
         if (!Applies(outcome)) return new Detection(DetectionStatus.NotProduced, NotProducedReason(outcome));
         if (detector.Messenger != Messenger.XRaysUv)
-            return new Detection(DetectionStatus.NotModeled, $"{detector.Name} does not observe X-rays or ultraviolet light.");
+            return new Detection(DetectionStatus.NotModeled, $"{detector.Name} is not modeled in this view.");
         if (!DetectorIds.Contains(detector.Id))
             return new Detection(DetectionStatus.NotModeled,
                 $"{detector.Name} is not modeled for the breakout flash; its X-rays come later, from the interaction with " +
@@ -207,9 +219,14 @@ public sealed class ShockBreakoutModel : ISignalModel
     /// Kistler, Haxton &amp; Yüksel 2013 Eq. 5 (signals §3.1): the delay (s) from bounce to breakout for a polytrope of
     /// index n = 1.5 (red supergiant) or 3 (blue supergiant, Wolf-Rayet). E in erg, masses in M☉, R in R☉.
     /// </summary>
+    /// <remarks>
+    /// [APPROX] x = M_remnant / M_ej is clamped to 0–1: the fit's polytropes have ejecta heavier than the remnant (the
+    /// research's examples span x = 0.1–0.47), and ultra-stripped explosions (x up to ~12) would otherwise stretch the
+    /// delay by an extrapolated bracket.
+    /// </remarks>
     public static double KistlerDelayS(double n, double energyErg, double ejectaMass, double radiusRsun, double remnantMass)
     {
-        double x = remnantMass / ejectaMass;
+        double x = Math.Clamp(remnantMass / ejectaMass, 0, 1);
         double scale = Math.Sqrt(1e51 / energyErg) * Math.Sqrt(ejectaMass / 10) * (radiusRsun / 50);
         return n < 2
             ? 7226 * scale * (1 - 0.738 * Math.Pow(x, 0.80) + 0.467 * Math.Pow(x, 1.20))
@@ -217,26 +234,60 @@ public sealed class ShockBreakoutModel : ISignalModel
     }
 
     /// <summary>
-    /// [APPROX] The flux (erg cm⁻² s⁻¹, in the detector's band) a breakout flash of this observed duration needs to be
-    /// detected. Short exposures are taken as background-limited, ∝ 1/√t (the research gives no scaling). Swift XRT:
-    /// 1.2745e-11 at 300 s, from SN 2008D seen to about 200 Mpc (§11). Einstein Probe WXT: 2.5e-11 at 1,000 s (§3.3),
-    /// no deeper for a longer flash (its survey exposure). Assumes the instrument is already pointed at the star.
+    /// [APPROX] Ruling R29: the fluence (erg cm⁻², in the detector's band) an X-ray detector must collect within its
+    /// registry exposure: the registry flux × exposure. Swift XRT 1e-13 × 10 ks = 1e-9; Einstein Probe WXT
+    /// 2.5e-11 × 1,000 s = 2.5e-8. Photon-count limited, so a short flash needs the same fluence.
     /// </summary>
-    public static double FlashThreshold(Detector detector, double observedDurationS)
+    public static double FluenceThreshold(Detector detector) => detector.Threshold * ExposureS(detector);
+
+    /// <summary>The registry exposure (observer s) of an X-ray detector: Swift XRT 10 ks, Einstein Probe WXT 1,000 s.</summary>
+    public static double ExposureS(Detector detector) => detector.Id switch
     {
-        if (!(observedDurationS > 0)) throw new ArgumentOutOfRangeException(nameof(observedDurationS));
-        return detector.Id switch
-        {
-            "swift-xrt" => XrtFlashThresholdAt300S * Math.Sqrt(XrtFlashReferenceS / observedDurationS),
-            "einstein-probe" => detector.Threshold * Math.Sqrt(EpReferenceS / Math.Min(observedDurationS, EpReferenceS)),
-            _ => throw new ArgumentException($"'{detector.Id}' has no breakout-flash threshold.", nameof(detector)),
-        };
+        "swift-xrt" => XrtExposureS,
+        "einstein-probe" => EpExposureS,
+        _ => throw new ArgumentException($"'{detector.Id}' is not a breakout X-ray detector.", nameof(detector)),
+    };
+
+    /// <summary>
+    /// The shock-cooling phase alone (signals §3.3), for the light-curve model (ruling R28): the bolometric luminosity
+    /// and the colour temperature T_col = 1.2 T_ph over the cooling formula's validity, never the flash or the planar
+    /// bridge. Null when there is no modeled breakout or no valid cooling phase.
+    /// </summary>
+    public CoolingPhase? Cooling(Outcome o)
+        => Breakout.Of(o) is { } b && b.EndS > b.CoolStartS ? new CoolingPhase(b) : null;
+
+    /// <summary>
+    /// The shock-cooling phase of one outcome. Times are source time in seconds after bounce;
+    /// <see cref="LuminosityErgS"/> and <see cref="ColourTemperatureK"/> are NaN outside [<see cref="StartS"/>,
+    /// <see cref="EndS"/>].
+    /// </summary>
+    public sealed class CoolingPhase
+    {
+        private readonly Breakout _b;
+
+        internal CoolingPhase(Breakout b) => _b = b;
+
+        /// <summary>When the cooling formula becomes valid, s after bounce.</summary>
+        public double StartS => _b.DelayS + _b.CoolStartS;
+
+        /// <summary>When it stops being valid, s after bounce.</summary>
+        public double EndS => _b.DelayS + _b.EndS;
+
+        /// <summary>Bolometric luminosity, erg/s.</summary>
+        public double LuminosityErgS(double sourceTimeS)
+            => InRange(sourceTimeS) ? _b.At(sourceTimeS - _b.DelayS).Luminosity : double.NaN;
+
+        /// <summary>Colour temperature T_col = 1.2 T_ph, K.</summary>
+        public double ColourTemperatureK(double sourceTimeS)
+            => InRange(sourceTimeS) ? _b.At(sourceTimeS - _b.DelayS).ThermalEv / BoltzmannEv : double.NaN;
+
+        private bool InRange(double t) => t >= StartS && t <= EndS;
     }
 
     // ---------------------------------------------------------------- the breakout and its evolution
 
     /// <summary>The emission at one moment: bolometric L (erg/s), the thermal floor kT (eV) and the νL_ν peak (eV).</summary>
-    private readonly record struct State(double Luminosity, double ThermalEv, double PeakEv);
+    internal readonly record struct State(double Luminosity, double ThermalEv, double PeakEv);
 
     /// <summary>
     /// One outcome's breakout. Times are seconds after breakout (τ) except <see cref="DelayS"/>, which is after bounce.
@@ -244,8 +295,9 @@ public sealed class ShockBreakoutModel : ISignalModel
     /// gives no formula [APPROX]) joins it to the cooling formula, valid from <see cref="CoolStartS"/> to
     /// <see cref="EndS"/>.
     /// </summary>
-    private sealed record Breakout(double DelayS, double FlashS, State Flash, double CoolStartS, double EndS,
-        bool HydrogenRich, double PolytropeIndex, double EnergyE51, double EjectaMass, double RadiusCm, double EnvelopeMass)
+    internal sealed record Breakout(double DelayS, double FlashS, State Flash, double CoolStartS, double EndS,
+        bool HydrogenRich, double PolytropeIndex, double EnergyE51, double EjectaMass, double RadiusCm, double EnvelopeMass,
+        double BetaBo)
     {
         public static Breakout? Of(Outcome o)
         {
@@ -260,10 +312,10 @@ public sealed class ShockBreakoutModel : ISignalModel
             double remnant = o.Remnant.Mass?.Value ?? 0;
             double delay = KistlerDelayS(n, e, m, r / RSun, remnant);
 
-            var flash = FlashOf(n, e, m, r, kappa, out double flashS);
+            var flash = FlashOf(n, e, m, r, kappa, out double flashS, out double beta);
             double e51 = e / 1e51;
             double envelope = hRich ? star.HydrogenEnvelopeMass.Value : star.HeliumEnvelopeMass.Value;
-            var b = new Breakout(delay, flashS, flash, 0, 0, hRich, n, e51, m, r, envelope);
+            var b = new Breakout(delay, flashS, flash, 0, 0, hRich, n, e51, m, r, envelope, beta);
 
             // Cooling validity (§3.3): from 1.2 M^0.4 E51^-0.5 R13^1.3 h (Rabinak & Waxman 2011) ...
             double coolStart = 1.2 * Math.Pow(m, 0.4) / Math.Sqrt(e51) * Math.Pow(r / 1e13, 1.3) * 3600;
@@ -282,16 +334,44 @@ public sealed class ShockBreakoutModel : ISignalModel
         public State At(double tau)
         {
             if (tau <= FlashS) return Flash;
-            if (tau >= CoolStartS) return Cooling(tau);
+            if (tau >= CoolStartS) return CoolingAt(tau);
             // The bridge: log-linear in log τ from the flash's end to the start of cooling.
-            var end = Cooling(CoolStartS);
+            var end = CoolingAt(CoolStartS);
             double f = Math.Log(tau / FlashS) / Math.Log(CoolStartS / FlashS);
             return new State(LogLerp(Flash.Luminosity, end.Luminosity, f), LogLerp(Flash.ThermalEv, end.ThermalEv, f),
                 LogLerp(Flash.PeakEv, end.PeakEv, f));
         }
 
+        /// <summary>
+        /// ∫ F dτ (erg cm⁻² per source second of τ) of the detector's absorbed or bare band flux over [from, to] ∩
+        /// [0, EndS], τ in source seconds after breakout: exact over the flat flash, Simpson in log τ over the bridge and
+        /// the cooling phase.
+        /// </summary>
+        public double BandFluence(ObserverSetup obs, string detectorId, bool absorbed, double from, double to)
+        {
+            from = Math.Max(from, 0);
+            to = Math.Min(to, EndS);
+            if (!(to > from)) return 0;
+            double sum = 0, flashEnd = Math.Min(to, FlashS);
+            if (flashEnd > from) sum += XrayFlux(Flash, obs, detectorId, absorbed, FluenceBandIntervals) * (flashEnd - from);
+            foreach (var (lo, hi) in new[] { (FlashS, CoolStartS), (CoolStartS, EndS) })
+            {
+                double s0 = Math.Max(from, lo), s1 = Math.Min(to, hi);
+                if (!(s1 > s0)) continue;
+                double u0 = Math.Log(s0), h = (Math.Log(s1) - u0) / FluenceIntervals, acc = 0;
+                for (int i = 0; i <= FluenceIntervals; i++)
+                {
+                    double t = Math.Exp(u0 + i * h);
+                    double w = i == 0 || i == FluenceIntervals ? 1 : i % 2 == 1 ? 4 : 2;
+                    acc += w * XrayFlux(At(t), obs, detectorId, absorbed, FluenceBandIntervals) * t;
+                }
+                sum += acc * h / 3;
+            }
+            return sum;
+        }
+
         /// <summary>The cooling emission τ seconds after breakout: a blackbody at T_col = 1.2 T_ph (§3.3).</summary>
-        private State Cooling(double tau)
+        private State CoolingAt(double tau)
         {
             double l, tPhEv;
             if (HydrogenRich)
@@ -310,7 +390,8 @@ public sealed class ShockBreakoutModel : ISignalModel
             }
             else
             {
-                // Rabinak & Waxman 2011, helium envelope.
+                // Rabinak & Waxman 2011, helium envelope. [APPROX] Ic, Ic-BL and SLSN-I (C/O-rich outer layers) use it too:
+                // the research gives no C/O-envelope formula, and the helium one is the closest hydrogen-free case.
                 double t5 = tau / 1e5, r12 = RadiusCm / 1e12;
                 l = 3.3e42 * Math.Pow(EnergyE51, 0.84) * Math.Pow(r12, 0.85) / (Math.Pow(FRho, 0.15) * Math.Pow(EjectaMass, 0.67))
                     * Math.Pow(t5, -0.03);
@@ -332,9 +413,10 @@ public sealed class ShockBreakoutModel : ISignalModel
 
     /// <summary>
     /// Waxman &amp; Katz 2017 (signals §3.2): the flash's luminosity E_BO / max(R/c, t_bo), its equilibrium temperature
-    /// (L = 4πR²σT⁴) and the W&amp;K peak photon energy hν_peak.
+    /// (L = 4πR²σT⁴) and the W&amp;K peak photon energy hν_peak, with v_bo capped at <see cref="MaxBreakoutBeta"/> c.
     /// </summary>
-    private static State FlashOf(double n, double energyErg, double ejectaMass, double radiusCm, double kappa, out double flashS)
+    private static State FlashOf(double n, double energyErg, double ejectaMass, double radiusCm, double kappa, out double flashS,
+        out double betaBo)
     {
         double k = kappa / 0.34;
         double vStar = Math.Sqrt(energyErg / (ejectaMass * MSun));
@@ -352,7 +434,9 @@ public sealed class ShockBreakoutModel : ISignalModel
             vbo = vStar * 13 * Math.Pow(m10, 0.16) * Math.Pow(v85, 0.16) * Math.Pow(r12, -0.32) * Math.Pow(k, 0.16);
             rhoBo = 8e-9 * Math.Pow(m10, 0.13) * Math.Pow(v85, -0.87) * Math.Pow(r12, -1.26);
         }
-        double v9 = vbo / 1e9, rho9 = rhoBo / 1e-9;
+        // Ruling R28: the uncapped β is kept for the warning; the formulas get at most 0.3c.
+        betaBo = vbo / C;
+        double v9 = Math.Min(vbo, MaxBreakoutBeta * C) / 1e9, rho9 = rhoBo / 1e-9;
         double energyBo = 2.2e47 * Math.Pow(radiusCm / 1e13, 2) * v9 / k;
         double tBo = 90 / k / rho9 / (v9 * v9);
         flashS = Math.Max(radiusCm / C, tBo);
@@ -381,25 +465,27 @@ public sealed class ShockBreakoutModel : ISignalModel
     }
 
     /// <summary>The fraction of L emitted between two photon energies (eV), each photon weighted by e^(−τ(ε)).</summary>
-    private static double BandFraction(State s, double lowEv, double highEv, double nH)
+    private static double BandFraction(State s, double lowEv, double highEv, double nH, int intervals = BandIntervals)
     {
         double norm = PlanckWidth + Math.Log(s.PeakEv / (PlanckPeakX * s.ThermalEv));
-        double a = Math.Log(lowEv), h = (Math.Log(highEv) - a) / BandIntervals, sum = 0;
-        for (int i = 0; i <= BandIntervals; i++)
+        double a = Math.Log(lowEv), h = (Math.Log(highEv) - a) / intervals, sum = 0;
+        for (int i = 0; i <= intervals; i++)
         {
             double ev = Math.Exp(a + i * h);
-            double w = i == 0 || i == BandIntervals ? 1 : i % 2 == 1 ? 4 : 2;
+            double w = i == 0 || i == intervals ? 1 : i % 2 == 1 ? 4 : 2;
             double absorption = nH > 0 ? Math.Exp(-nH * PhotoCrossSection1KeV * Math.Pow(ev / 1000, PhotoCrossSectionSlope)) : 1;
             sum += w * Shape(ev, s.ThermalEv, s.PeakEv) * absorption;
         }
         return sum * h / 3 / norm;
     }
 
-    private static double XrayFlux(State s, ObserverSetup obs, string detectorId, bool absorbed)
+    private static double XrayFlux(State s, ObserverSetup obs, string detectorId, bool absorbed,
+        int intervals = BandIntervals)
     {
         var (lo, hi) = detectorId == "einstein-probe" ? (EpLowEv, EpHighEv) : (XrtLowEv, XrtHighEv);
         double d = obs.LuminosityDistanceCm;
-        return s.Luminosity * BandFraction(s, lo, hi, absorbed ? Extinction.NhFromAv(obs.Av) : 0) / (4 * Math.PI * d * d);
+        return s.Luminosity * BandFraction(s, lo, hi, absorbed ? Extinction.NhFromAv(obs.Av) : 0, intervals)
+               / (4 * Math.PI * d * d);
     }
 
     /// <summary>The band-averaged AB magnitude in ULTRASAT's band, m = −2.5 log10 f̄_ν − 48.60 (+ A_UV); NaN if no flux.</summary>
@@ -413,33 +499,61 @@ public sealed class ShockBreakoutModel : ISignalModel
 
     // ---------------------------------------------------------------- detection
 
+    /// <summary>
+    /// Ruling R29: one continuous, photon-count-limited criterion for the flash and what follows. Detected when the
+    /// fluence collected over the last registry exposure of observer time since breakout, ∫F dt over
+    /// [max(t_bo, t − t_reg), t], reaches F_reg · t_reg. The band flux only falls after breakout, so the largest fluence
+    /// is that of the first exposure: below the threshold the verdict is TooFaint (or BlockedByDust) throughout; above
+    /// it, NotYet while the first exposure is still filling, then Detected, then TooFaint once the emission has faded.
+    /// </summary>
     private static Detection DetectXray(Breakout b, ObserverSetup obs, double tau, Detector detector)
     {
+        var inv = CultureInfo.InvariantCulture;
+        double exposureObs = ExposureS(detector), threshold = FluenceThreshold(detector);
+        double window = exposureObs / obs.TimeDilation; // the exposure in source time
+        double z1 = obs.TimeDilation;                   // ∫F dt_obs = (1 + z) ∫F dt_source
+        double Fluence(double from, double to, bool absorbed) => z1 * b.BandFluence(obs, detector.Id, absorbed, from, to);
+
+        double firstEnd = Math.Min(window, b.EndS);
+        bool gas = obs.Av > 0;
+        double best = Fluence(0, firstEnd, true), bestBare = gas ? Fluence(0, firstEnd, false) : best;
+        double now = Fluence(Math.Max(0, tau - window), tau, true);
+        double nowBare = gas ? Fluence(Math.Max(0, tau - window), tau, false) : now;
+
+        DetectionStatus status;
+        string state;
+        if (now >= threshold)
+        {
+            status = DetectionStatus.Detected;
+            state = "enough to detect it";
+        }
+        else if (best >= threshold && tau < firstEnd)
+        {
+            status = DetectionStatus.NotYet;
+            state = $"still building up: the whole first exposure would collect {FormatFlux(best)}";
+        }
+        else if (nowBare >= threshold || (tau < firstEnd && bestBare >= threshold))
+        {
+            status = DetectionStatus.BlockedByDust;
+            state = "too little, but without the gas in the way it would be enough";
+        }
+        else
+        {
+            status = DetectionStatus.TooFaint;
+            state = best >= threshold ? "too little now: the emission has faded" : "too little";
+        }
+
         string pointed = detector.Id == "swift-xrt"
             ? "This assumes Swift is already pointed at the star (it caught SN 2008D by luck)."
             : "This assumes the star is inside the field of view.";
-        double flashObservedS = b.FlashS * obs.TimeDilation;
-        double flashThreshold = FlashThreshold(detector, flashObservedS);
-        double flashFlux = XrayFlux(b.Flash, obs, detector.Id, absorbed: true);
-        double flashBare = XrayFlux(b.Flash, obs, detector.Id, absorbed: false);
-        var flashStatus = Verdict(flashFlux, flashBare, flashThreshold, brighterIsSmaller: false);
-        string flashText = $"The breakout flash gives {FormatFlux(flashFlux)} erg cm⁻² s⁻¹ for about " +
-                           $"{UnitFormat.Time(flashObservedS)}; a flash that short needs {FormatFlux(flashThreshold)} " +
-                           (detector.Id == "swift-xrt"
-                               ? "(set so that SN 2008D's 5-minute flash would be seen to about 200 Mpc, and scaled " +
-                                 "as 1/√t; approximate)"
-                               : "(its 2.5e-11 in 1,000 s, scaled as 1/√t for a shorter flash; approximate)");
-        if (tau <= b.FlashS)
-            return new Detection(flashStatus, $"{detector.Name}: {flashText}{DustNote(flashStatus)}. {pointed}");
-
-        // After the flash: can a normal exposure still see the cooling emission now? (Its X-rays are usually negligible.)
-        var now = b.At(tau);
-        double flux = XrayFlux(now, obs, detector.Id, absorbed: true), bare = XrayFlux(now, obs, detector.Id, absorbed: false);
-        var status = Verdict(flux, bare, detector.Threshold, brighterIsSmaller: false);
-        return new Detection(status,
-            $"The breakout flash is over (it was {Past(flashStatus)}). Now {detector.Name} would receive {FormatFlux(flux)} " +
-            $"erg cm⁻² s⁻¹ and needs {detector.Threshold.ToString("0.#e0", CultureInfo.InvariantCulture)} " +
-            $"{detector.ThresholdUnit}{DustNote(status)}. {pointed}");
+        string band = detector.Id == "einstein-probe" ? "0.5–4 keV" : "0.3–10 keV";
+        string reason =
+            $"{detector.Name} would collect {FormatFlux(now)} erg cm⁻² ({band}) over the last " +
+            $"{UnitFormat.Time(Math.Min(tau * z1, exposureObs))} since breakout: {state}. A detection needs " +
+            $"{FormatFlux(threshold)} erg cm⁻² ({detector.Threshold.ToString("0.#e0", inv)} erg cm⁻² s⁻¹ × " +
+            $"{UnitFormat.Time(exposureObs)}; photon-count limited, approximate). The flash itself lasts about " +
+            $"{UnitFormat.Time(b.FlashS * z1)}. {pointed}{Caveats(b)}";
+        return new Detection(status, reason);
     }
 
     /// <summary>
@@ -451,16 +565,31 @@ public sealed class ShockBreakoutModel : ISignalModel
         var s = b.At(tau);
         double m = UltrasatMagnitude(s, obs, withDust: true), bare = UltrasatMagnitude(s, obs, withDust: false);
         if (double.IsNaN(bare))
-            return new Detection(DetectionStatus.TooFaint, $"{detector.Name} receives no near-ultraviolet light now.");
+            return new Detection(DetectionStatus.TooFaint, $"{detector.Name} receives no near-ultraviolet light now.{Caveats(b)}");
         var status = Verdict(m, bare, detector.Threshold, brighterIsSmaller: true);
         var inv = CultureInfo.InvariantCulture;
         return new Detection(status,
             $"{detector.Name} would see the star at AB magnitude {m.ToString("0.#", inv)} in 230–290 nm; it reaches " +
             $"{detector.Threshold.ToString("0.#", inv)} in 900 s{DustNote(status)}. This assumes the star is inside the " +
-            "field of view (blackbodies overstate the ultraviolet a little; metal lines absorb some of it).");
+            $"field of view (blackbodies overstate the ultraviolet a little; metal lines absorb some of it).{Caveats(b)}");
     }
 
-    /// <summary>Detected; BlockedByDust when only the dust or gas makes it too faint; otherwise TooFaint.</summary>
+    /// <summary>The plain-language limits that apply to this breakout (rulings R28, R30).</summary>
+    private static string Caveats(Breakout b)
+    {
+        string text = "";
+        if (b.BetaBo > MaxBreakoutBeta)
+            text += $" Relativistic breakout (v ≈ {b.BetaBo.ToString("0.##", CultureInfo.InvariantCulture)}c) — outside the " +
+                    "Waxman & Katz formulas' range: the velocity is capped at 0.3c, so the flash's energy and spectrum " +
+                    "here are a rough sketch.";
+        if (!b.HydrogenRich)
+            text += " Observed flashes from stars like this, such as SN 2008D, lasted minutes and carried ~2e46 erg — " +
+                    "likely breakout in a dense stellar wind, which this model does not include; this bare-star flash " +
+                    "is probably too short and too faint.";
+        return text;
+    }
+
+    /// <summary>Detected; BlockedByDust when only the dust makes it too faint; otherwise TooFaint.</summary>
     private static DetectionStatus Verdict(double value, double withoutDust, double threshold, bool brighterIsSmaller)
     {
         bool Passes(double v) => brighterIsSmaller ? v <= threshold : v >= threshold;
@@ -469,14 +598,7 @@ public sealed class ShockBreakoutModel : ISignalModel
     }
 
     private static string DustNote(DetectionStatus s)
-        => s == DetectionStatus.BlockedByDust ? " (without the dust and gas in the way it would be bright enough)" : "";
-
-    private static string Past(DetectionStatus s) => s switch
-    {
-        DetectionStatus.Detected => "detected",
-        DetectionStatus.BlockedByDust => "hidden by the dust and gas",
-        _ => "too faint to detect",
-    };
+        => s == DetectionStatus.BlockedByDust ? " (without the dust in the way it would be bright enough)" : "";
 
     private static string FormatFlux(double f) => f.ToString("0.##e0", CultureInfo.InvariantCulture);
 
@@ -503,9 +625,11 @@ public sealed class ShockBreakoutModel : ISignalModel
                 return (id.Base, null);
             case "flux":
                 string detector = id.DetectorId ?? DefaultDetectorId;
-                if (!DetectorIds.Contains(detector))
-                    throw new ArgumentException($"'{detector}' is not a breakout-flash detector.", nameof(channelId));
+                if (detector is not ("swift-xrt" or "einstein-probe"))
+                    throw new ArgumentException($"'{detector}' is not a breakout X-ray detector.", nameof(channelId));
                 return (id.Base, detector);
+            case "mag" when id.DetectorId is "ultrasat":
+                return (id.Base, id.DetectorId);
             default:
                 throw new ArgumentException($"The shock-breakout model has no channel '{channelId}'.", nameof(channelId));
         }
