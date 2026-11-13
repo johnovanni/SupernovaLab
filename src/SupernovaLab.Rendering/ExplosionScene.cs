@@ -69,6 +69,14 @@ public sealed record SceneState
     /// by these (<see cref="ParticleKinematics.RadiusCm"/>), and the shells are drawn at them.
     /// </summary>
     public ShockRadii? Shocks { get; init; }
+
+    /// <summary>
+    /// The readout's second line while shocks are drawn (ruling R-P2-25): the drawn forward shock, cm (NaN without shocks), and
+    /// its label (<see cref="ExplosionScene.RadioShockLabel"/>, <see cref="ExplosionScene.BlendShockLabel"/> or
+    /// <see cref="ExplosionScene.ForwardShockLabel"/>).
+    /// </summary>
+    public double ForwardShockCm { get; init; } = double.NaN;
+    public string ForwardShockLabel { get; init; } = "";
 }
 
 /// <summary>
@@ -132,8 +140,14 @@ public sealed class ExplosionScene
         "Shocks: radii from the radio model's shock with Chevalier 1982's ratios in the first years, then Truelove & McKee 1999 " +
         "and Tang & Chevalier 2017 for steep outer debris (structure §S4)";
 
-    /// <summary>The radius readout's label from 10 yr (ruling R-P2-24): the drawn forward shock.</summary>
+    /// <summary>The forward-shock readout's label from 10 yr, and for an outcome with no wind era (rulings R-P2-24, R-P2-25).</summary>
     public const string ForwardShockLabel = "Forward shock (steep-ejecta solution)";
+
+    /// <summary>The forward-shock readout's label in the wind era, to 3 yr: the radio model's shock (ruling R-P2-25).</summary>
+    public const string RadioShockLabel = "Forward shock (radio model's shock)";
+
+    /// <summary>The forward-shock readout's label while the two eras blend, 3 to 10 yr (ruling R-P2-25).</summary>
+    public const string BlendShockLabel = "Forward shock";
 
     /// <summary>From 10 yr (ruling R-P2-24): Project 1's uniform-ejecta value, which the panels use ({0}: the radius).</summary>
     public const string UniformRemnantNoteFormat =
@@ -300,12 +314,14 @@ public sealed class ExplosionScene
         double temperature = EjectaTemperatureK(t);
         var marker = MarkerAt(t, notes, out double period);
         var shocks = ShockStructureModel.At(Outcome, t);
-        // Ruling R-P2-24: from 10 yr the readout is the drawn forward shock (the class-n solution) and the framing includes it;
-        // Project 1's uniform-ejecta value goes in a note. Before 10 yr, Project 1's radius as before.
+        // Ruling R-P2-25: the readout's first line is the debris radius as Project 1 gives it; while shocks are drawn a second
+        // line gives the drawn forward shock, labelled by era. From 10 yr a note gives Project 1's uniform-ejecta value.
         bool remnant = t >= RemnantEvolutionModel.StartS && shocks is not null;
-        double readout = remnant ? shocks!.ForwardCm : r, frame = remnant ? Math.Max(r, shocks!.ForwardCm) : r;
-        string label = t >= RemnantEvolutionModel.StartS ? remnant ? ForwardShockLabel : "Blast-wave radius"
+        string label = t >= RemnantEvolutionModel.StartS ? "Blast-wave radius"
             : t > EjectaKinematics.BlendStartS ? "Outer radius" : "Ejecta radius";
+        string shockLabel = shocks is null ? ""
+            : !ShockStructureModel.HasWindEra(Outcome) || t >= RemnantEvolutionModel.StartS ? ForwardShockLabel
+            : t > EjectaKinematics.BlendStartS ? BlendShockLabel : RadioShockLabel;
         if (remnant) notes.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, UniformRemnantNoteFormat, UnitFormat.Distance(r)));
         else if (t >= RemnantEvolutionModel.StartS) notes.Add("Radius from the remnant model's blast wave");
         else if (t > EjectaKinematics.BlendStartS) notes.Add(BlendNote);
@@ -315,13 +331,29 @@ public sealed class ExplosionScene
         notes.Add(SchematicNote);
         state = state with
         {
-            ShowEjecta = true, EjectaRadiusCm = r, FrameRadiusCm = frame, RadiusCm = readout, RadiusLabel = label,
+            ShowEjecta = true, EjectaRadiusCm = r, FrameRadiusCm = r, RadiusCm = r, RadiusLabel = label,
+            ForwardShockCm = shocks?.ForwardCm ?? double.NaN, ForwardShockLabel = shockLabel,
             EjectaTemperatureK = temperature, EjectaColor = BlackbodyColor.FromTemperature(temperature),
             EjectaBrightness = Brightness(t), Marker = marker, PulsarPeriodS = period, Notes = notes, Shocks = shocks,
         };
         state = WithParticles(state, t, double.IsNaN(r0) ? 0 : r0);
         if (state.ShowParticles) AddStructureNotes(notes, beforeLast: true);
+        state = WithShockFrame(state, t);
         return WithGas(state, notes, r);
+    }
+
+    /// <summary>
+    /// Ruling R-P2-25: the frame blends geometrically from the debris frame F_d (Project 1's radius or the 99%-mass particle
+    /// radius) to max(F_d, R_f) over 3 to 10 yr, with the shocks' smoothstep in log t, so it includes the forward shock from 10 yr
+    /// and never jumps. Before 3 yr the wind-era shell may run past the view.
+    /// </summary>
+    private static SceneState WithShockFrame(SceneState state, double t)
+    {
+        if (state.Shocks is not { } shocks || !(state.FrameRadiusCm > 0) || !(shocks.ForwardCm > state.FrameRadiusCm)) return state;
+        double s = ShockStructureModel.BlendWeight(t);
+        if (!(s > 0)) return state;
+        double debris = state.FrameRadiusCm;
+        return state with { FrameRadiusCm = Math.Exp((1 - s) * Math.Log(debris) + s * Math.Log(shocks.ForwardCm)) };
     }
 
     /// <summary>Adds the gas shell (and its note, and framing to include it) until ejecta of this radius pass it.</summary>

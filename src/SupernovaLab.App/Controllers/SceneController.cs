@@ -343,6 +343,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         RadiusText = double.IsFinite(_state.RadiusCm) && _state.RadiusCm > 0
             ? $"{_state.RadiusLabel}: {UnitFormat.Distance(_state.RadiusCm)}"
             : "";
+        // Ruling R-P2-25: while shocks are drawn, a second line gives the drawn forward shock.
+        if (RadiusText.Length > 0 && double.IsFinite(_state.ForwardShockCm) && _state.ForwardShockCm > 0)
+            RadiusText += Environment.NewLine + $"{_state.ForwardShockLabel}: {UnitFormat.Distance(_state.ForwardShockCm)}";
         NotesText = _modelError ?? string.Join(Environment.NewLine, IsCutaway ? _state.Notes.Append(CutawayNote) : _state.Notes);
         Legend = LegendNow();
         OnPropertyChanged(nameof(ShowShockKey));

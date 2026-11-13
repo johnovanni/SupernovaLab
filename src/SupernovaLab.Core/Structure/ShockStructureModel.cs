@@ -145,6 +145,9 @@ public static class ShockStructureModel
         return Csm.Applies(o) ? Csm.StartTimeS(o) : EjectaKinematics.BlendStartS;
     }
 
+    /// <summary>Whether the outcome has a wind era (the circumstellar model applies and there are ejecta).</summary>
+    public static bool HasWindEra(Outcome o) => EjectaKinematics.HasEjecta(o) && o.Star is not null && Csm.Applies(o);
+
     /// <summary>One outcome's fixed inputs to the radii, worked out once per call.</summary>
     private readonly record struct Setup(bool Wind, double ShockSpeedCmS, double QcWind, double QrWind, int N,
         double RchCm, double TchS, double BreakoutS, double StartS);

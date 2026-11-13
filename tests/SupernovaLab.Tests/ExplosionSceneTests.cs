@@ -423,23 +423,60 @@ public class ExplosionSceneTests
         Assert.StartsWith("Shocks: radii from the radio model's shock with Chevalier 1982's ratios", ExplosionScene.ShockNote);
         Assert.Contains("Truelove & McKee 1999 and Tang & Chevalier 2017", ExplosionScene.ShockNote);
 
-        // Ruling R-P2-24, from 10 yr: the readout is the drawn forward shock, Project 1's uniform-ejecta value is in a note, and
-        // the framing includes the forward shock.
+        // Ruling R-P2-25: the first readout line stays Project 1's debris radius; a second line gives the drawn forward shock,
+        // labelled by era; from 10 yr a note gives Project 1's uniform-ejecta value (R-P2-24).
         double p1 = EjectaKinematics.RadiusCm(o, 30 * Year);
-        Assert.Equal(s.Shocks!.ForwardCm, s.RadiusCm);
-        Assert.Equal(ExplosionScene.ForwardShockLabel, s.RadiusLabel);
-        Assert.Equal("Forward shock (steep-ejecta solution)", s.RadiusLabel);
+        Assert.Equal(p1, s.RadiusCm);
+        Assert.Equal("Blast-wave radius", s.RadiusLabel);
+        Assert.Equal(s.Shocks!.ForwardCm, s.ForwardShockCm);
+        Assert.Equal("Forward shock (steep-ejecta solution)", s.ForwardShockLabel);
         Assert.Contains($"The remnant model behind the panels assumes uniform ejecta and gives {UnitFormat.Distance(p1)}; see scientific inconsistency #33", s.Notes);
-        Assert.Equal(p1, s.EjectaRadiusCm);
         Assert.True(s.FrameRadiusCm >= s.Shocks.ForwardCm && s.FrameRadiusCm >= p1);
-        Assert.DoesNotContain("Radius from the remnant model's blast wave", s.Notes);
 
-        // Before 10 yr the readout and frame are Project 1's as before.
+        // The wind era (radio model's shock) and the 3-10 yr blend (a neutral label); the readout's first line is Project 1's.
         var early = scene.At(Year);
         Assert.NotNull(early.Shocks);
         Assert.Equal(EjectaKinematics.RadiusCm(o, Year), early.RadiusCm);
         Assert.Equal("Ejecta radius", early.RadiusLabel);
-        Assert.Equal(Math.Max(early.EjectaRadiusCm, early.Frame99RadiusCm), early.FrameRadiusCm);
+        Assert.Equal("Forward shock (radio model's shock)", early.ForwardShockLabel);
+        Assert.Equal(early.Shocks!.ForwardCm, early.ForwardShockCm);
+        Assert.Equal(Math.Max(early.EjectaRadiusCm, early.Frame99RadiusCm), early.FrameRadiusCm);   // before 3 yr: the debris frame
+        var blend = scene.At(5 * Year);
+        Assert.Equal("Forward shock", blend.ForwardShockLabel);
+        Assert.Equal("Outer radius", blend.RadiusLabel);
+
+        // Before the shocks start there is no second line.
+        Assert.True(double.IsNaN(before.ForwardShockCm));
+        Assert.Equal("", before.ForwardShockLabel);
+    }
+
+    [Fact]
+    public void FrameRadius_BlendsToIncludeTheForwardShock_WithoutJumping()
+    {
+        // Ruling R-P2-25: geometric blend from the debris frame to max(debris frame, R_f) over 3-10 yr, smoothstep in log t.
+        var outcomes = new[]
+        {
+            TestOutcomes.Engine.Compute(LabInputs.Default), Exploding(), TestOutcomes.TypeIa(),
+            TestOutcomes.Engine.Compute(PresetCatalog.Get("casa").Inputs, PresetCatalog.Get("casa").Pins),
+        };
+        foreach (var o in outcomes)
+        {
+            var scene = new ExplosionScene(o);
+            foreach (double edge in new[] { EjectaKinematics.BlendStartS, RemnantEvolutionModel.StartS })
+            {
+                double a = scene.At(edge * (1 - 1e-9)).FrameRadiusCm, b = scene.At(edge * (1 + 1e-9)).FrameRadiusCm;
+                Assert.True(Math.Abs(b / a - 1) < 1e-6, $"{o.Type} frame at {edge / Year} yr: {a} -> {b}");
+            }
+            foreach (double yr in new[] { 10.0, 30, 100, 300, 1000 })
+            {
+                var s = scene.At(yr * Year);
+                Assert.True(s.FrameRadiusCm >= s.Shocks!.ForwardCm * (1 - 1e-12), $"{o.Type} at {yr} yr");
+            }
+            // Midway (√30 yr, weight 1/2) the frame is the geometric mean of the debris frame and max(debris frame, R_f).
+            var m = scene.At(Math.Sqrt(30) * Year);
+            double debris = Math.Max(m.EjectaRadiusCm, double.IsNaN(m.Frame99RadiusCm) ? 0 : m.Frame99RadiusCm);
+            Assert.Equal(1, m.FrameRadiusCm / Math.Sqrt(debris * Math.Max(debris, m.Shocks!.ForwardCm)), 9);
+        }
     }
 
     [Fact]

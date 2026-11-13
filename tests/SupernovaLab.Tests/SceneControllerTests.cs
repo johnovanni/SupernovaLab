@@ -524,6 +524,25 @@ public class SceneControllerTests
     }
 
     [Fact]
+    public void Readout_HasASecondLineForTheForwardShock_WhileShocksAreDrawn()
+    {
+        // Ruling R-P2-25: one line (the debris radius) before the shocks start; two lines once they are drawn.
+        var c = CutawayController(null, PhysicalConstants.Day / 2, out var vm);
+        Assert.Null(c.State.Shocks);
+        Assert.Single(c.RadiusText.Split(Environment.NewLine));
+        vm.Timeline.ObserverTimeS = 30 * PhysicalConstants.Year;
+        var lines = c.RadiusText.Split(Environment.NewLine);
+        Assert.Equal(2, lines.Length);
+        Assert.StartsWith("Blast-wave radius: ", lines[0]);
+        Assert.Equal($"Forward shock (steep-ejecta solution): {UnitFormat.Distance(c.State.Shocks!.ForwardCm)}", lines[1]);
+        vm.Timeline.ObserverTimeS = PhysicalConstants.Year;
+        lines = c.RadiusText.Split(Environment.NewLine);
+        Assert.StartsWith("Ejecta radius: ", lines[0]);
+        Assert.StartsWith("Forward shock (radio model's shock): ", lines[1]);
+        c.Dispose();
+    }
+
+    [Fact]
     public void Legend_BeforeBreakout_ListsTheStarsLayers_AndTheNoteStatesTheCutaway()
     {
         var c = CutawayController("sn1987a", 100, out _);   // 100 s: well before this star's breakout
