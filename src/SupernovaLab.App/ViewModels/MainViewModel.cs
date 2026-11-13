@@ -136,6 +136,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Timeline.ObserverTimeS = TimeAxis.MinS;
         Timeline.IsPlaying = true;
+        // At the first millisecond the write above changes nothing, so tell the tour (at its first stop) the user took over.
+        Timeline.RaiseUserInteracted();
     }
 
     private void OnLabChanged(object? sender, LabChangedEventArgs e)

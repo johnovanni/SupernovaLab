@@ -238,8 +238,8 @@ public static class EjectaStructureModel
 
     /// <summary>
     /// Ruling R-P2-17: no Rayleigh–Taylor fingers in a pair-instability supernova. Joggerst &amp; Whalen 2011 find none in
-    /// compact progenitors and in most extended ones; two red models mix, but never past the silicon layer
-    /// (inconsistency #41, disclosed rather than drawn).
+    /// compact progenitors and in most extended ones; two red models mix (the text puts Si reached in u200 and penetrated in u225),
+    /// but ⁵⁶Ni never reaches the outer layers (inconsistency #41, disclosed rather than drawn).
     /// </summary>
     private static readonly MixingReach PairInstabilityMixing = MixingReach.None with
     {

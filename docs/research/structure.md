@@ -260,9 +260,9 @@ as multiples of v_t (§S1.2, computed with the model's E and M_ej) they are [D].
   of 150–250 M☉ [V, read this session via ar5iv]: "we find no mixing in most 150 - 250 M⊙ pair-instability
   supernovae". Compact (blue, z-series) progenitors form no reverse shock and show no Rayleigh–Taylor mixing at all.
   Extended (red supergiant, u-series) progenitors all form a reverse shock, but it dies out before rapid growth in
-  u150 and u175 and stalls in the linear phase in u250. Only u200 and u225 mix vigorously: the oxygen layer is
-  disrupted and helium mixes into the hydrogen envelope, but the mixing never breaks through the silicon layer, so
-  ⁵⁶Ni stays inside.
+  u150 and u175 and stalls in the linear phase in u250. Only u200 and u225 mix vigorously: Si is reached in u200 and
+  penetrated in u225 per the text (the Fig. 3 caption says no model broke through Si); ⁵⁶Ni never reaches the outer
+  layers; He is mixed into H in u225 only (by convection).
 
 ### S3.3 Finger count and covered fraction
 
@@ -292,8 +292,9 @@ One value per class (ruling R-P2-13). NickelMax is the finger-tip speed. v_t is 
 Rules (R-P2-13, R-P2-17):
 
 - Pair instability takes its envelope's §S1 profile but no fingers, whatever the envelope. Joggerst & Whalen 2011
-  found partial mixing in two extended (red) models, u200 and u225. It never carried nickel out, and it is disclosed
-  (inconsistency #41) rather than drawn.
+  found partial mixing in two extended (red) models, u200 and u225 (Si reached in u200 and penetrated in u225 per the
+  text; the Fig. 3 caption says no model broke through Si). ⁵⁶Ni never reaches the outer layers, and the mixing is
+  disclosed (inconsistency #41) rather than drawn.
 
 - K cone axes are seeded and isotropic; each cone's half-angle θ is set so the union of the K cones covers a fraction
   f of the sphere (ruling R-P2-3).
@@ -775,7 +776,7 @@ Barlow 2025, arXiv:2510.13629 (review). Chevalier 2005, ApJ 619, 839, arXiv:astr
 (Handbook of Supernovae), arXiv:1612.07459. Chomiuk et al. 2016, ApJ 821, 119, arXiv:1510.07662. Crotts & Heathcote 2000,
 arXiv:astro-ph/9907367 (abstract). Fernández et al. 2018, MNRAS 476, 2366, arXiv:1710.01735. Jacobson-Galán et al.
 2023, arXiv:2306.04721 (abstract). Joggerst & Whalen 2011, arXiv:1010.4360 (read via ar5iv in Task 5's fix round; journal
-ref ApJ 728, 129 from the reviewer [R]). Kasen 2010, ApJ 708, 1025, arXiv:0909.0275. Kifonidis et al. 2003, A&A 408, 621,
+ref ApJ 728, 129, DOI 10.1088/0004-637X/728/2/129, from the arXiv page [V]). Kasen 2010, ApJ 708, 1025, arXiv:0909.0275. Kifonidis et al. 2003, A&A 408, 621,
 arXiv:astro-ph/0302239. Kistler, Haxton & Yüksel 2013, ApJ 778, 81, arXiv:1211.6770. Leahy & Williams 2017, AJ 153, 239,
 arXiv:1701.05942 (checked for C9). Lovegrove & Woosley 2013, arXiv:1303.5055. Matzner & McKee 1999, ApJ 510, 379,
 arXiv:astro-ph/9807046. Mazzali et al. 2007, Science 315, 825, arXiv:astro-ph/0702351. Ono et al. 2020, ApJ 888, 111,

@@ -191,6 +191,25 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         UpdateOverlay();
     }
 
+    private double _gpuSumS;
+
+    /// <summary>The GPU render times collected since <see cref="ResetGpuStats"/> (the governor's own measurement; the bench logs them).</summary>
+    public int GpuSamples { get; private set; }
+
+    public double MeanGpuRenderTimeS => GpuSamples > 0 ? _gpuSumS / GpuSamples : double.NaN;
+
+    public double MaxGpuRenderTimeS { get; private set; }
+
+    public void ResetGpuStats() { _gpuSumS = 0; GpuSamples = 0; MaxGpuRenderTimeS = 0; }
+
+    private void RecordGpuTime(double renderTimeS)
+    {
+        if (!(renderTimeS >= 0) || !double.IsFinite(renderTimeS)) return;
+        _gpuSumS += renderTimeS;
+        GpuSamples++;
+        MaxGpuRenderTimeS = Math.Max(MaxGpuRenderTimeS, renderTimeS);
+    }
+
     /// <summary>True when the scene is drawn through the HDR target with bloom (false before the context exists, or without RGBA16F).</summary>
     public bool HdrEnabled => _hdr?.Enabled == true;
 
@@ -555,8 +574,12 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         }
     }
 
-    private static string ModelErrorText(Exception e)
+    /// <summary>How many model errors the scene has caught since it was made (the sweep counts them, Task 14).</summary>
+    public int ModelErrorCount { get; private set; }
+
+    private string ModelErrorText(Exception e)
     {
+        ModelErrorCount++;
         Trace.TraceError($"3D view: {e}");
         return $"3D view: model error ({e.GetType().Name}: {e.Message}). The panels are unaffected.";
     }
@@ -637,7 +660,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         if (_disposed) return;
         double interval = delta.TotalSeconds;
-        _gpuTimer?.Poll(t => FeedRenderTime(t, interval));   // measurements of earlier frames, read late
+        _gpuTimer?.Poll(t => { RecordGpuTime(t); FeedRenderTime(t, interval); });   // measurements of earlier frames, read late
         StepDirector();
         if (_star is null || _particles is null || _hdr is null || _jets is null || _remnant is null || _rings is null) return;
         FramesDrawn++;

@@ -212,4 +212,13 @@ public class SnapshotRequestTests
     [InlineData("--tour", "")]
     public void BadTourStops_Throw(params string[] tour)
         => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out" }.Concat(tour).ToArray()));
+
+    [Fact]
+    public void BenchTour_IsAFlag_ThatMakesTheBenchPlayTheTour()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20", "--bench-tour", "--preset", "sn1987a" })!;
+        Assert.True(r.BenchTour);
+        Assert.Equal(20, r.BenchSeconds);
+        Assert.False(SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20" })!.BenchTour);
+    }
 }

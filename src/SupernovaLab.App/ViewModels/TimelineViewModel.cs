@@ -67,6 +67,9 @@ public sealed partial class TimelineViewModel : ObservableObject
     /// </summary>
     public event EventHandler? UserInteracted;
 
+    /// <summary>Reports a user action that did not change the time (Explode at the first millisecond): the guided tour pauses on it.</summary>
+    public void RaiseUserInteracted() => UserInteracted?.Invoke(this, EventArgs.Empty);
+
     /// <summary>
     /// The tour director's write of the time. A <paramref name="playbackStep"/> is flagged like a <see cref="Tick"/> step
     /// (<see cref="IsPlaybackStep"/>), so the 3D camera eases; otherwise it is a jump (a Next or Previous skip). Neither is

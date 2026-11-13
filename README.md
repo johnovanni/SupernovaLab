@@ -5,7 +5,8 @@ A Windows desktop app for setting off supernovas and watching them through every
 You pick a star, or load a real supernova, and press **Explode**. The app works out what happens: what kind of
 supernova it is and what is left behind. It then plays the event on one timeline, from the first millisecond to a
 thousand years, as each instrument would record it: gravitational waves, neutrinos, gamma rays, X-rays and UV,
-visible light, and radio. A simple 3D view shows the star and the expanding debris.
+visible light, and radio. A 3D view shows the star, its layers and the expanding debris, from the first millisecond to a
+remnant light-years across.
 
 ## What it is
 
@@ -15,15 +16,17 @@ formulas and citations are in `docs/research/`.
 
 It is built in three projects:
 
-- **Project 1 (this one).** The physics core, the lab, the six instrument panels and a simple 3D explosion view. It is
-  a complete app on its own.
-- **Project 2.** A full 3D showpiece of the explosion. Not started.
+- **Project 1.** The physics core, the lab, the six instrument panels and a simple 3D explosion view.
+- **Project 2 (this version, built on Project 1).** The 3D showpiece of the explosion: distance rings and a director
+  camera, layered debris with mixing and a cutaway, shocks, the gas around the star, a pulsar wind nebula, SN 1987A's
+  rings, the breakout flash, and a guided tour. See "The 3D view" below. It draws only: the instrument panels still use
+  Project 1's models.
 - **Project 3.** A close-up of the remnant: the neutron star, pulsar beams, a magnetar, a black hole bending light.
   Not started.
 
 All views read from one physics core, and shared quantities (the explosion's energy and ejecta, the remnant, the
 colour temperature, the magnetar's and the plateau's light) are defined once. Where a view still simplifies (the 3D
-view's uniform ball, the schematic spectrum's type-typical velocities), it says so.
+view's schematic colours and mixing fingers, the schematic spectrum's type-scaled velocities), it says so.
 
 ## System requirements
 
@@ -56,8 +59,8 @@ These are the design targets. The minimum class has not been measured (see `docs
 - **Right column.** The outcome: type, fate, remnant and a few key numbers. **Details...** opens every quantity with its
   range and full citation. Below it, the **outcome map** colours fate against initial mass. Its islands, where a star
   collapses to a black hole between masses that explode, are visible at a glance. Click it to set the mass.
-- **Centre.** The 3D view. Drag to turn, wheel to zoom, Home to auto-frame. It shows the time, the radius and a scale
-  bar.
+- **Centre.** The 3D view (next section). Drag to turn, wheel to zoom, Home to auto-frame. It shows the time, the
+  radius, the distance rings and notes on what is schematic.
 - **Timeline** (bottom). A log scale from 1 ms to 1,000 years, in observer time. Play, pause, drag the scrubber, set the
   speed, or click an event marker.
 - **Instrument strip.** Six tiles, one per messenger, each with a sparkline and a detection badge. Click one to open the
@@ -65,6 +68,42 @@ These are the design targets. The minimum class has not been measured (see `docs
   sensitivities, and a badge saying whether that instrument would see the event now.
 
 Hover over any term for a plain-language explanation.
+
+**The 3D view.** It follows the timeline, so it shows the same explosion and the same moment as the panels.
+
+- **Distance rings** (grey, labelled "50 AU", "2 light-years"). Three or four rings on a 1-2-5 ladder, centred on the
+  explosion. When the debris touch a ring, they have that radius. They replace Project 1's scale bar.
+- **The director camera.** The camera holds its scale while the debris grow, then eases back about 4 to 5 times when they
+  reach the outermost ring. At the default playback speed it is still for at least two thirds of each pull-back. Drag
+  to turn (the director keeps running). The wheel zooms and freezes the scale; **Home** hands it back to the director. A
+  click on the timeline, a new preset or a new outcome re-frames at once.
+- **Layers and mixing.** About 200,000 particles carry the star's element layers by mass: hydrogen, helium, oxygen and
+  silicon, nickel and iron (a Type Ia: nickel, intermediate-mass elements, unburned carbon and oxygen). Their speeds
+  follow the published density profile of the ejecta. Rayleigh-Taylor "fingers" carry nickel outward and hydrogen inward,
+  to the speeds the research gives (SN 1987A's are the observed 4,700 and 700 km/s). Finger shapes are schematic.
+- **Cutaway** (View > Cutaway). Removes a quarter wedge so you can see inside the star before breakout, and the layers in
+  the debris after it. The colour key at the bottom left names the elements. The cut faces are drawn from the layer
+  masses; the colours are schematic.
+- **Shocks.** The shock running out through the star, then, after breakout, the forward shock, the contact surface and the
+  reverse shock, with the gas they sweep up. Debris behind the reverse shock is drawn hot. The shock radii join two models
+  between 3 and 10 years; that stretch is labelled schematic.
+- **Surroundings.** The progenitor's wind as a haze, dense shells (for example SN 2023ixf's confined gas), and the swept-up
+  remnant.
+- **The Crab's pulsar wind nebula,** inside its debris, grown from the pulsar's power. Its outer shell is predicted but has
+  never been detected, and says so.
+- **SN 1987A's rings,** at their measured size and tilt, with hotspots that light as the blast wave reaches the ring.
+- **The breakout flash** and a glow around bright gas (HDR with bloom). The flash's brightness comes from the breakout
+  model.
+- **The guided tour** (the Tour button beside Play). It stops at each event of this explosion, and for a preset also at
+  the dates in its history, and shows a caption. Every number in a caption is the lab's own; history lines are marked
+  "Observed", with the source on hover. The tour moves the timeline, turns on the cutaway before breakout, brightens the
+  instrument that sees the event, and pauses when you touch the timeline, the camera or Explode ("Resume tour"
+  continues). A tour lasts well under two and a half minutes. Previous, Next and Exit are on the caption.
+
+**View menu.** Instruments, Outcome details, Preset info, **Distance rings** (on or off), **Cutaway** (on or off) and
+**Quality**: High (200,000 particles), Medium (100,000) or Low (50,000). Quality steps down by itself if the 3D view
+renders slower than 50 frames per second (measured on the GPU); a choice in the menu starts it over, and it never steps
+up by itself. Without GPU timer queries it stays where you set it.
 
 **Presets.** A preset sets the lab to its best match and pins the published explosion values (energy, ejected mass,
 nickel mass, radius, distance, dust). Pinned numbers carry a **Published value** badge with the citation. Change any
@@ -175,8 +214,11 @@ These come from the research files (`signals.md` section 12 and `outcomes.md` se
 - **Type Ia peak B magnitude** is estimated from the engine's peak luminosity (taking B and bolometric magnitudes as
   equal). It does not shape the light curve. The decline rate Δm15(B) is measured on the drawn curve.
 - **Above 50 Mpc** the shift of light between bands (K-correction) is not modelled. The app says so.
-- **The 3D view is schematic.** Its colours are approximate, the ejecta are drawn as a uniform ball, and the gas around
-  the star is drawn out to a made-up 1e15 cm. The view says so.
+- **The 3D view is partly schematic.** Its colours, the finger shapes, the wedge's cut faces, the hotspots' fade and the
+  3-to-10-year shock join are schematic, and the gas around a star with no published extent is drawn out to a made-up
+  1e15 cm. The view says so in its notes. Layer masses, speeds and shock radii come from the research files
+  (`docs/research/structure.md`). Known disagreements between the model, the research and observations are listed in
+  `docs/research/scientific-inconsistencies.md`.
 - **No spectra** are bundled. The spectrum panel draws a schematic blackbody with the identifying lines. Its line
   velocities are typical values for each type, scaled by the explosion's energy per unit mass and kept inside the
   observed range. The caption says so.
@@ -207,27 +249,43 @@ other options need `--snapshot`.
 
 ```
 SupernovaLab.App.exe --snapshot <out-dir> [--preset <list>] [--time <seconds>] [--size <WxH list>]
-                     [--window <list>] [--sweep <steps>] [--bench <seconds>]
+                     [--window <list>] [--cutaway] [--tour <stops>] [--quality <list>]
+                     [--sweep <steps>] [--bench <seconds>] [--bench-tour]
 ```
 
 - `--snapshot <out-dir>`: the output folder. Required.
 - `--preset <list>`: preset ids, comma-separated or repeated (for example `sn1987a,sn1998bw`). An entry can carry its
-  own time, `id@seconds`, in observer time (`sn1987a@86400`). Add `+densecsm` to an entry to turn on the lab's
-  dense-gas input after the preset loads. Without this option the lab's defaults are used.
+  own time, `id@seconds`, in observer time (`sn1987a@86400`). `default` (or `default@seconds`) is the lab as launched;
+  list it before any preset. Add `+densecsm` to an entry to turn on the lab's dense-gas input after the preset loads,
+  or `+cutaway` to turn on the 3D view's cutaway for that entry only. Without this option the lab's defaults are used.
 - `--time <seconds>`: the observer time for every preset that has no `@seconds`. Positive number.
 - `--size <WxH list>`: the main window size, for example `1366x768,1920x1080`. Default 1366x768.
 - `--window <list>`: which windows to render: `main`, `main-advanced`, `instruments`, `instrument-tabs`, `details`,
   `presetinfo`. Default `main`.
+- `--cutaway`: turns on the 3D view's wedge cutaway for every capture.
+- `--tour <stops>`: starts the guided tour of each preset and captures the requested windows at each listed stop
+  (`0,3,last`; stop 0 is the first). The caption, cutaway and instrument highlight are those of that stop. Nothing ticks
+  the tour, so the picture is the stop itself.
+- `--quality <list>`: the particle quality, `high`, `medium` or `low` (comma-separated for several; the bench then runs
+  each at every size). The automatic step-down is off for snapshots and benchmarks. Default High.
 - `--sweep <steps>`: loads every preset in the catalog and steps the timeline through that many log-spaced times from
-  1 ms to 1,000 years (2 to 2000), with the 3D view and Instruments window running. Any exception, panel "Model error"
-  or 3D-view failure goes to `sweep.log`. The exit code is 1 if there was a problem.
+  1 ms to 1,000 years (2 to 2000), with the 3D view and Instruments window running. Any exception, panel "Model error",
+  3D-view failure, or model error that the 3D scene or the timeline markers caught for themselves goes to `sweep.log`.
+  The exit code is 1 if there was a problem.
 - `--bench <seconds>`: plays the whole timeline once over that many seconds (above 0, at most 600) with the main and Instruments
-  windows open. It writes the frame rate, the 3D view's frame rate and the GPU name to `bench.log`.
+  windows open. It writes the frame rate, the 3D view's frame rate, the GPU name and the mean GPU render time (the quality
+  governor's own measurement) to `bench.log`.
+- `--bench-tour`: with `--bench`, plays the guided tour instead of the plain timeline, once for each listed preset at each
+  size and quality (`default` is the lab as launched). The tour sets the length of the run; the seconds only cap it.
+  `bench.log` then also gives the 3D draw rate while travelling and while dwelling on a stop.
 
 An example, one launch for several checks:
 
 ```
 SupernovaLab.App.exe --snapshot out --preset sn1987a@1e7,sn1998bw@86400 --window main,instruments --sweep 54 --bench 20
+SupernovaLab.App.exe --snapshot out --preset default,sn1987a --tour 0,2,last --size 1100x700
+SupernovaLab.App.exe --snapshot out --preset sn1987a@86400+cutaway --quality medium
+SupernovaLab.App.exe --snapshot out --preset default,sn1987a --size 1366x768,1920x1080 --bench 20 --bench-tour
 ```
 
 The windows are placed off-screen. Tooltips cannot be rendered this way, so they are checked by unit tests instead.

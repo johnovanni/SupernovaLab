@@ -9,6 +9,7 @@ using SupernovaLab.App.ViewModels;
 using SupernovaLab.App.Windows;
 using SupernovaLab.Core.Timeline;
 using SupernovaLab.Core.Presets;
+using SupernovaLab.Core.Progenitors;
 using SupernovaLab.Core.Units;
 using SupernovaLab.Rendering;
 
@@ -29,7 +30,7 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
-/// [--window main|instruments|details|presetinfo] [--cutaway] [--tour &lt;stop&gt;[,…]]</c>. <c>--cutaway</c> (a flag) turns on the 3D view's wedge cutaway for
+/// [--window main|instruments|details|presetinfo] [--cutaway] [--tour &lt;stop&gt;[,…]] [--quality high|medium|low] [--bench-tour]</c>. <c>--cutaway</c> (a flag) turns on the 3D view's wedge cutaway for
 /// every capture (Task 7); a preset entry ending in "+cutaway" turns it on for that entry only (Task 8). To batch captures into one launch, <c>--preset</c>,
 /// <c>--size</c> and <c>--window</c> may be repeated or given comma-separated lists: every requested window is captured
 /// for each preset in turn; a preset may carry its own time as "id@seconds", and "default@seconds" is the lab as launched (list it before any preset). Sizes apply to the main window (its outer size, as a user would set it); the other windows
@@ -43,8 +44,11 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
     int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false,
-    IReadOnlyList<int>? TourStopList = null)
+    IReadOnlyList<int>? TourStopList = null, bool BenchTour = false)
 {
+    // BenchTour: with <c>--bench-tour</c>, the bench plays the guided tour (Task 14) instead of the plain timeline, once for each
+    /// requested preset and size; <c>--bench</c>'s seconds are then only a ceiling on the run (the tour sets its own length).
+
     /// <summary>The guided-tour stops asked for with <c>--tour</c> (comma-separated or repeated; "last" is <see cref="LastStop"/>);
     /// the windows are captured at each stop in turn, for every preset. Empty without <c>--tour</c>.</summary>
     public IReadOnlyList<int> TourStops => TourStopList ?? Array.Empty<int>();
@@ -83,11 +87,13 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         var qualities = new List<QualityLevel>();
         bool cutaway = false;
         var tourStops = new List<int>();
+        bool benchTour = false;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
             string option = args[i];
             if (option == "--cutaway") { cutaway = true; continue; }   // a flag: the 3D view's wedge cutaway is on
+            if (option == "--bench-tour") { benchTour = true; continue; }   // a flag: the bench plays the guided tour
             if (i + 1 >= args.Count) throw new ArgumentException($"{option} needs a value.");
             string value = args[++i];
             switch (option)
@@ -142,7 +148,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -491,7 +497,8 @@ public static class SnapshotRenderer
     /// <summary>
     /// <c>--sweep</c>: for every preset, steps the observer time through log-spaced values from 1 ms to 1,000 yr with the main
     /// and Instruments windows open, giving the 3D view and the panels a frame at each step. Counts exceptions (also
-    /// dispatcher exceptions that nothing handled), panels showing "Model error", and a failed 3D view. Writes sweep.log
+    /// dispatcher exceptions that nothing handled), panels showing "Model error", a failed 3D view, and (Task 14) the model
+    /// errors the 3D scene and the timeline markers catch for themselves. Writes sweep.log
     /// and returns the number of problems.
     /// </summary>
     private static async Task<int> RunSweep(SnapshotRequest request, Window main, MainViewModel vm, WindowService windows, List<string> log)
@@ -526,6 +533,8 @@ public static class SnapshotRenderer
             {
                 int before = problems;
                 var seen = new SortedSet<string>();
+                // Errors the 3D scene and the timeline markers catch themselves (Project 1's parked minor): counted, not just hidden.
+                int sceneErrors0 = scene?.ModelErrorCount ?? 0, markerErrors0 = EventMarkers.Failures;
                 try
                 {
                     vm.Lab.SelectedPreset = preset;
@@ -540,6 +549,16 @@ public static class SnapshotRenderer
                                 problems++;
                                 lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: panel error: {p.Title}: {err}");
                             }
+                        if (scene is not null && scene.ModelErrorCount > sceneErrors0 && seen.Add("scene model error"))
+                        {
+                            problems++;
+                            lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: 3D scene model error caught ({scene.ModelErrorCount - sceneErrors0} so far)");
+                        }
+                        if (EventMarkers.Failures > markerErrors0 && seen.Add("marker error"))
+                        {
+                            problems++;
+                            lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: timeline-marker model error caught ({EventMarkers.Failures - markerErrors0} so far)");
+                        }
                         if (scene is { IsFailed: true } && seen.Add("scene"))
                         {
                             problems++;
@@ -589,24 +608,46 @@ public static class SnapshotRenderer
         if (windows.Instruments is InstrumentsWindow iw) await RedrawPanels(iw);
 
         // One run for every size with every quality level (one launch for the whole matrix): the timeline plays once per run.
+        // With --bench-tour the guided tour plays instead, once for each requested preset (Task 14).
         var clock = new PlaybackClock(vm.Timeline);
         clock.Start();
+        if (request.BenchTour) new TourClock(vm.Tour.Director).Start();   // the app's own clock is not started in a snapshot run
         var all = new List<string>();
         var scene = (main as MainWindow)?.Scene;
-        foreach (var size in request.Sizes)
-            foreach (var quality in request.Qualities)
+        var entries = request.BenchTour && request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
+        foreach (string? entry in entries)
+        {
+            if (entry is not null)
             {
-                if (scene is not null) scene.Quality = quality;
-                var lines = await RunBenchOnce(main, vm, size, quality, seconds, scene);
-                all.AddRange(lines);
-                all.Add("");
+                var (id, _) = SnapshotRequest.SplitPreset(entry);
+                if (id is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
+                else ApplyLabDefaults(vm.Lab);   // "default": the lab as launched, whatever an earlier entry loaded
+                if (SnapshotRequest.WantsDenseCsm(entry)) vm.Lab.DenseCsm = true;
             }
+            foreach (var size in request.Sizes)
+                foreach (var quality in request.Qualities)
+                {
+                    if (scene is not null) scene.Quality = quality;
+                    var lines = await RunBenchOnce(main, vm, size, quality, seconds, scene, request.BenchTour);
+                    all.AddRange(lines);
+                    all.Add("");
+                }
+        }
         File.WriteAllLines(Path.Combine(request.OutDirectory, "bench.log"), all);
         log.AddRange(all);
     }
 
+    /// <summary>Sets every input of the lab back to <see cref="LabInputs.Default"/> (the bench's "default" entry after a preset was loaded).</summary>
+    private static void ApplyLabDefaults(LabViewModel lab)
+    {
+        var d = LabInputs.Default;
+        lab.Kind = d.Kind; lab.InitialMass = d.InitialMass; lab.Metallicity = d.Metallicity; lab.Stripping = d.Stripping;
+        lab.Rotation = d.Rotation; lab.Field = d.Field; lab.IaChannel = d.IaChannel; lab.WhiteDwarfMass = d.WhiteDwarfMass;
+        lab.Mixing = d.Mixing; lab.Yield = d.Yield; lab.DenseCsm = d.DenseCsm; lab.Opacity = d.Opacity;
+    }
+
     private static async Task<List<string>> RunBenchOnce(Window main, MainViewModel vm, SnapshotSize size, QualityLevel quality,
-        double seconds, SupernovaLab.App.Controllers.SceneController? scene)
+        double seconds, SupernovaLab.App.Controllers.SceneController? scene, bool tour = false)
     {
         main.Width = size.Width;
         main.Height = size.Height;
@@ -628,10 +669,37 @@ public static class SnapshotRenderer
             frames++;
         }
         long sceneFrames0 = scene?.FramesDrawn ?? 0;
+        scene?.ResetGpuStats();
+        // The tour's travel and dwell are timed apart: a dwell on a still scene redraws only when something moves.
+        var director = vm.Tour.Director;
+        double travelS = 0, dwellS = 0;
+        long travelFrames = 0, dwellFrames = 0;
+        string tourText = "";
         CompositionTarget.Rendering += OnRendering;
-        vm.Timeline.IsPlaying = true;
-        while (vm.Timeline.IsPlaying && watch.Elapsed.TotalSeconds < seconds * 1.5 + 5)
-            await Task.Delay(100);
+        if (tour)
+        {
+            director.Start();
+            tourText = $"the guided tour ({director.Stops.Count} stops) instead of the plain timeline; ";
+            long framesBefore = scene?.FramesDrawn ?? 0;
+            double wallBefore = watch.Elapsed.TotalSeconds;
+            while (director.State != SupernovaLab.App.Tour.TourState.Off && watch.Elapsed.TotalSeconds < 200)
+            {
+                await Task.Delay(100);
+                long f = scene?.FramesDrawn ?? 0;
+                double w = watch.Elapsed.TotalSeconds;
+                if (director.State == SupernovaLab.App.Tour.TourState.Dwelling) { dwellS += w - wallBefore; dwellFrames += f - framesBefore; }
+                else { travelS += w - wallBefore; travelFrames += f - framesBefore; }
+                framesBefore = f;
+                wallBefore = w;
+            }
+            if (director.State != SupernovaLab.App.Tour.TourState.Off) director.Exit();
+        }
+        else
+        {
+            vm.Timeline.IsPlaying = true;
+            while (vm.Timeline.IsPlaying && watch.Elapsed.TotalSeconds < seconds * 1.5 + 5)
+                await Task.Delay(100);
+        }
         CompositionTarget.Rendering -= OnRendering;
         double elapsed = watch.Elapsed.TotalSeconds;
         long sceneFrames = (scene?.FramesDrawn ?? 0) - sceneFrames0;
@@ -646,16 +714,27 @@ public static class SnapshotRenderer
             $"quality {quality} ({(int)quality:N0} particles); HDR pipeline {(scene is null ? "n/a" : scene.HdrEnabled ? "on (RGBA16F, bloom)" : "off (no-bloom path)")}",
             $"preset {preset}; main window {main.ActualWidth:0}x{main.ActualHeight:0} and the Instruments window open (off-screen), " +
             "the visible panel on its schematic spectrum and the radio panel on its pulses; " +
-            $"playing the whole timeline ({decades.ToString("0.0", inv)} decades) at {vm.Timeline.DecadesPerSecond.ToString("0.###", inv)} decades/s",
+            (tour ? $"playing {tourText}travelling at {TimelineViewModel.DefaultDecadesPerSecond.ToString("0.###", inv)} decades/s (slowed near each stop)"
+                 : $"playing the whole timeline ({decades.ToString("0.0", inv)} decades) at {vm.Timeline.DecadesPerSecond.ToString("0.###", inv)} decades/s"),
             $"frames {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps",
             $"frame interval p95 {p95.ToString("0.0", inv)} ms, worst {worst.ToString("0.0", inv)} ms",
             scene is null ? "3D view GPU: none" : $"3D view GPU: {(scene.GlInfo.Length > 0 ? scene.GlInfo : "not reported")}",
             scene is null ? "3D view: none" : scene.IsFailed ? $"3D view: failed ({scene.FailureMessage})" :
                 $"3D view frames drawn {sceneFrames} in {elapsed.ToString("0.00", inv)} s: " +
                 $"{(sceneFrames / elapsed).ToString("0.0", inv)} fps (GL draws counted by the scene controller)",
-            $"reached the end of the timeline: {(vm.Timeline.ObserverTimeS >= TimeAxis.MaxS ? "yes" : "no")}",
-        };
-        return lines.ToList();
+            tour ? $"reached the end of the tour: {(director.State == SupernovaLab.App.Tour.TourState.Off ? "yes" : "no")}; last time {UnitFormat.Time(vm.Timeline.ObserverTimeS)}"
+                 : $"reached the end of the timeline: {(vm.Timeline.ObserverTimeS >= TimeAxis.MaxS ? "yes" : "no")}",
+        }.ToList();
+        if (tour && scene is not null)
+            lines.Add($"3D draws while travelling: {travelFrames} in {travelS.ToString("0.0", inv)} s = {(travelFrames / Math.Max(travelS, 1e-9)).ToString("0.0", inv)} fps; " +
+                      $"while dwelling on a stop: {dwellFrames} in {dwellS.ToString("0.0", inv)} s = {(dwellFrames / Math.Max(dwellS, 1e-9)).ToString("0.0", inv)} fps");
+        if (scene is not null)
+            lines.Add(!scene.GpuTimingAvailable || scene.GpuSamples == 0
+                ? "GPU render time (the governor's measurement): not available on this GPU"
+                : $"GPU render time (the governor's measurement, GL timer query): mean {(scene.MeanGpuRenderTimeS * 1000).ToString("0.00", inv)} ms, " +
+                  $"max {(scene.MaxGpuRenderTimeS * 1000).ToString("0.00", inv)} ms over {scene.GpuSamples} drawn frames " +
+                  $"(the governor steps down above {(1000 / QualityGovernor.MinFps).ToString("0", inv)} ms)");
+        return lines;
     }
 
     /// <summary>The window's tallest scroll viewer (its main content), or null.</summary>

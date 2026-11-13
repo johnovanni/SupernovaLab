@@ -76,6 +76,11 @@ public static class EventMarkers
         return list.OrderBy(m => m.ObserverTimeS).ToList();
     }
 
+    private static int _failures;
+
+    /// <summary>How many times <see cref="Guarded"/> has caught a model error since the app started (the sweep counts them, Task 14).</summary>
+    public static int Failures => Volatile.Read(ref _failures);
+
     /// <summary>
     /// Review M1 (spec §9, model errors stay inside one place): the markers <paramref name="markers"/> makes, or none when a
     /// model throws, so a model error leaves the timeline without markers instead of ending the app. The error is traced.
@@ -88,6 +93,7 @@ public static class EventMarkers
         }
         catch (Exception e)
         {
+            Interlocked.Increment(ref _failures);
             System.Diagnostics.Trace.TraceError($"Timeline markers: {e}");
             return Array.Empty<EventMarker>();
         }
