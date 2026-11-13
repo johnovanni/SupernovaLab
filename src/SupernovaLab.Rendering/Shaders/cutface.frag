@@ -16,6 +16,8 @@ uniform float u_hydrogenMin;     // radius the hydrogen fingers reach inward to;
 uniform int u_coneCount;
 uniform vec3 u_coneAxis[10];
 uniform float u_coneCos;
+uniform float u_transitionRadius; // radius of the profile's break speed v_t, scene units
+uniform float u_densityIndex;     // the profile's outer slope n
 
 out vec4 o_color;
 
@@ -25,9 +27,11 @@ void main()
     float edge = max(fwidth(rho), 1e-6);
     float a = 1.0 - smoothstep(u_extent - edge, u_extent, rho);
     if (a <= 0.01) discard;
+    float alpha = a;
     vec3 c = u_layerColor[u_layerCount - 1];
     for (int k = 0; k < u_layerCount; k++)
         if (rho <= u_layerOuter[k]) { c = u_layerColor[k]; break; }
+    bool finger = false;
     if (u_coneCount > 0)
     {
         vec3 d = v_world / max(rho, 1e-9);
@@ -36,9 +40,11 @@ void main()
             if (dot(d, u_coneAxis[k]) >= u_coneCos) inCone = true;
         if (inCone)
         {
-            if (u_nickelMax > 0.0 && rho <= u_nickelMax) c = u_nickelColor;
-            else if (u_hydrogenMin > 0.0 && rho >= u_hydrogenMin) c = u_hydrogenColor;
+            if (u_nickelMax > 0.0 && rho <= u_nickelMax) { c = u_nickelColor; finger = true; }
+            else if (u_hydrogenMin > 0.0 && rho >= u_hydrogenMin) { c = u_hydrogenColor; finger = true; }
         }
     }
-    o_color = vec4(c, a);   // alpha 1 also writes the face mask the tone map reads
+    // Ruling R-P2-23: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (radius ~ speed); fingers are opaque.
+    if (!finger && rho > u_transitionRadius) alpha *= clamp(pow(rho / u_transitionRadius, -u_densityIndex), 0.0, 1.0);
+    o_color = vec4(c, alpha);   // the alpha is also the face mask the tone map reads
 }

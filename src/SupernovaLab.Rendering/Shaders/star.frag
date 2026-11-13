@@ -22,6 +22,8 @@ uniform int u_pass;
 uniform vec3 u_back;            // unit vector from the star to the camera
 uniform vec3 u_right;
 uniform vec3 u_up;
+uniform vec3 u_wedgeX;          // the wedge frame (WedgeOrientation)
+uniform vec3 u_wedgeZ;
 uniform int u_layerCount;
 uniform float u_layerOuter[6];  // outer radius of each layer, centre outward, in units of the star's radius
 uniform vec3 u_layerColor[6];   // HDR colours
@@ -48,11 +50,13 @@ void main()
     if (u_cut != 0)
     {
         vec3 p = u_right * v_corner.x + u_up * v_corner.y + u_back * mu;
-        if (p.x > 0.0 && p.z > 0.0)
+        vec3 pw = vec3(dot(p, u_wedgeX), p.y, dot(p, u_wedgeZ));     // the point and the view vector in the wedge frame
+        vec3 bw = vec3(dot(u_back, u_wedgeX), u_back.y, dot(u_back, u_wedgeZ));
+        if (pw.x > 0.0 && pw.z > 0.0)
         {
             if (u_pass == 0) discard;                   // faces are painted later
-            float sx = u_back.x > 1e-6 ? p.x / u_back.x : 1e9;
-            float sz = u_back.z > 1e-6 ? p.z / u_back.z : 1e9;
+            float sx = bw.x > 1e-6 ? pw.x / bw.x : 1e9;
+            float sz = bw.z > 1e-6 ? pw.z / bw.z : 1e9;
             float s = min(sx, sz);
             if (s > 2.0 * mu) discard;                  // through the gap to the far side: nothing there
             vec3 q = p - u_back * s;

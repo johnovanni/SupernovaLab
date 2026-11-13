@@ -10,17 +10,20 @@ namespace SupernovaLab.Rendering;
 /// radii with their HDR colours (centre outward), the finger tips' radii (NaN or 0 for none), and the finger cones.
 /// </summary>
 public sealed record CutFaceUniforms(IReadOnlyList<(float OuterRadius, Vector3 Color)> Layers, float NickelMaxRadius, float HydrogenMinRadius,
-    Vector3 NickelColor, Vector3 HydrogenColor, IReadOnlyList<Vector3> ConeAxes, float ConeCos);
+    Vector3 NickelColor, Vector3 HydrogenColor, IReadOnlyList<Vector3> ConeAxes, float ConeCos, float TransitionRadius, float DensityIndex);
 
 /// <summary>
 /// The debris cutaway's cut faces (ruling R-P2-21): the two quarter planes bounding the removed quarter, x &gt; 0 and
 /// z &gt; 0 in scene coordinates, drawn as opaque quads shaded per pixel (<c>cutface.frag</c>, mirroring
-/// <see cref="CutFaceModel.LayerAt"/>). Draw them FIRST in the frame, with the depth test and depth write on, so the particles
-/// (drawn later with the depth test on and depth write off) are hidden behind them. Alpha 1 marks the face for the tone map's bloom mask.
+/// <see cref="CutFaceModel.LayerAt"/>). Draw them after the bloom is built (<see cref="HdrPipeline.End"/>'s hook): they are translucent where the cloud is thin
+/// (<see cref="CutFaceModel.Opacity"/>, ruling R-P2-23), so they dim the glow behind them and add none of their own. Alpha is also the tone map's bloom mask.
 /// </summary>
 public sealed class CutFaceRenderer : IDisposable
 {
     public const int MaxCones = 10;
+
+    /// <summary>The wedge's angle about the scene's y axis (ruling R-P2-22), radians.</summary>
+    public double WedgeAngleRad { get; set; }
 
     private readonly ShaderProgram _program = ShaderProgram.FromResources("cutface.vert", "cutface.frag");
     private readonly int _vao, _vbo;
@@ -75,12 +78,14 @@ public sealed class CutFaceRenderer : IDisposable
         _program.Set("u_coneCount", cones);
         GL.Uniform3(_program.Location("u_coneAxis"), MaxCones, axes);
         _program.Set("u_coneCos", u.ConeCos);
+        _program.Set("u_transitionRadius", u.TransitionRadius);
+        _program.Set("u_densityIndex", u.DensityIndex);
+        WedgeUniforms.Set(_program, WedgeAngleRad);
 
-        GL.Enable(EnableCap.DepthTest);
-        GL.DepthFunc(DepthFunction.Less);
-        GL.DepthMask(true);
+        // Over what is drawn (alpha = the density profile's opacity); the alpha channel accumulates as the bloom mask.
+        GL.Disable(EnableCap.DepthTest);
         GL.Enable(EnableCap.Blend);
-        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+        GL.BlendFuncSeparate(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha, BlendingFactorSrc.One, BlendingFactorDest.OneMinusSrcAlpha);
         GL.BindVertexArray(_vao);
         for (int plane = 0; plane < 2; plane++)
         {
@@ -88,7 +93,6 @@ public sealed class CutFaceRenderer : IDisposable
             GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
         }
         GL.BindVertexArray(0);
-        GL.Disable(EnableCap.DepthTest);   // the particles switch it back on (writing no depth); everything else ignores depth
     }
 
     public void Dispose()

@@ -92,6 +92,27 @@ public class CutFaceModelTests
             Assert.Null(CutFaceModel.Build(shell, FingerCones.Empty, 1, 5e13, shell.MaxCmS));
     }
 
+    [Fact]
+    public void Opacity_FollowsTheDensityProfile_AndFingersAreOpaque()
+    {
+        // Ruling R-P2-23: 1 inside v_t, (v / v_t)^-n outside, radius proportional to speed.
+        var (faces, cones, s, _) = Faces(Bsg());
+        double rt = faces.TransitionRadiusCm, n = s.N;
+        Assert.True(n > 5);
+        Assert.Equal(1, faces.Opacity(0.9 * rt, false));
+        Assert.Equal(1, faces.Opacity(rt, false));
+        Assert.Equal(Math.Pow(1.2, -n), faces.Opacity(1.2 * rt, false), 12);
+        Assert.Equal(Math.Pow(2, -n), faces.Opacity(2 * rt, false), 12);
+        Assert.Equal(1, faces.Opacity(3 * rt, true));
+        Assert.True(faces.Opacity(faces.OuterRadiusCm, false) < 0.01, "the face fades out with the cloud");
+        // Radius is proportional to speed in the radius rule, so the radius ratio is the speed ratio.
+        double r1 = ParticleKinematics.RadiusCm(1.2 * s.TransitionCmS, 30 * Day, 0, 1e9, null);
+        double r0 = ParticleKinematics.RadiusCm(s.TransitionCmS, 30 * Day, 0, 1e9, null);
+        Assert.Equal(1.2, r1 / r0, 12);
+        var axis = cones.Axes[0];
+        Assert.True(faces.InFinger(0.5 * faces.NickelMaxRadiusCm, axis.X, axis.Y, axis.Z));
+    }
+
     /// <summary>A direction uniform on the sphere (the test's own, so MixingModel's internal helper stays internal).</summary>
     private static class MixingModelTestAccess
     {

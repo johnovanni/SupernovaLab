@@ -75,6 +75,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _hostFactory = hostFactory ?? throw new ArgumentNullException(nameof(hostFactory));
         _sceneFactory = sceneFactory ?? ((o, z1) => new ExplosionScene(o, z1));
         BuildScene();
+        ResetCameraAngles();
         ComputeState();
         Director.Jump(_state.FrameRadiusCm);
         vm.OutcomeChanged += OnOutcomeChanged;
@@ -158,6 +159,10 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     partial void OnIsCutawayChanged(bool value)
     {
+        // A camera still at the old default follows the default to its new place (the notch keeps facing the viewer); one the
+        // user has turned stays where it is.
+        double yaw = _defaultYawDeg < 0 ? _defaultYawDeg + 360 : _defaultYawDeg;
+        if (Math.Abs(Camera.YawDeg - yaw) < 1e-6 && Math.Abs(Camera.PitchDeg - _defaultPitchDeg) < 1e-6) ResetCameraAngles();
         UpdateOverlay();
         RequestRender();
     }
@@ -242,6 +247,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _frozenUnitCm = null;
         Camera.DistanceMpc = AutoDistance;
         Camera.Target = default;
+        ResetCameraAngles();
         IsAutoFraming = true;
         Director.Jump(_state.FrameRadiusCm);
         UpdateAnimating();
@@ -278,6 +284,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _frozenUnitCm = null;
         Camera.DistanceMpc = AutoDistance;
         Camera.Target = default;
+        ResetCameraAngles();
         IsAutoFraming = true;
         Restate(jump: true);   // Review Focus 4: a new outcome reframes at once, even in the middle of an ease
     }
@@ -340,6 +347,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             _uploadParticles = true;   // a new outcome has a new particle set
             _modelError = null;
             BuildParticles();
+            ComputeWedgeAngle();
         }
         catch (Exception e)
         {
@@ -458,12 +466,13 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (unit > 0 && double.IsFinite(unit) && viewportPx.Width > 0 && viewportPx.Height > 0)
         {
             double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
-            // The wedge. Debris: the two cut faces first (opaque, writing depth), then the particles behind them are hidden
-            // (ruling R-P2-21). Star: its cut faces are painted after the bloom (below).
+            // The wedge: the particles in the removed quarter are dropped here; the cut faces (debris and star) are painted after
+            // the bloom is built (below), so they feed no glow (rulings R-P2-21 and R-P2-23).
             bool starCut = IsCutaway && s.ShowStar && s.StarLayers.Count > 0 && s.StarRadiusCm > 0;
             bool particleCut = IsCutaway && s.ShowParticles && _uploaded is not null;
             var faceColors = starCut || particleCut ? FaceColors() : Array.Empty<(float R, float G, float B)>();
-            if (particleCut) DrawCutFaces(viewportPx, s, _uploaded!, unit, faceColors);
+            _star.WedgeAngleRad = _particles.WedgeAngleRad = _wedgeAngleRad;
+            if (_cutFaces is not null) _cutFaces.WedgeAngleRad = _wedgeAngleRad;
             if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
             if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor, starCut);
             if (s.ShowParticles && _uploaded is { } set)
@@ -483,12 +492,15 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
             _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
-            if (starCut)
+            if (starCut || particleCut)
             {
                 var star = _star;
+                var uploaded = _uploaded;
                 cutFaces = () =>
                 {
                     GL.ColorMask(true, true, true, true);
+                    if (particleCut && uploaded is not null) DrawCutFaces(viewportPx, s, uploaded, unit, faceColors);
+                    if (!starCut) return;
                     var layers = s.StarLayers.Select(l => ((float)(l.OuterRadiusCm / s.StarRadiusCm), ToVector(faceColors[(int)l.Layer]))).ToList();
                     float shock = double.IsFinite(s.ShockInStarRadiusCm) ? (float)(s.ShockInStarRadiusCm / s.StarRadiusCm) : float.NaN;
                     star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, new StarCutaway(layers, shock));
@@ -502,6 +514,32 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             _readback = null;
             readback.TrySetResult(ReadPixels(viewportPx));
         }
+    }
+
+    /// <summary>The camera's default direction (yaw 30, pitch 20 deg), as seen from the wedge: the notch faces the viewer.</summary>
+    private const double DefaultYawDeg = 30, DefaultPitchDeg = 20;
+
+    private double _wedgeAngleRad, _defaultYawDeg = DefaultYawDeg, _defaultPitchDeg = DefaultPitchDeg;
+
+    /// <summary>The wedge's angle about the scene's y axis for this outcome (ruling R-P2-22), 0 without fingers.</summary>
+    public double WedgeAngleRad => _wedgeAngleRad;
+
+    private void ComputeWedgeAngle()
+        => _wedgeAngleRad = _scene?.Structure is { IsEnvelopeShell: false, Mixing.HasFingers: true } st
+            ? WedgeOrientation.AngleFor(ConesFor(st)) : 0;
+
+    /// <summary>
+    /// The camera's default angles: the original yaw/pitch seen from the wedge, i.e. turned with it (ruling R-P2-22), so the notch
+    /// faces the viewer as it always did. Only while the cutaway is on; with it off the view is the original 30/20.
+    /// </summary>
+    private void ResetCameraAngles()
+    {
+        double phi = IsCutaway ? _wedgeAngleRad : 0, yaw = DefaultYawDeg * Math.PI / 180, pitch = DefaultPitchDeg * Math.PI / 180;
+        var d = WedgeOrientation.FromWedge(phi, Math.Cos(pitch) * Math.Cos(yaw), Math.Cos(pitch) * Math.Sin(yaw), Math.Sin(pitch));
+        _defaultYawDeg = Math.Atan2(d.Y, d.X) * 180 / Math.PI;
+        _defaultPitchDeg = Math.Asin(Math.Clamp(d.Z, -1, 1)) * 180 / Math.PI;
+        Camera.YawDeg = _defaultYawDeg < 0 ? _defaultYawDeg + 360 : _defaultYawDeg;
+        Camera.PitchDeg = _defaultPitchDeg;
     }
 
     private CutFaceRenderer? _cutFaces;
@@ -530,10 +568,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         var axes = model.Cones.Axes.Select(a => new OpenTK.Mathematics.Vector3((float)a.X, (float)a.Y, (float)a.Z)).ToList();
         var uniforms = new CutFaceUniforms(layers, (float)(model.NickelMaxRadiusCm / unit), (float)(model.HydrogenMinRadiusCm / unit),
             ToVector(colors[(int)ElementLayer.NickelIron]), ToVector(colors[(int)ElementLayer.Hydrogen]), axes,
-            (float)(Math.Cos(model.Cones.HalfAngleRad) - FingerCones.RimToleranceCos));
-        GL.ColorMask(true, true, true, true);
+            (float)(Math.Cos(model.Cones.HalfAngleRad) - FingerCones.RimToleranceCos),
+            (float)(model.TransitionRadiusCm / unit), (float)model.OuterIndex);
         _cutFaces.Render(Camera, viewportPx, (float)(model.OuterRadiusCm / unit), uniforms);
-        GL.ColorMask(true, true, true, false);
     }
 
     private static OpenTK.Mathematics.Vector3 ToVector((float R, float G, float B) c) => new(c.R, c.G, c.B);

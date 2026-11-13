@@ -521,4 +521,30 @@ public class SceneControllerTests
         Assert.DoesNotContain("Cutaway", c.NotesText);
         c.Dispose();
     }
+
+    [Fact]
+    public void Cutaway_TurnsTheCameraWithTheWedge_SoTheNotchKeepsFacingTheViewer()
+    {
+        var c = CutawayController("sn1987a", 20 * PhysicalConstants.Day, out _);
+        Assert.Equal(30, c.Camera.YawDeg, 6);   // off: the original default view
+        Assert.Equal(20, c.Camera.PitchDeg, 6);
+        c.IsCutaway = true;
+        double phi = c.WedgeAngleRad;
+        Assert.True(phi > 0);
+        // The camera direction seen from the wedge frame is the original 30/20 degrees.
+        var b = c.Camera.Backward;
+        var w = SupernovaLab.Core.Structure.WedgeOrientation.ToWedge(phi, b.X, b.Y, b.Z);
+        double yaw = 30 * Math.PI / 180, pitch = 20 * Math.PI / 180;
+        Assert.Equal(Math.Cos(pitch) * Math.Cos(yaw), w.X, 9);
+        Assert.Equal(Math.Cos(pitch) * Math.Sin(yaw), w.Y, 9);
+        Assert.Equal(Math.Sin(pitch), w.Z, 9);
+        c.Rotate(40, 0);   // the user turns it: Home restores the wedge-facing default
+        c.Home();
+        var h = c.Camera.Backward;
+        Assert.Equal(b.X, h.X, 9);
+        Assert.Equal(b.Z, h.Z, 9);
+        c.IsCutaway = false;
+        Assert.Equal(30, c.Camera.YawDeg, 6);
+        c.Dispose();
+    }
 }

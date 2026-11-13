@@ -45,4 +45,16 @@ public class ShaderSourceTests
                 Assert.True(code.Count(c => c == open) == code.Count(c => c == close), $"{name}: unbalanced {open}{close}");
         }
     }
+
+    [Theory]
+    [InlineData("particle.vert")]
+    [InlineData("cutface.vert")]
+    [InlineData("star.frag")]
+    public void TheWedgeShaders_ShareTheWedgeFrame(string shader)
+    {
+        // Ruling R-P2-22: the particle drop, the face quads and the star all use the wedge basis (WedgeOrientation's).
+        string text = System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith("." + shader)).Bytes);
+        Assert.Contains("uniform vec3 u_wedgeX", text);
+        Assert.Contains("uniform vec3 u_wedgeZ", text);
+    }
 }

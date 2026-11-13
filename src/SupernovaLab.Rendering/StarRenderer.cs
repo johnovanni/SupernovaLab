@@ -37,6 +37,9 @@ public sealed class StarRenderer : IDisposable
         GL.BindVertexArray(0);
     }
 
+    /// <summary>The wedge's angle about the scene's y axis (ruling R-P2-22), radians.</summary>
+    public double WedgeAngleRad { get; set; }
+
     /// <summary>The gas around the star: pale blue-grey (schematic), at most this opaque.</summary>
     private static readonly (float R, float G, float B) GasColor = (0.55f, 0.65f, 0.85f);
     private const float GasAlpha = 0.35f;
@@ -76,6 +79,7 @@ public sealed class StarRenderer : IDisposable
         _program.Set("u_alpha", alpha);
         _program.Set("u_cut", cut);
         _program.Set("u_pass", pass);
+        WedgeUniforms.Set(_program, WedgeAngleRad);
         var back = camera.Backward;
         _program.Set("u_back", new Vector3((float)back.X, (float)back.Y, (float)back.Z));
         if (cutaway is not null)

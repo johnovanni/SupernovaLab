@@ -9,7 +9,7 @@ namespace SupernovaLab.Rendering;
 /// <paramref name="StarRadius"/> is R* and <paramref name="Expansion"/> is v_max · (t − t_bo), so a particle at speed
 /// ratio s = v / v_max is at s · (R* + Expansion) (<c>ParticleKinematics.RadiusCm</c> with no shocks). With
 /// <paramref name="Cutaway"/> the wedge is on (ruling R-P2-21): particles in the removed quarter (x &gt; 0 and z &gt; 0, scene
-/// coordinates) are not drawn, and the depth test hides those behind the cut faces (<see cref="CutFaceRenderer"/>, drawn first).
+/// coordinates) are not drawn, and the cut faces (<see cref="CutFaceRenderer"/>, drawn after the bloom) fade the cloud behind them.
 /// Later tasks add the shock radii.
 /// </summary>
 public readonly record struct ParticleUniforms(float StarRadius, float Expansion, Vector3 Color, float Brightness,
@@ -50,6 +50,9 @@ public sealed class ParticleRenderer : IDisposable
         GL.VertexAttribPointer(2, 1, VertexAttribPointerType.Float, false, stride, 4 * sizeof(float));
         GL.BindVertexArray(0);
     }
+
+    /// <summary>The wedge's angle about the scene's y axis (ruling R-P2-22), radians.</summary>
+    public double WedgeAngleRad { get; set; }
 
     public int Capacity { get; }
 
@@ -102,20 +105,13 @@ public sealed class ParticleRenderer : IDisposable
         _program.Set("u_color", u.Color * u.Brightness);
         _program.Set("u_alpha", ParticleUniforms.Alpha);
         _program.Set("u_cut", u.Cutaway ? 1 : 0);
+        WedgeUniforms.Set(_program, WedgeAngleRad);
         GL.Enable(EnableCap.ProgramPointSize);
         GL.Enable(EnableCap.Blend);
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
-        if (u.Cutaway)
-        {
-            // Hidden behind the faces (which wrote depth); the dots themselves write none, so they still add up.
-            GL.Enable(EnableCap.DepthTest);
-            GL.DepthFunc(DepthFunction.Less);
-            GL.DepthMask(false);
-        }
         GL.BindVertexArray(_vao);
         GL.DrawArrays(PrimitiveType.Points, 0, _count);
         GL.BindVertexArray(0);
-        if (u.Cutaway) GL.Disable(EnableCap.DepthTest);
     }
 
     public void Dispose()

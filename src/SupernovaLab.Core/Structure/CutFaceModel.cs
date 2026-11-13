@@ -13,8 +13,10 @@ namespace SupernovaLab.Core.Structure;
 /// <param name="NickelMaxRadiusCm">Radius of the nickel finger tips (NaN: no nickel fingers).</param>
 /// <param name="HydrogenMinRadiusCm">Radius the hydrogen fingers reach inward to (NaN: none).</param>
 /// <param name="Cones">The finger cones (empty when there are no fingers).</param>
+/// <param name="TransitionRadiusCm">Radius of the profile's break speed v_t (ruling R-P2-23).</param>
+/// <param name="OuterIndex">The profile's outer slope n: the face thins as (v / v_t)^-n beyond v_t.</param>
 public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double OuterRadiusCm)> Layers, double NickelMaxRadiusCm,
-    double HydrogenMinRadiusCm, FingerCones Cones)
+    double HydrogenMinRadiusCm, FingerCones Cones, double TransitionRadiusCm, double OuterIndex)
 {
     /// <summary>The outermost radius a face is drawn to, cm: the fastest particle's.</summary>
     public double OuterRadiusCm => Layers[^1].OuterRadiusCm;
@@ -45,7 +47,23 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
         bool fingers = m.HasFingers && cones.Axes.Count > 0;
         double ni = fingers && m.NickelFingerFraction > 0 && double.IsFinite(m.NickelMaxCmS) ? Radius(m.NickelMaxCmS) : double.NaN;
         double h = fingers && double.IsFinite(m.HydrogenMinCmS) ? Radius(m.HydrogenMinCmS) : double.NaN;
-        return new CutFaceModel(layers, ni, h, fingers ? cones : FingerCones.Empty);
+        return new CutFaceModel(layers, ni, h, fingers ? cones : FingerCones.Empty, Radius(s.TransitionCmS), s.N);
+    }
+
+    /// <summary>Whether this face point is inside a finger (a cone, between the radii the nickel or hydrogen reaches).</summary>
+    public bool InFinger(double radiusCm, double dx, double dy, double dz)
+        => Cones.Axes.Count > 0 && Cones.Contains(dx, dy, dz) && (radiusCm <= NickelMaxRadiusCm || radiusCm >= HydrogenMinRadiusCm);
+
+    /// <summary>
+    /// The face's opacity at this radius (ruling R-P2-23): the density profile of structure section S1 relative to its value at
+    /// v_t, rho(v) / rho(v_t) = 1 inside v_t and (v / v_t)^-n outside, where v is the speed whose radius is this one (radius
+    /// is proportional to speed in <see cref="ParticleKinematics"/>'s rule, so v / v_t = radius / <see cref="TransitionRadiusCm"/>).
+    /// A finger is opaque. So the faces fade out with the cloud, a glowing ball with a slice removed.
+    /// </summary>
+    public double Opacity(double radiusCm, bool inFinger)
+    {
+        if (inFinger || !(radiusCm > TransitionRadiusCm)) return 1;
+        return Math.Clamp(Math.Pow(radiusCm / TransitionRadiusCm, -OuterIndex), 0, 1);
     }
 
     /// <summary>
@@ -60,11 +78,8 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
         foreach (var (l, outer) in Layers)
             if (radiusCm <= outer) { layer = l; break; }
 
-        if (Cones.Axes.Count > 0 && Cones.Contains(dx, dy, dz))
-        {
-            if (radiusCm <= NickelMaxRadiusCm) return ElementLayer.NickelIron;
-            if (radiusCm >= HydrogenMinRadiusCm) return ElementLayer.Hydrogen;
-        }
+        if (InFinger(radiusCm, dx, dy, dz))
+            return radiusCm <= NickelMaxRadiusCm ? ElementLayer.NickelIron : ElementLayer.Hydrogen;
         return layer;
     }
 }
