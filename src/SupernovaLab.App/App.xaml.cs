@@ -29,7 +29,9 @@ public partial class App : Application
         }
 
         var windows = new WindowService();
-        var vm = new MainViewModel(new OutcomeEngine(ExplodabilityTable.LoadEmbedded()), windows);
+        // Task 15: the panel layout is remembered in %LOCALAPPDATA%\SupernovaLab\layout.json; a snapshot run never reads or writes it.
+        var vm = new MainViewModel(new OutcomeEngine(ExplodabilityTable.LoadEmbedded()), windows,
+            snapshot is null ? LayoutStore.ForCurrentUser() : null);
         var main = new MainWindow { DataContext = vm };
         windows.Attach(main);
         MainWindow = main;

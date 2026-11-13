@@ -44,8 +44,11 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
     int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false,
-    IReadOnlyList<int>? TourStopList = null, bool BenchTour = false)
+    IReadOnlyList<int>? TourStopList = null, bool BenchTour = false, LayoutSettings? Layout = null)
 {
+    // Layout (Task 15): <c>--layout focus,lab-folded,outcome-folded,key-folded,notes-open,caption-folded</c> sets the panel states for every
+    // capture; a preset entry may add them for itself ("sn1987a+tour+labfolded"). Snapshots never read layout.json (the owner's own state).
+
     // BenchTour: with <c>--bench-tour</c>, the bench plays the guided tour (Task 14) instead of the plain timeline, once for each
     /// requested preset and size; <c>--bench</c>'s seconds are then only a ceiling on the run (the tour sets its own length).
 
@@ -88,6 +91,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         bool cutaway = false;
         var tourStops = new List<int>();
         bool benchTour = false;
+        LayoutSettings? layout = null;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -138,6 +142,9 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                         else throw new ArgumentException($"--tour needs stop numbers from 0 (or 'last'), comma-separated, not '{stop}'.");
                     }
                     break;
+                case "--layout":
+                    layout = ParseLayout(value, layout ?? new LayoutSettings());
+                    break;
                 case "--quality":
                     foreach (string q in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                         qualities.Add(QualityLevels.Parse(q) ?? throw new ArgumentException($"--quality needs high, medium or low, not '{q}'."));
@@ -148,7 +155,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour, layout);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -181,6 +188,8 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         id ??= DefaultEntry;
         string suffix = own is double t ? $"-{id}-t{t.ToString("0.###", CultureInfo.InvariantCulture)}" : $"-{id}";
         if (WantsDenseCsm(entry)) suffix += "-densecsm";
+        foreach (string name in LayoutNames)
+            if (HasFlag(entry, "+" + name)) suffix += "-" + name;
         return WantsCutaway(entry) ? suffix + "-cutaway" : suffix;
     }
 
@@ -220,6 +229,41 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         }
     }
 
+    /// <summary>The panel-state names of <c>--layout</c> (hyphens are ignored: "lab-folded" is "labfolded") and the "+name" flags of a preset entry.</summary>
+    public static readonly string[] LayoutNames = { "focus", "labfolded", "outcomefolded", "keyfolded", "notesopen", "captionfolded" };
+
+    /// <summary>The settings after turning on the states named in a comma-separated <c>--layout</c> value.</summary>
+    public static LayoutSettings ParseLayout(string value, LayoutSettings from)
+    {
+        var s = from;
+        foreach (string raw in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string name = raw.Replace("-", "", StringComparison.Ordinal).ToLowerInvariant();
+            s = With(s, name) ?? throw new ArgumentException($"--layout needs names from {string.Join(", ", LayoutNames)}, not '{raw}'.");
+        }
+        return s;
+    }
+
+    private static LayoutSettings? With(LayoutSettings s, string name) => name switch
+    {
+        "focus" => s with { FocusView = true },
+        "labfolded" => s with { LabPanelFolded = true },
+        "outcomefolded" => s with { OutcomeColumnFolded = true },
+        "keyfolded" => s with { KeyFolded = true },
+        "notesopen" => s with { NotesExpanded = true },
+        "captionfolded" => s with { CaptionCollapsed = true },
+        _ => null,
+    };
+
+    /// <summary>The panel states for one preset entry: the <c>--layout</c> ones plus the entry's own "+focus", "+labfolded", … flags.</summary>
+    public LayoutSettings LayoutFor(string? entry)
+    {
+        var s = Layout ?? new LayoutSettings();
+        foreach (string name in LayoutNames)
+            if (HasFlag(entry, "+" + name)) s = With(s, name)!;
+        return s;
+    }
+
     /// <summary>A preset entry's suffix that turns on the lab's dense-gas input after the preset is applied.</summary>
     public const string DenseCsmFlag = "+densecsm";
 
@@ -229,7 +273,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     /// </summary>
     public const string TourFlag = "+tour";
 
-    private static readonly string[] KnownFlags = { DenseCsmFlag, CutawayFlag, TourFlag };
+    private static readonly string[] KnownFlags = new[] { DenseCsmFlag, CutawayFlag, TourFlag }.Concat(LayoutNames.Select(n => "+" + n)).ToArray();
 
     /// <summary>True for an entry with <see cref="TourFlag"/> among its options, e.g. "sn1987a+tour".</summary>
     public static bool WantsTour(string? entry) => HasFlag(entry, TourFlag);
@@ -299,6 +343,7 @@ public static class SnapshotRenderer
                 var (id, own) = SnapshotRequest.SplitPreset(entry);
                 if (id is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
                 if (SnapshotRequest.WantsDenseCsm(entry)) vm.Lab.DenseCsm = true;
+                vm.Layout.Apply(request.LayoutFor(entry));   // Task 15: never the owner's layout.json
                 if ((main as MainWindow)?.Scene is { } scene) scene.IsCutaway = request.Cutaway || SnapshotRequest.WantsCutaway(entry);
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = SnapshotRequest.FileSuffix(entry);

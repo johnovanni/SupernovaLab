@@ -19,7 +19,8 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly OutcomeEngine _engine;
     private readonly IWindowService _windows;
 
-    public MainViewModel(OutcomeEngine engine, IWindowService windows)
+    /// <param name="layoutStore">Where the panel layout is remembered (the app's layout.json); null keeps it in memory only (tests, snapshots).</param>
+    public MainViewModel(OutcomeEngine engine, IWindowService windows, LayoutStore? layoutStore = null)
     {
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
@@ -46,7 +47,8 @@ public sealed partial class MainViewModel : ObservableObject
         Tiles = Panels.Select(p => new InstrumentTileViewModel(p, ShowInstrumentsCommand)).ToList();
         UpdatePanels();
 
-        Tour = new TourViewModel(new SupernovaLab.App.Tour.TourDirector(this, null));
+        Layout = new LayoutViewModel(layoutStore);
+        Tour = new TourViewModel(new SupernovaLab.App.Tour.TourDirector(this, null), Layout);
 
         Lab.Changed += OnLabChanged;
         Timeline.PropertyChanged += (_, e) =>
@@ -80,6 +82,9 @@ public sealed partial class MainViewModel : ObservableObject
     public LabViewModel Lab { get; }
     public OutcomeViewModel Outcome { get; }
     public TimelineViewModel Timeline { get; }
+
+    /// <summary>Which panels are folded or open (Task 15), remembered across launches.</summary>
+    public LayoutViewModel Layout { get; }
 
     /// <summary>The guided tour (Task 13): the Tour button and the caption panel. The window attaches the 3D view to it.</summary>
     public TourViewModel Tour { get; }

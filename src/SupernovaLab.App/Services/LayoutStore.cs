@@ -1,0 +1,67 @@
+using System.IO;
+using System.Text.Json;
+
+namespace SupernovaLab.App.Services;
+
+/// <summary>
+/// The panel states the app remembers across launches (Task 15): which panels are folded and what is expanded. Every field has its
+/// default, so a file with some fields missing, or from an older version, still loads.
+/// </summary>
+public sealed record LayoutSettings
+{
+    public bool LabPanelFolded { get; init; }
+    public bool OutcomeColumnFolded { get; init; }
+    public bool FocusView { get; init; }
+    public bool KeyFolded { get; init; }
+    public bool NotesExpanded { get; init; }
+    public bool CaptionCollapsed { get; init; }
+}
+
+/// <summary>
+/// Reads and writes <c>layout.json</c> in a folder (the app passes <c>%LOCALAPPDATA%\SupernovaLab</c>; tests pass a temporary one).
+/// A missing, unreadable or corrupt file gives the defaults and never throws: it must not block startup. A write that fails is
+/// ignored (the layout is a convenience).
+/// </summary>
+public sealed class LayoutStore
+{
+    public const string FileName = "layout.json";
+
+    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
+
+    public LayoutStore(string folder) => Folder = folder ?? throw new ArgumentNullException(nameof(folder));
+
+    public string Folder { get; }
+
+    public string Path => System.IO.Path.Combine(Folder, FileName);
+
+    /// <summary>The app's own folder: %LOCALAPPDATA%\SupernovaLab.</summary>
+    public static LayoutStore ForCurrentUser()
+        => new(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SupernovaLab"));
+
+    public LayoutSettings Load()
+    {
+        try
+        {
+            if (!File.Exists(Path)) return new LayoutSettings();
+            return JsonSerializer.Deserialize<LayoutSettings>(File.ReadAllText(Path)) ?? new LayoutSettings();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or NotSupportedException
+                                      or ArgumentException or InvalidOperationException)
+        {
+            return new LayoutSettings();
+        }
+    }
+
+    public void Save(LayoutSettings settings)
+    {
+        try
+        {
+            Directory.CreateDirectory(Folder);
+            File.WriteAllText(Path, JsonSerializer.Serialize(settings, Options));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            // Nothing to do: the next change tries again.
+        }
+    }
+}

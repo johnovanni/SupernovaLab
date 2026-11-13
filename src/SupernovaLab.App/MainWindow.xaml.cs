@@ -24,6 +24,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        DataContextChanged += OnDataContextChanged;
+        PreviewKeyDown += OnPreviewKeyDown;
         // GLWpfControl releases its GL context in its own Unloaded handler, which runs before any handler of ours on
         // the window's Unloaded or Closed. Closing comes first, while the control is still loaded and its context alive,
         // so the scene's GL objects are deleted there with the context current (Closed is a no-op fallback).
@@ -32,6 +34,38 @@ public partial class MainWindow : Window
     }
 
     private GlHost? _glHost;
+    private LayoutViewModel? _layout;
+
+    /// <summary>Task 15: the side columns take their widths from the layout (a fold strip, the panel, or nothing in the Focus view).</summary>
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_layout is not null) _layout.PropertyChanged -= OnLayoutChanged;
+        _layout = (e.NewValue as MainViewModel)?.Layout;
+        if (_layout is null) return;
+        _layout.PropertyChanged += OnLayoutChanged;
+        ApplyColumnWidths();
+    }
+
+    private void OnLayoutChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(LayoutViewModel.LabColumnWidth) or nameof(LayoutViewModel.OutcomeColumnWidth)) ApplyColumnWidths();
+    }
+
+    private void ApplyColumnWidths()
+    {
+        if (_layout is null) return;
+        LabColumn.Width = _layout.LabColumnWidth;
+        OutcomeColumn.Width = _layout.OutcomeColumnWidth;
+    }
+
+    /// <summary>F toggles the Focus view, but not while the user types in a text box or combo box (Task 15).</summary>
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F || Keyboard.Modifiers != ModifierKeys.None || e.IsRepeat || _layout is null) return;
+        if (!LayoutViewModel.FocusShortcutApplies(Keyboard.FocusedElement)) return;
+        _layout.ToggleFocusCommand.Execute(null);
+        e.Handled = true;
+    }
 
     /// <summary>Whether the GL control had its context right after Start (--snapshot logs it; see GlHost).</summary>
     public bool? GlContextExistsAfterStart => _glHost?.ContextExistsAfterStart;
@@ -50,6 +84,7 @@ public partial class MainWindow : Window
         SceneGrid.MouseDown += OnMouseDown;
         SceneGrid.MouseMove += OnMouseMove;
         SceneGrid.MouseUp += OnMouseUp;
+        SceneGrid.LostMouseCapture += OnLostMouseCapture;
         SceneGrid.MouseWheel += OnMouseWheel;
         SceneHost.KeyDown += OnSceneKeyDown;
         Scene.Start();
@@ -63,6 +98,7 @@ public partial class MainWindow : Window
         SceneGrid.MouseDown -= OnMouseDown;
         SceneGrid.MouseMove -= OnMouseMove;
         SceneGrid.MouseUp -= OnMouseUp;
+        SceneGrid.LostMouseCapture -= OnLostMouseCapture;
         SceneGrid.MouseWheel -= OnMouseWheel;
         SceneHost.KeyDown -= OnSceneKeyDown;
         Scene.Dispose();
@@ -94,7 +130,12 @@ public partial class MainWindow : Window
     private void OnSceneSizeChanged(object sender, SizeChangedEventArgs e) => Scene?.SetViewSize(e.NewSize);
 
     /// <summary>A press on the tour caption is not the start of a drag of the 3D view.</summary>
-    private void OnTourPanelMouseDown(object sender, MouseButtonEventArgs e) => e.Handled = true;
+    private void OnTourPanelMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        // Task 15: a click anywhere on the caption resumes a paused tour.
+        if (e.ChangedButton == MouseButton.Left && (sender as FrameworkElement)?.DataContext is TourViewModel tour) tour.OnCaptionClicked();
+    }
 
     private void OnAutoFrameClick(object sender, RoutedEventArgs e) => Scene?.Home();
 
@@ -120,6 +161,7 @@ public partial class MainWindow : Window
         if (!_pressed) return;
         var p = e.GetPosition(SceneGrid);
         if (!_dragged && (p - _downAt).Length < DragSlopDip) return;
+        if (!_dragged) Scene?.BeginUserDrag();   // the tour's sway waits while the mouse is down (Task 15)
         _dragged = true;
         Scene?.Rotate(p.X - _lastMouse.X, p.Y - _lastMouse.Y);
         _lastMouse = p;
@@ -129,7 +171,14 @@ public partial class MainWindow : Window
     {
         if (e.ChangedButton != MouseButton.Left || !_pressed) return;
         _pressed = false;
+        Scene?.EndUserDrag();
         SceneGrid.ReleaseMouseCapture();
+    }
+
+    private void OnLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        _pressed = false;
+        Scene?.EndUserDrag();
     }
 
     private void OnMouseWheel(object sender, MouseWheelEventArgs e)
