@@ -403,7 +403,7 @@ R_c* = [(ζ_c t*^((n−3)/n))^−α + (c t*^b)^−α]^(−1/α), valid to t*_lim
 
 (n = 0 caveat [D]: this contact and TM99's n = 0 reverse shock come from different fits. Taken as raw radii, the
 reverse shock lies up to 1.0% outside the contact for t* below ≈ 0.16; as ratios to their own forward shocks, up to
-0.5% for t* below ≈ 0.08. The App block uses the ratios and caps R_r at R_c.)
+0.55% (largest at t* ≈ 0.03) for t* below ≈ 0.081. The App block uses the ratios and caps R_r at R_c.)
 | 7 | 4.28 | −0.11 | 1.09 | 0.89 | 4.5 |
 | 10 | 2.92 | −0.12 | 1.07 | 1.01 | 4 |
 | 12 | 2.35 | −0.16 | 1.11 | 1.08 | 4 |
@@ -413,7 +413,7 @@ reverse shock lies up to 1.0% outside the contact for t* below ≈ 0.16; as rati
 ### S4.3 Comparison with Project 1's blast wave
 
 Project 1 (`RemnantEvolutionModel`) uses Tang & Chevalier's n = 0 form [λ = 2.01, α = 1.25] (mislabelled Leahy &
-Williams; C9). Forward-shock radius R* [D]:
+Williams; C9; the label was corrected in Project 2 Task 8). Forward-shock radius R* [D]:
 
 | t* | P1 (TC17, n = 0) | TM99 n = 0 | TM99 n = 7 | TM99 n = 12 |
 |---|---|---|---|---|
@@ -465,7 +465,7 @@ shock, with t* = t / t_ch in the lab's units (§S4.2: 473 yr E51^{−1/2} M_ej^{
        t* > 0.495:  R_r,TM = max(0, t* (0.779 − 0.106 t* − 0.533 ln t*));   R_b,TM = (1.42 t* − 0.254)^{2/5}
                                                                             (TM99 Table 5)
 
-Values [D]: t* = 0.01: q_c 0.906, q_r 0.910 (so the min() binds below t* ≈ 0.08, by < 0.5%); 0.1: 0.887, 0.884;
+Values [D]: t* = 0.01: q_c 0.906, q_r 0.910 (so the min() binds below t* ≈ 0.081, by up to 0.55%); 0.1: 0.887, 0.884;
 0.3: 0.866, 0.808; 1: 0.758, 0.633; 2: 0.602, 0.270; q_r = 0 from t* = 2.58.
 
 **Blend** between the eras, over Project 1's own window (3 yr → 10 yr), geometric with the same smoothstep in log t as

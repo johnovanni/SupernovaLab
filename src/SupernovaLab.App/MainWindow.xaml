@@ -84,11 +84,26 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <!-- The cutaway's colour key (bottom left): the element layers the cut faces show now. -->
+                    <!-- The key (bottom left): the element layers the cut faces show now, and the shock shells while they are drawn. -->
                     <StackPanel Margin="10,8" HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="True"
-                                Visibility="{Binding Legend, Converter={StaticResource VisibleWhen}}"
-                                ToolTip="{x:Static text:Glossary.Cutaway}">
-                        <ItemsControl ItemsSource="{Binding Legend}">
+                                Visibility="{Binding ShowKey, Converter={StaticResource VisibleWhen}}">
+                        <StackPanel Visibility="{Binding ShowShellKey, Converter={StaticResource VisibleWhen}}" Margin="0,0,0,2">
+                            <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ForwardShock}">
+                                <Border Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" BorderThickness="2"
+                                        BorderBrush="{Binding ForwardShellHex}"/>
+                                <TextBlock Text="Swept-up gas; forward shock at its edge" Style="{StaticResource Muted}"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ContactSurface}">
+                                <Border Width="12" Height="12" Margin="0,0,6,0"/>
+                                <TextBlock Text="Contact surface: the shell's inner edge" Style="{StaticResource Muted}"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ReverseShock}">
+                                <Border Width="12" Height="3" Margin="0,0,6,0" VerticalAlignment="Center"
+                                        Background="{Binding ReverseShellHex}"/>
+                                <TextBlock Text="Reverse shock; debris behind it drawn hot" Style="{StaticResource Muted}"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding Legend}" ToolTip="{x:Static text:Glossary.Cutaway}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" Margin="0,1">

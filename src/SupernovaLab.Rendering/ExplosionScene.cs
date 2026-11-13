@@ -62,6 +62,13 @@ public sealed record SceneState
     public IReadOnlyList<(ElementLayer Layer, double OuterRadiusCm)> StarLayers { get; init; } = Array.Empty<(ElementLayer, double)>();
     /// <summary>The shock's radius inside the star now, cm (structure §S5); NaN when it is not inside the star.</summary>
     public double ShockInStarRadiusCm { get; init; } = double.NaN;
+
+    /// <summary>
+    /// The forward shock, contact surface and reverse shock now (<see cref="ShockStructureModel.At"/>, structure §S4), with ruling
+    /// R-P2-4's confinement weight; null before they start or without ejecta. The particles past the reverse shock are confined
+    /// by these (<see cref="ParticleKinematics.RadiusCm"/>), and the shells are drawn at them.
+    /// </summary>
+    public ShockRadii? Shocks { get; init; }
 }
 
 /// <summary>
@@ -119,6 +126,21 @@ public sealed class ExplosionScene
     public const string UniformSphereNote =
         "Radius: the edge of a uniform ball of debris with this energy and mass (the spec's simple model); the fastest " +
         "outer layers, and the line speeds in the spectrum, are faster";
+
+    /// <summary>Shown while the shocks are drawn (structure §S4; Task 8).</summary>
+    public const string ShockNote =
+        "Shocks: radii from Chevalier 1982, Truelove & McKee 1999 and Tang & Chevalier 2017 (structure §S4)";
+
+    /// <summary>Ruling R-P2-10's disclosure (inconsistency #33): the shocks are the uniform-debris (n = 0) solutions.</summary>
+    public const string ShockUniformNote =
+        "Shock sizes assume uniform debris, as the remnant model does: for real steep outer debris the forward shock runs further " +
+        "out at first (2.6× at 10 yr for 10 M☉ and 10⁵¹ erg), the gap closing by about 1,000 yr (inconsistency #33)";
+
+    /// <summary>[APPROX, schematic] The temperature whose blackbody colour tints the shocked debris: X-ray-hot gas, about 10⁷ K.</summary>
+    public const double HotGasTemperatureK = 1e7;
+
+    /// <summary>The shocked debris' tint: <see cref="BlackbodyColor"/> at <see cref="HotGasTemperatureK"/> (normalized, so capped at 1).</summary>
+    public static (float R, float G, float B) HotGasColor { get; } = BlackbodyColor.FromTemperature(HotGasTemperatureK);
 
     /// <summary>Task 16 re-review N1: the 3 to 10 yr hand-off from the uniform ball to the remnant model's blast wave.</summary>
     public const string BlendNote =
@@ -220,9 +242,11 @@ public sealed class ExplosionScene
         if (Structure is null || t < _particleStartS) return state;
         // v_max is the built set's (the one the shader scales by); before any set is built, the profile's own v_max.
         double since = t - _particleStartS, vmax = _particles?.MaxCmS ?? Structure.MaxCmS;
-        double max = ParticleKinematics.RadiusCm(vmax, since, starRadiusCm, vmax, null);
+        // The radii as drawn: confined behind the reverse shock once there are shocks (ruling P4; a monotonic map, so the
+        // 99%-of-mass particle is still the one at Frame99CmS).
+        double max = ParticleKinematics.RadiusCm(vmax, since, starRadiusCm, vmax, state.Shocks);
         double frame99 = double.IsFinite(Structure.Frame99CmS)
-            ? ParticleKinematics.RadiusCm(Structure.Frame99CmS, since, starRadiusCm, vmax, null) : double.NaN;
+            ? ParticleKinematics.RadiusCm(Structure.Frame99CmS, since, starRadiusCm, vmax, state.Shocks) : double.NaN;
         double frame = double.IsFinite(frame99) && !(frame99 <= state.FrameRadiusCm) ? frame99 : state.FrameRadiusCm;
         return state with
         {
@@ -278,12 +302,18 @@ public sealed class ExplosionScene
         else if (t > EjectaKinematics.BlendStartS) notes.Add(BlendNote);
         else notes.Add(UniformSphereNote);
         if (t > _lightCurveEndS) notes.Add("Past the light-curve model (3 yr): debris drawn dimly");
+        var shocks = ShockStructureModel.At(Outcome, t);
+        if (shocks is not null)
+        {
+            notes.Add(ShockNote);
+            notes.Add(ShockUniformNote);
+        }
         notes.Add(SchematicNote);
         state = state with
         {
             ShowEjecta = true, EjectaRadiusCm = r, FrameRadiusCm = r, RadiusCm = r, RadiusLabel = label,
             EjectaTemperatureK = temperature, EjectaColor = BlackbodyColor.FromTemperature(temperature),
-            EjectaBrightness = Brightness(t), Marker = marker, PulsarPeriodS = period, Notes = notes,
+            EjectaBrightness = Brightness(t), Marker = marker, PulsarPeriodS = period, Notes = notes, Shocks = shocks,
         };
         state = WithParticles(state, t, double.IsNaN(r0) ? 0 : r0);
         if (state.ShowParticles) AddStructureNotes(notes, beforeLast: true);

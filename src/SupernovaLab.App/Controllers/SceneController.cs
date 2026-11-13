@@ -182,6 +182,21 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>Whether the legend also explains the shock ring (the shock is inside the star and the cutaway is on).</summary>
     public bool ShowShockKey => IsCutaway && double.IsFinite(_state.ShockInStarRadiusCm);
 
+    /// <summary>Whether the key explains the shock shells (they are drawn now: structure §S4).</summary>
+    public bool ShowShellKey => _state.Shocks is not null;
+
+    /// <summary>Whether the bottom-left key is shown at all: the cutaway's colours, or the shock shells.</summary>
+    public bool ShowKey => Legend.Count > 0 || ShowShellKey;
+
+    /// <summary>The swept-up shell's key colour, "#RRGGBB".</summary>
+    public string ForwardShellHex => Hex(ForwardShellColor);
+
+    /// <summary>The reverse shock's key colour, "#RRGGBB" (the hot-gas tint).</summary>
+    public string ReverseShellHex => Hex(ExplosionScene.HotGasColor);
+
+    private static string Hex((float R, float G, float B) c)
+        => $"#{(int)Math.Round(255 * c.R):X2}{(int)Math.Round(255 * c.G):X2}{(int)Math.Round(255 * c.B):X2}";
+
     /// <summary>Whether the legend also explains the Rayleigh-Taylor fingers (they are drawn and the cutaway is on).</summary>
     public bool ShowFingerKey => IsCutaway && _state.ShowParticles && _scene?.Structure is { IsEnvelopeShell: false, Mixing.HasFingers: true };
 
@@ -332,6 +347,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         Legend = LegendNow();
         OnPropertyChanged(nameof(ShowShockKey));
         OnPropertyChanged(nameof(ShowFingerKey));
+        OnPropertyChanged(nameof(ShowShellKey));
+        OnPropertyChanged(nameof(ShowKey));
         UpdateRings();
     }
 
@@ -428,6 +445,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _remnant = new RemnantRenderer(_jets);
         _rings = new RingRenderer();
         _cutFaces = new CutFaceRenderer();
+        _shells = new ShellRenderer();
     }
 
     /// <summary>True when a GL version string ("4.6.0 NVIDIA 551.86", "4.1 ...") is 4.1 or later.</summary>
@@ -472,20 +490,30 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             bool particleCut = IsCutaway && s.ShowParticles && _uploaded is not null;
             var faceColors = starCut || particleCut ? FaceColors() : Array.Empty<(float R, float G, float B)>();
             _star.WedgeAngleRad = _particles.WedgeAngleRad = _wedgeAngleRad;
+            if (_shells is not null)
+            {
+                _shells.WedgeAngleRad = _wedgeAngleRad;
+                _shells.Cutaway = IsCutaway;
+            }
             if (_cutFaces is not null) _cutFaces.WedgeAngleRad = _wedgeAngleRad;
             if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
             if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor, starCut);
             if (s.ShowParticles && _uploaded is { } set)
             {
                 // The brightness is Project 1's, spread over the particle count so the picture keeps its overall level.
-                // Positions follow ParticleKinematics.RadiusCm: the shader gets R* and v_max * (t - t_bo) in scene units.
+                // Positions follow ParticleKinematics.RadiusCm: the shader gets R*, v_max * (t - t_bo) and the shock radii in
+                // scene units (doubles divided by the unit before they become floats).
                 float perParticle = (float)ReferenceParticleCount / _particles.Count;
                 double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
+                var shocks = s.Shocks;
+                var hot = ExplosionScene.HotGasColor;
                 _particles.Render(Camera, viewportPx, pxPerDip, new ParticleUniforms((float)(starCm / unit),
                     (float)(set.MaxCmS * s.SinceBreakoutS / unit),
                     new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle,
-                    particleCut));
+                    particleCut, shocks is not null, (float)((shocks?.ReverseCm ?? 0) / unit), (float)((shocks?.ContactCm ?? 0) / unit),
+                    (float)(shocks?.ConfinementWeight ?? 0), new OpenTK.Mathematics.Vector3(hot.R, hot.G, hot.B)));
             }
+            if (s.Shocks is { } sh && _shells is not null) DrawShells(viewportPx, sh, unit);
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
             double phase = 2 * Math.PI * _wall.Elapsed.TotalSeconds / ExplosionScene.ShownPulsarPeriodS;
@@ -543,6 +571,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     private CutFaceRenderer? _cutFaces;
+    private ShellRenderer? _shells;
     private EjectaStructure? _conesFor;
     private FingerCones _cones = FingerCones.Empty;
 
@@ -557,12 +586,16 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         return _cones;
     }
 
-    /// <summary>The debris' two cut faces (ruling R-P2-21), drawn before the particles; mask alpha is written here only.</summary>
+    /// <summary>
+    /// The debris' two cut faces (ruling R-P2-21), drawn after the bloom is built (<see cref="HdrPipeline.End"/>'s hook), over
+    /// the particles and shells; the tone map's face mask (alpha) is written by the faces only. Their radii are confined behind the
+    /// reverse shock as the particles are (Task 8).
+    /// </summary>
     private void DrawCutFaces(Size viewportPx, SceneState s, ParticleSet set, double unit, (float R, float G, float B)[] colors)
     {
         if (_scene?.Structure is not { } structure || _cutFaces is null) return;
         double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
-        var model = CutFaceModel.Build(structure, ConesFor(structure), s.SinceBreakoutS, starCm, set.MaxCmS);
+        var model = CutFaceModel.Build(structure, ConesFor(structure), s.SinceBreakoutS, starCm, set.MaxCmS, s.Shocks);
         if (model is null) return;
         var layers = model.Layers.Select(l => ((float)(l.OuterRadiusCm / unit), ToVector(colors[(int)l.Layer]))).ToList();
         var axes = model.Cones.Axes.Select(a => new OpenTK.Mathematics.Vector3((float)a.X, (float)a.Y, (float)a.Z)).ToList();
@@ -570,11 +603,44 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             (float)(model.HydrogenMinRadiusCm / unit), (float)(model.HydrogenInnerRadiusCm / unit),
             ToVector(colors[(int)ElementLayer.NickelIron]), ToVector(colors[(int)ElementLayer.Hydrogen]), axes,
             (float)(Math.Cos(model.Cones.HalfAngleRad) - FingerCones.RimToleranceCos),
-            (float)(model.TransitionRadiusCm / unit), (float)model.OuterIndex);
+            (float)(model.TransitionRadiusCm / unit), (float)model.OuterIndex)
+        {
+            FreeScale = (float)((starCm + set.MaxCmS * s.SinceBreakoutS) / unit),
+            Reverse = (float)((s.Shocks?.ReverseCm ?? 0) / unit),
+            Contact = (float)((s.Shocks?.ContactCm ?? 0) / unit),
+            ShockWeight = (float)(s.Shocks?.ConfinementWeight ?? 0),
+        };
         _cutFaces.Render(Camera, viewportPx, (float)(model.OuterRadiusCm / unit), uniforms);
     }
 
     private static OpenTK.Mathematics.Vector3 ToVector((float R, float G, float B) c) => new(c.R, c.G, c.B);
+
+    /// <summary>The swept-up shell's colour: a pale blue-white (schematic), for gas heated by the forward shock.</summary>
+    public static readonly (float R, float G, float B) ForwardShellColor = (0.80f, 0.88f, 1.00f);
+
+    /// <summary>[Schematic] HDR brightness of the brightest line of sight through the swept-up shell and the reverse-shock shell.</summary>
+    public const float ForwardShellIntensity = 1.5f, ReverseShellIntensity = 2.0f;
+
+    /// <summary>The reverse shock is drawn as a thin shell this fraction of its radius thick (at least <see cref="ReverseShellMinPx"/> pixels).</summary>
+    public const double ReverseShellFraction = 0.015, ReverseShellMinPx = 2;
+
+    /// <summary>
+    /// The shock shells (structure §S4, plan ruling P8): the swept-up gas between the contact surface and the forward shock, and
+    /// the reverse shock as a thin shell at R_r, each faded in with ruling R-P2-4's weight so they do not pop in when the shocks
+    /// start. Radii in scene units (cm divided by the unit before they become floats).
+    /// </summary>
+    private void DrawShells(Size viewportPx, ShockRadii shocks, double unit)
+    {
+        float w = (float)Math.Clamp(shocks.ConfinementWeight, 0, 1);
+        if (!(w > 0) || _shells is null) return;
+        _shells.Render(Camera, viewportPx, ShellKind.Shell, shocks.ContactCm / unit, shocks.ForwardCm / unit, ForwardShellColor,
+            ForwardShellIntensity * w);
+        if (!(shocks.ReverseCm > 0)) return;
+        double pxUnits = 2 * Camera.DistanceMpc * Math.Tan(Camera.FieldOfViewDeg * Math.PI / 360) / viewportPx.Height;
+        double rOut = shocks.ReverseCm / unit;
+        double thick = Math.Min(rOut, Math.Max(ReverseShellFraction * rOut, ReverseShellMinPx * pxUnits));
+        _shells.Render(Camera, viewportPx, ShellKind.Shell, rOut - thick, rOut, ExplosionScene.HotGasColor, ReverseShellIntensity * w);
+    }
 
     /// <summary>
     /// The cut faces' colours, by layer: through the HDR path, the values that tone-map to the element's hex
@@ -641,6 +707,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             {
                 GlReleased = host.Shutdown(() =>
                 {
+                    _shells?.Dispose();
                     _cutFaces?.Dispose();
                     _rings?.Dispose();
                     _remnant?.Dispose();
@@ -656,6 +723,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 Debug.WriteLine($"SceneController: releasing the GL objects failed: {e}");
             }
         }
+        _shells = null;
         _cutFaces = null;
         _rings = null;
         _remnant = null;

@@ -508,6 +508,22 @@ public class SceneControllerTests
     }
 
     [Fact]
+    public void ShellKey_IsShownWhileTheShocksAreDrawn()
+    {
+        // Task 8: the key explains the swept-up shell and the reverse shock whenever they are drawn, cutaway or not.
+        var c = CutawayController(null, 1, out var vm);
+        Assert.False(c.ShowShellKey);
+        Assert.False(c.ShowKey);
+        vm.Timeline.ObserverTimeS = 30 * PhysicalConstants.Year;
+        Assert.True(c.ShowShellKey);
+        Assert.True(c.ShowKey);
+        Assert.Empty(c.Legend);
+        Assert.Equal("#CCE0FF", c.ForwardShellHex);   // (0.80, 0.88, 1.00)
+        Assert.Contains("Shocks: radii from", c.NotesText);
+        c.Dispose();
+    }
+
+    [Fact]
     public void Legend_BeforeBreakout_ListsTheStarsLayers_AndTheNoteStatesTheCutaway()
     {
         var c = CutawayController("sn1987a", 100, out _);   // 100 s: well before this star's breakout

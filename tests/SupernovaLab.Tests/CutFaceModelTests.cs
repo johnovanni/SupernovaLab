@@ -176,4 +176,31 @@ public class CutFaceModelTests
             return (s * Math.Cos(phi), s * Math.Sin(phi), z);
         }
     }
+
+    [Fact]
+    public void WithShocks_TheFacesAreConfinedLikeTheParticles_AndFadeByTheFreeRadius()
+    {
+        // Task 8: the faces' radii go through the same confinement as the particles (they stop at the contact surface when
+        // fully confined), and the opacity reads the speed back, so a speed has the same opacity wherever it is drawn.
+        var s = Bsg();
+        var set = ParticleSampler.Sample(s, 2000);
+        var cones = MixingModel.Cones(s.Mixing, ParticleSampler.DefaultSeed);
+        double since = 30 * Day, star = 3.9e12, k = star + set.MaxCmS * since;
+        var shocks = new ShockRadii(0.6 * k, 0.5 * k, 0.45 * k) { ConfinementWeight = 0.7 };
+        var faces = CutFaceModel.Build(s, cones, since, star, set.MaxCmS, shocks)!;
+        var free = CutFaceModel.Build(s, cones, since, star, set.MaxCmS)!;
+        double edge = ParticleKinematics.RadiusCm(set.MaxCmS, since, star, set.MaxCmS, shocks);
+        Assert.Equal(1, faces.OuterRadiusCm / edge, 12);
+        for (int i = 0; i < faces.Layers.Count - 1; i++)
+            Assert.True(faces.Layers[i].OuterRadiusCm <= free.Layers[i].OuterRadiusCm * (1 + 1e-12));
+        foreach (double frac in new[] { 0.3, 0.45, 0.6, 0.9, 1.0 })
+        {
+            double v = frac * set.MaxCmS;
+            double drawn = ParticleKinematics.RadiusCm(v, since, star, set.MaxCmS, shocks);
+            double freeR = ParticleKinematics.RadiusCm(v, since, star, set.MaxCmS, null);
+            Assert.Equal(free.Opacity(freeR, false), faces.Opacity(drawn, false), 9);
+        }
+        var full = CutFaceModel.Build(s, cones, since, star, set.MaxCmS, shocks with { ConfinementWeight = 1 })!;
+        Assert.Equal(1, full.OuterRadiusCm / (0.5 * k), 12);
+    }
 }

@@ -317,6 +317,18 @@ public static class Glossary
         "Before breakout the faces show the star's layers, drawn to the research's radii.";
     public const string MixingFingers =
         "Rayleigh–Taylor fingers: heavy elements from the core punch out through the lighter layers as the shock decelerates.";
+    public const string ForwardShock =
+        "The forward shock is the outer edge of the explosion: a shock wave running ahead of the debris into the gas around the " +
+        "star, heating it to millions of degrees. The pale shell is that swept-up gas, brightest at its rim where the line of " +
+        "sight crosses the most of it. Its radius is the lab's remnant-model radius (Chevalier 1982; Tang & Chevalier 2017).";
+    public const string ReverseShock =
+        "The reverse shock: when the swept-up gas slows the debris down, a second shock runs back into the debris themselves " +
+        "(outward at first, but more slowly than they move) and heats them. Debris it has passed are drawn hot and bright, packed " +
+        "between it and the contact surface. In gas of one atom per cm³ it reaches the centre after about 1,400 years (a Type Ia) to about " +
+        "10,000 years (a heavy core-collapse explosion) (Truelove & McKee 1999).";
+    public const string ContactSurface =
+        "The contact surface separates the star's own debris (inside) from the swept-up surrounding gas (outside); both have " +
+        "been shocked. It lies between the reverse shock and the forward shock (Chevalier 1982; Tang & Chevalier 2017).";
     public const string ShockInStar =
         "The shock wave on its way out through the star after the core bounces, drawn as a bright ring with the gas inside it " +
         "brighter. It takes seconds to days to reach the surface, and its position over time is a schematic estimate from the " +

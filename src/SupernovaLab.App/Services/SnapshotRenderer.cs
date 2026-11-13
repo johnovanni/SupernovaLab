@@ -30,7 +30,7 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
 /// [--window main|instruments|details|presetinfo] [--cutaway]</c>. <c>--cutaway</c> (a flag) turns on the 3D view's wedge cutaway for
-/// every capture (Task 7). To batch captures into one launch, <c>--preset</c>,
+/// every capture (Task 7); a preset entry ending in "+cutaway" turns it on for that entry only (Task 8). To batch captures into one launch, <c>--preset</c>,
 /// <c>--size</c> and <c>--window</c> may be repeated or given comma-separated lists: every requested window is captured
 /// for each preset in turn; a preset may carry its own time as "id@seconds", and "default@seconds" is the lab as launched (list it before any preset). Sizes apply to the main window (its outer size, as a user would set it); the other windows
 /// render at their own default size, and again scrolled to the end when they scroll. <c>--bench &lt;seconds&gt;</c> then
@@ -83,8 +83,9 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                 case "--preset":
                     foreach (string entry in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     {
-                        if (entry.Contains('+') && !entry.EndsWith(DenseCsmFlag, StringComparison.Ordinal))
-                            throw new ArgumentException($"--preset {entry}: the only option after '+' is '{DenseCsmFlag[1..]}'.");
+                        if (entry.Contains('+') && StripFlags(entry).Contains('+'))
+                            throw new ArgumentException(
+                                $"--preset {entry}: the options after '+' are '{DenseCsmFlag[1..]}' and '{CutawayFlag[1..]}'.");
                         if (entry.Contains('@') && SplitPreset(entry).TimeS is null)
                             throw new ArgumentException($"--preset {entry}: the time after '@' must be a positive number of seconds.");
                         presets.Add(entry);
@@ -134,7 +135,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     public static (string? Id, double? TimeS) SplitPreset(string? entry)
     {
         if (entry is null) return (null, null);
-        if (WantsDenseCsm(entry)) entry = entry[..^DenseCsmFlag.Length];
+        entry = StripFlags(entry);
         int at = entry.IndexOf('@');
         string id = at < 0 ? entry : entry[..at];
         double? time = null;
@@ -153,7 +154,44 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         if (id is null && own is null) return "";
         id ??= DefaultEntry;
         string suffix = own is double t ? $"-{id}-t{t.ToString("0.###", CultureInfo.InvariantCulture)}" : $"-{id}";
-        return WantsDenseCsm(entry) ? suffix + "-densecsm" : suffix;
+        if (WantsDenseCsm(entry)) suffix += "-densecsm";
+        return WantsCutaway(entry) ? suffix + "-cutaway" : suffix;
+    }
+
+    /// <summary>A preset entry's suffix that turns the 3D view's wedge cutaway on for that entry only (Task 8).</summary>
+    public const string CutawayFlag = "+cutaway";
+
+    /// <summary>True for an entry with <see cref="CutawayFlag"/> among its options, e.g. "default@946080000+cutaway".</summary>
+    public static bool WantsCutaway(string? entry) => HasFlag(entry, CutawayFlag);
+
+    /// <summary>The entry without its known "+option" suffixes (in any order).</summary>
+    private static string StripFlags(string entry)
+    {
+        bool again = true;
+        while (again)
+        {
+            again = false;
+            foreach (string flag in new[] { DenseCsmFlag, CutawayFlag })
+                if (entry.EndsWith(flag, StringComparison.Ordinal))
+                {
+                    entry = entry[..^flag.Length];
+                    again = true;
+                }
+        }
+        return entry;
+    }
+
+    /// <summary>Whether this known flag is among the entry's trailing "+option" suffixes.</summary>
+    private static bool HasFlag(string? entry, string flag)
+    {
+        if (entry is null) return false;
+        while (true)
+        {
+            if (entry.EndsWith(flag, StringComparison.Ordinal)) return true;
+            string other = flag == DenseCsmFlag ? CutawayFlag : DenseCsmFlag;
+            if (!entry.EndsWith(other, StringComparison.Ordinal)) return false;
+            entry = entry[..^other.Length];
+        }
     }
 
     /// <summary>A preset entry's suffix that turns on the lab's dense-gas input after the preset is applied.</summary>
@@ -163,7 +201,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     /// True for an entry ending in <see cref="DenseCsmFlag"/>, e.g. "sn2023ixf@0.001+densecsm": no preset sets the lab's
     /// dense-gas input, so a snapshot of the 3D view's gas shell turns it on (an input edit, so the preset's pins drop).
     /// </summary>
-    public static bool WantsDenseCsm(string? entry) => entry?.EndsWith(DenseCsmFlag, StringComparison.Ordinal) == true;
+    public static bool WantsDenseCsm(string? entry) => HasFlag(entry, DenseCsmFlag);
 
     private static SnapshotSize ParseSize(string text)
     {
@@ -216,6 +254,7 @@ public static class SnapshotRenderer
                 var (id, own) = SnapshotRequest.SplitPreset(entry);
                 if (id is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(id);
                 if (SnapshotRequest.WantsDenseCsm(entry)) vm.Lab.DenseCsm = true;
+                if ((main as MainWindow)?.Scene is { } scene) scene.IsCutaway = request.Cutaway || SnapshotRequest.WantsCutaway(entry);
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = SnapshotRequest.FileSuffix(entry);
                 await Capture(request, main, windows, suffix, log);

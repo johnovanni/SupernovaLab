@@ -865,15 +865,17 @@ L_ff = 3e35 [(n-3)(n-4)^2 / (4(n-2))] beta^1/2 zeta_2^-1 A_*^2 t_10^-1 erg/s.
 
 ### 7.1 Characteristic scales (Truelove & McKee 1999, ApJS 120, 299; erratum ApJS 128, 403)
 
-For a uniform ambient medium, rho_0 = n_0 m_p (as written by Leahy & Williams 2017, AJ 153, 239,
-arXiv:1607.06391) [SOURCE]:
+For a uniform ambient medium, rho_0 = n_0 m_p (as written by Tang & Chevalier 2017, MNRAS 465, 3793,
+arXiv:1607.06391) [SOURCE]. (Corrected in Project 2 Task 8, ruling R-P2-14: this section first credited the paper and its
+constants to Leahy & Williams 2017, AJ 153, 239, an SNR calculator (arXiv:1701.05942) that uses Truelove & McKee directly and
+writes rho_0 = mu_H n_0 m_H; see structure.md C9 and inconsistency #34. The numbers are unchanged.)
 
 - R_ch = 3.4 pc (M_ej/M_sun)^1/3 n_0^-1/3.
 - t_ch = 473 yr (E/1e51 erg)^-1/2 (M_ej/M_sun)^5/6 n_0^-1/3.
 
 ### 7.2 Blast-wave radius versus time
 
-Uniform ejecta (n = 0) interpolation, smooth from free expansion to Sedov-Taylor (Leahy & Williams 2017,
+Uniform ejecta (n = 0) interpolation, smooth from free expansion to Sedov-Taylor (Tang & Chevalier 2017,
 Table 1 and Table 3; s = 0) [SOURCE]. With R* = R_b/R_ch and t* = t/t_ch:
 
 R* = [ (lambda_b t*)^(-2 alpha) + (xi t*^2)^(-2 alpha/5) ]^(-1/(2 alpha)),
@@ -1143,7 +1145,7 @@ detection; scale between anchors as noted.
 | Gamma-ray spectrometer | INTEGRAL/SPI (historic), COSI (2027+), NuSTAR (44Ti) | Line fluxes 158/812/847/1238 keV versus t; 44Ti 68/78/1157 keV over centuries | Decay chain times escape fraction exp(-(T0/t)^2) (5.2) | 56Ni: about 10-100 d; 56Co: about 30-500 d; 44Ti: 1-1,000 yr | SPI 3e-5 photons/cm^2/s (1e6 s), so an Ia with 0.6 M_sun Ni is detectable to about 5-10 Mpc. COSI 3e-6 (2 yr survey), so 56Co from an Ia at about 20 Mpc. 44Ti: Cas A-like (1.3e-4 M_sun) is about 1.7e-5 at 3.4 kpc |
 | Radio | VLA, MeerKAT, ATCA, SKA | L_nu(t) at chosen frequencies; peak nu_p(t) | Chevalier 1998 SSA, inverted (6.1), with A_* from Mdot and v_w | about 1 d to about 10-30 yr (then remnant phase) | Typical rms about 5-10 microJy/hr (VLA) [APPROX]; 5 sigma at about 30 microJy gives L = 1e25 erg/s/Hz detectable to about 17 Mpc, 1e26 to about 50 Mpc, and 1e27 to about 170 Mpc [DERIVED] |
 | X-ray (interaction) | Chandra, XMM, Swift XRT, eROSITA | L_X(t) thermal plus inverse Compton | CF06 free-free (6.2) | about 1 d to about 30 yr | Chandra about 1e-15 erg/cm^2/s, so 1e39 erg/s is detectable to about 90 Mpc and 1e38 to about 30 Mpc [DERIVED] |
-| Remnant | Chandra, VLA, any imager | Radius R(t), angular size, shock T, L_X, S_1GHz | Truelove-McKee / Leahy-Williams interpolation (7.2); reference remnants (7.3) | about 10-1,000 yr | Angular size theta = 2R/D; resolvable if above about 0.5" (Chandra). Radio calibrated to Cas A (2,300 Jy at 3.4 kpc) |
+| Remnant | Chandra, VLA, any imager | Radius R(t), angular size, shock T, L_X, S_1GHz | Truelove-McKee / Tang-Chevalier interpolation (7.2); reference remnants (7.3) | about 10-1,000 yr | Angular size theta = 2R/D; resolvable if above about 0.5" (Chandra). Radio calibrated to Cas A (2,300 Jy at 3.4 kpc) |
 | Pulsar timing | FAST, Parkes, MeerKAT | Pulse train, P(t), Pdot, Edot(t) | Dipole spin-down (8.1); beaming dice (8.3) | about 10 yr (ejecta transparency) to 1,000 yr | S = L_1400/D^2; threshold about 0.1 mJy. Crab-like (56 mJy kpc^2) detectable to about 20-25 kpc [DERIVED]; median pulsar about 0.1 mJy kpc^2, i.e. about 1 kpc |
 | Neutron star thermal X-ray | Chandra, XMM | T_s^inf(t), L_gamma(t) | Yakovlev & Pethick slow cooling with the Gudmundsson envelope (8.4) | about 30-1,000 yr (shown as a band before about 100 yr) | L about 3e34 erg/s at 300 yr: Chandra-detectable through the Galaxy if N_H allows; not beyond the Local Group |
 | GRB monitor | Fermi GBM, Swift BAT, SVOM | Prompt light curve (T90), E_p; afterglow X-ray/optical/radio | Amati relation, FRED pulses (9.1); Sari-Piran-Narayan / Chevalier-Li afterglow (9.3) | Prompt 2-100+ s; afterglow minutes to months | Only if inside the jet (probability f_b). Classical GRB: whole observable universe; llGRB 980425-like to about 200 Mpc |
@@ -1222,7 +1224,8 @@ detection; scale between anchors as noted.
 - Kistler M. D., Haxton W. C., Yüksel H. 2013, ApJ 778, 81, arXiv:1211.6770
 - Kouveliotou C. et al. 1993, ApJ 413, L101
 - Lattimer J. M., Prakash M. 2001, ApJ 550, 426
-- Leahy D. A., Williams J. E. 2017, AJ 153, 239, arXiv:1607.06391
+- Leahy D. A., Williams J. E. 2017, AJ 153, 239, arXiv:1701.05942 (formerly cited here for section 7; that arXiv number
+  and the constants are Tang & Chevalier 2017, below)
 - Liu Y.-Q. et al. 2016, ApJ 827, 90, arXiv:1510.08049
 - Lyman J. D., Bersier D., James P. A. 2014, MNRAS 437, 3848, arXiv:1311.1946
 - Mamajek E. E. et al. 2015, IAU 2015 Resolutions B2/B3, arXiv:1510.06262, arXiv:1510.07674
@@ -1254,6 +1257,7 @@ detection; scale between anchors as noted.
 - Suwa Y. et al. 2019, ApJ 881, 139, arXiv:1904.09996
 - Suwa Y. et al. 2025, Open J. Astrophys. 8, arXiv:2504.19510
 - Szczepańczyk M. J. et al. 2021, PRD 104, 102002, arXiv:2104.06462
+- Tang X., Chevalier R. A. 2017, MNRAS 465, 3793, arXiv:1607.06391 (section 7.1-7.2; corrected from Leahy & Williams in Project 2 Task 8)
 - Tauris T. M., Manchester R. N. 1998, MNRAS 298, 625
 - Tomsick J. A. et al. 2023 (COSI), arXiv:2308.12362
 - Truelove J. K., McKee C. F. 1999, ApJS 120, 299; erratum 2000, ApJS 128, 403

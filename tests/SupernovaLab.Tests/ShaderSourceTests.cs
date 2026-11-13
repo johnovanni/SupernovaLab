@@ -50,11 +50,24 @@ public class ShaderSourceTests
     [InlineData("particle.vert")]
     [InlineData("cutface.vert")]
     [InlineData("star.frag")]
+    [InlineData("shell.frag")]
     public void TheWedgeShaders_ShareTheWedgeFrame(string shader)
     {
         // Ruling R-P2-22: the particle drop, the face quads and the star all use the wedge basis (WedgeOrientation's).
         string text = System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith("." + shader)).Bytes);
         Assert.Contains("uniform vec3 u_wedgeX", text);
         Assert.Contains("uniform vec3 u_wedgeZ", text);
+    }
+
+    [Theory]
+    [InlineData("particle.vert", "uniform float u_reverse", "uniform float u_contact", "uniform float u_shockWeight")]
+    [InlineData("cutface.frag", "uniform float u_reverse", "uniform float u_contact", "uniform float u_freeScale")]
+    [InlineData("shell.frag", "float piece(", "float segment(", "uniform float u_peak")]
+    public void TheShockShaders_DeclareWhatTheirCSharpMirrorsUse(string shader, params string[] needles)
+    {
+        // Task 8: particle.vert mirrors ParticleKinematics.RadiusCm, cutface.frag ParticleKinematics.FreeRadiusCm, shell.frag
+        // ColumnDensity.Segment.
+        string text = System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith("." + shader)).Bytes);
+        foreach (string needle in needles) Assert.Contains(needle, text);
     }
 }

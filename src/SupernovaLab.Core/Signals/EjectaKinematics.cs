@@ -13,7 +13,7 @@ namespace SupernovaLab.Core.Signals;
 /// applied: the real outermost layers move faster than this.</item>
 /// <item>Radius: the star's radius (a preset's pinned radius, which the engine puts on the star) until the shock breaks
 /// out; then free expansion from the surface, R* + v_ej (t − t_bo), which is continuous at breakout; then the young
-/// remnant's blast wave from <see cref="RemnantEvolutionModel"/> (Leahy &amp; Williams' interpolation, signals §7.2).
+/// remnant's blast wave from <see cref="RemnantEvolutionModel"/> (Tang &amp; Chevalier 2017's interpolation, signals §7.2).
 /// See <see cref="RadiusCm"/> for the hand-off.</item>
 /// <item>Temperature: the Stefan–Boltzmann temperature of a sphere of that radius emitting the light curve's
 /// bolometric luminosity, never below 3,000 K.</item>

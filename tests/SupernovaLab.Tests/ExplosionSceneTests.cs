@@ -380,9 +380,11 @@ public class ExplosionSceneTests
         var set = scene.ParticlesFor((int)QualityLevel.Low)!;
         var s = scene.At(30 * Day);
         double r0 = o.Star!.RadiusCm.Value;
-        Assert.Equal(ParticleKinematics.RadiusCm(set.MaxCmS, s.SinceBreakoutS, r0, set.MaxCmS, null), s.MaxRadiusCm, 3);
+        // Task 8: the radii as drawn, confined behind the reverse shock (the shocks have started by 30 d).
+        Assert.NotNull(s.Shocks);
+        Assert.Equal(ParticleKinematics.RadiusCm(set.MaxCmS, s.SinceBreakoutS, r0, set.MaxCmS, s.Shocks), s.MaxRadiusCm, 3);
         double f99 = scene.Structure!.Frame99CmS;
-        Assert.Equal(ParticleKinematics.RadiusCm(f99, s.SinceBreakoutS, r0, set.MaxCmS, null), s.Frame99RadiusCm, 3);
+        Assert.Equal(ParticleKinematics.RadiusCm(f99, s.SinceBreakoutS, r0, set.MaxCmS, s.Shocks), s.Frame99RadiusCm, 3);
     }
 
     [Fact]
@@ -401,5 +403,38 @@ public class ExplosionSceneTests
         Assert.Equal(EjectaKinematics.TemperatureFloorK, s.EjectaTemperatureK);
         Assert.Contains(s.Notes, n => scene.Structure.Notes.Contains(n));
         Assert.Contains(s.Notes, n => n.Contains("weak outer envelope", StringComparison.Ordinal));
+    }
+
+    // ---------------------------------------------------------------- Task 8: shocks
+
+    [Fact]
+    public void Shocks_AreInTheState_WithTheirNotes_FromTheirStart()
+    {
+        var o = Exploding();
+        var scene = new ExplosionScene(o);
+        double start = ShockStructureModel.StartTimeS(o);
+        var before = scene.At(0.9 * start);
+        Assert.Null(before.Shocks);
+        Assert.DoesNotContain(ExplosionScene.ShockNote, before.Notes);
+
+        var s = scene.At(30 * Year);
+        Assert.Equal(ShockStructureModel.At(o, 30 * Year), s.Shocks);
+        Assert.Contains(ExplosionScene.ShockNote, s.Notes);
+        Assert.Contains(ExplosionScene.ShockUniformNote, s.Notes);
+        Assert.StartsWith("Shocks: radii from Chevalier 1982, Truelove & McKee 1999 and Tang & Chevalier 2017", ExplosionScene.ShockNote);
+        // Fully confined (w = 1 a decade after the start): the fastest particle is drawn on the contact surface, and the view
+        // frames Project 1's radius, the forward shock.
+        Assert.Equal(1, s.Shocks!.ConfinementWeight);
+        Assert.Equal(1, s.MaxRadiusCm / s.Shocks.ContactCm, 9);
+        Assert.Equal(s.Shocks.ForwardCm, s.FrameRadiusCm);
+    }
+
+    [Fact]
+    public void HotGasTint_IsTheBlackbodyColourAt1e7K()
+    {
+        Assert.Equal(BlackbodyColor.FromTemperature(1e7), ExplosionScene.HotGasColor);
+        var c = ExplosionScene.HotGasColor;
+        Assert.Equal(1f, c.B);              // normalized: the brightest channel is 1 (blue for gas this hot)
+        Assert.True(c.R < c.G && c.G < c.B);
     }
 }

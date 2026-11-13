@@ -6,14 +6,18 @@ namespace SupernovaLab.Core.Structure;
 /// continuous surfaces however few particles lie near the planes. Schematic: a face shows the unmixed layers as nested
 /// spheres (the layer boundaries are where the mass coordinate q crosses each layer's cumulative mass, mapped through the
 /// profile's v(q) and <see cref="ParticleKinematics"/>'s radius rule), plus the Rayleigh-Taylor fingers as the cones of
-/// <see cref="MixingModel"/> cut by the plane: nickel from the centre out to the radius of NickelMax, hydrogen from the
-/// radius of HydrogenMin outward. The 3D view's <c>cutface.frag</c> mirrors <see cref="LayerAt"/>: change one, change the other.
+/// <see cref="MixingModel"/> cut by the plane: nickel mixed outward from the nickel layer's boundary to the radius of
+/// NickelMax, hydrogen mixed inward from the hydrogen layer's boundary to the radius of HydrogenMin (<see cref="FingerAt"/>).
+/// Once there are shocks the radii are the confined ones (<see cref="ParticleKinematics.RadiusCm"/> with <see cref="Shocks"/>),
+/// so the faces stop at the contact surface as the particles do. The 3D view's <c>cutface.frag</c> mirrors
+/// <see cref="LayerAt"/> and <see cref="Opacity"/>: change one, change the other.
 /// </summary>
 /// <param name="Layers">The layers, centre outward, with the radius (cm) of each one's outer boundary; the last is <see cref="OuterRadiusCm"/>.</param>
 /// <param name="NickelMaxRadiusCm">Radius of the nickel finger tips (NaN: no nickel fingers).</param>
 /// <param name="HydrogenMinRadiusCm">Radius the hydrogen fingers reach inward to (NaN: none).</param>
 /// <param name="Cones">The finger cones (empty when there are no fingers).</param>
-/// <param name="TransitionRadiusCm">Radius of the profile's break speed v_t (ruling R-P2-23).</param>
+/// <param name="TransitionRadiusCm">Free-expansion radius of the profile's break speed v_t (ruling R-P2-23; compared with
+/// <see cref="FreeRadiusCm"/>).</param>
 /// <param name="OuterIndex">The profile's outer slope n: the face thins as (v / v_t)^-n beyond v_t.</param>
 public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double OuterRadiusCm)> Layers, double NickelMaxRadiusCm,
     double HydrogenMinRadiusCm, FingerCones Cones, double TransitionRadiusCm, double OuterIndex)
@@ -21,17 +25,30 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
     /// <summary>The outermost radius a face is drawn to, cm: the fastest particle's.</summary>
     public double OuterRadiusCm => Layers[^1].OuterRadiusCm;
 
+    /// <summary>The shocks the radii are confined by (null: free expansion).</summary>
+    public ShockRadii? Shocks { get; init; }
+
+    /// <summary>t − t_bo, s, R* and v_max of the particle rule the radii come from (for <see cref="FreeRadiusCm"/>).</summary>
+    public double SinceBreakoutS { get; init; }
+    public double StarRadiusCm { get; init; }
+    public double MaxCmS { get; init; }
+
+    /// <summary>The free-expansion radius of the debris drawn at this radius (<see cref="ParticleKinematics.FreeRadiusCm"/>).</summary>
+    public double FreeRadiusCm(double radiusCm) => ParticleKinematics.FreeRadiusCm(radiusCm, SinceBreakoutS, StarRadiusCm, MaxCmS, Shocks);
+
     /// <summary>
     /// The faces for this structure <paramref name="sinceBreakoutS"/> after breakout, for a particle set whose fastest particle
     /// moves at <paramref name="maxCmS"/>; null for a structure with no layers or a failed supernova's thin shell (no cutaway faces).
-    /// <paramref name="cones"/> are the set's finger cones (<see cref="MixingModel.Cones"/> with the sampler's seed).
+    /// <paramref name="cones"/> are the set's finger cones (<see cref="MixingModel.Cones"/> with the sampler's seed);
+    /// <paramref name="shocks"/> confine the radii as they confine the particles (Task 8).
     /// </summary>
-    public static CutFaceModel? Build(EjectaStructure s, FingerCones cones, double sinceBreakoutS, double starRadiusCm, double maxCmS)
+    public static CutFaceModel? Build(EjectaStructure s, FingerCones cones, double sinceBreakoutS, double starRadiusCm, double maxCmS,
+        ShockRadii? shocks = null)
     {
         ArgumentNullException.ThrowIfNull(s);
         if (s.IsEnvelopeShell || s.Layers.Count == 0 || !(s.EjectaMassMsun > 0) || !(maxCmS > 0)) return null;
 
-        double Radius(double v) => ParticleKinematics.RadiusCm(v, sinceBreakoutS, starRadiusCm, maxCmS, null);
+        double Radius(double v) => ParticleKinematics.RadiusCm(v, sinceBreakoutS, starRadiusCm, maxCmS, shocks);
         var layers = new List<(ElementLayer, double)>(s.Layers.Count);
         double cumulative = 0;
         for (int k = 0; k < s.Layers.Count; k++)
@@ -47,7 +64,11 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
         bool fingers = m.HasFingers && cones.Axes.Count > 0;
         double ni = fingers && m.NickelFingerFraction > 0 && double.IsFinite(m.NickelMaxCmS) ? Radius(m.NickelMaxCmS) : double.NaN;
         double h = fingers && double.IsFinite(m.HydrogenMinCmS) ? Radius(m.HydrogenMinCmS) : double.NaN;
-        return new CutFaceModel(layers, ni, h, fingers ? cones : FingerCones.Empty, Radius(s.TransitionCmS), s.N);
+        double transition = ParticleKinematics.RadiusCm(s.TransitionCmS, sinceBreakoutS, starRadiusCm, maxCmS, null);
+        return new CutFaceModel(layers, ni, h, fingers ? cones : FingerCones.Empty, transition, s.N)
+        {
+            Shocks = shocks, SinceBreakoutS = sinceBreakoutS, StarRadiusCm = starRadiusCm, MaxCmS = maxCmS,
+        };
     }
 
     /// <summary>Outer boundary of the unmixed nickel layer, cm (0 when there is none): a nickel finger starts here.</summary>
@@ -84,14 +105,16 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
 
     /// <summary>
     /// The face's opacity at this radius (ruling R-P2-23): the density profile of structure section S1 relative to its value at
-    /// v_t, rho(v) / rho(v_t) = 1 inside v_t and (v / v_t)^-n outside, where v is the speed whose radius is this one (radius
-    /// is proportional to speed in <see cref="ParticleKinematics"/>'s rule, so v / v_t = radius / <see cref="TransitionRadiusCm"/>).
+    /// v_t, rho(v) / rho(v_t) = 1 inside v_t and (v / v_t)^-n outside, where v is the speed of the debris drawn at this radius
+    /// (the free-expansion radius is proportional to speed in <see cref="ParticleKinematics"/>'s rule, so
+    /// v / v_t = <see cref="FreeRadiusCm"/>(radius) / <see cref="TransitionRadiusCm"/>; without shocks the free radius is the radius).
     /// A finger segment (see <see cref="FingerAt"/>) is opaque; the rest of a cone fades like any other pixel. So the faces fade out with the cloud, a glowing ball with a slice removed.
     /// </summary>
     public double Opacity(double radiusCm, bool inFinger)
     {
-        if (inFinger || !(radiusCm > TransitionRadiusCm)) return 1;
-        return Math.Clamp(Math.Pow(radiusCm / TransitionRadiusCm, -OuterIndex), 0, 1);
+        double free = FreeRadiusCm(radiusCm);
+        if (inFinger || !(free > TransitionRadiusCm)) return 1;
+        return Math.Clamp(Math.Pow(free / TransitionRadiusCm, -OuterIndex), 0, 1);
     }
 
     /// <summary>

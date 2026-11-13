@@ -32,6 +32,17 @@ public static class WedgeOrientation
     }
 
     /// <summary>
+    /// Whether a cut face is seen from its exposed side, so it is drawn: plane 0 (w.x = 0, bounding the removed quarter on its
+    /// +w.x side) only from an eye with w.x &gt; 0, plane 1 (w.z = 0) only from w.z &gt; 0. The eye is the camera's position
+    /// relative to the centre (the planes pass through it). <c>cutface.vert</c> mirrors this.
+    /// </summary>
+    public static bool FaceExposed(int plane, double phi, double eyeX, double eyeY, double eyeZ)
+    {
+        var w = ToWedge(phi, eyeX, eyeY, eyeZ);
+        return (plane == 0 ? w.X : w.Z) > 0;
+    }
+
+    /// <summary>
     /// Whether a cone (unit axis in scene coordinates, half-angle in radians) crosses either cut half-plane: the angle between
     /// the axis and the half-plane (the plane x = 0 with z &gt; 0, or the plane z = 0 with x &gt; 0, in the wedge frame) is at most the half-angle.
     /// </summary>

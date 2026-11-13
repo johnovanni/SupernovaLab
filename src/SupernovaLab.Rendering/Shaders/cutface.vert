@@ -1,7 +1,8 @@
 #version 410 core
 // The debris cutaway's two cut faces (ruling R-P2-21): the quarter planes bounding the removed quarter (x > 0 and z > 0 in
 // the wedge frame). a_pos is the corner of a unit quad in (a, b); u_plane 0 is the plane w.x = 0 (a = y, b along w.z), 1 the
-// plane w.z = 0 (a = y, b along w.x). u_extent scales it (scene units).
+// plane w.z = 0 (a = y, b along w.x). u_extent scales it (scene units). A face seen from its unexposed side (plane 0 from an eye
+// with w.x <= 0, plane 1 from w.z <= 0; WedgeOrientation.FaceExposed) is not drawn: it would hide debris that is really in front.
 
 layout(location = 0) in vec2 a_pos;
 
@@ -20,7 +21,9 @@ void main()
     // a in [-1, 1], b in [0, 1]
     vec3 world = vec3(0.0, a_pos.x, 0.0) + (u_plane == 0 ? u_wedgeZ : u_wedgeX) * a_pos.y;
     world *= u_extent;
+    vec3 eye = u_eyeHigh + u_eyeLow;
+    bool exposed = dot(eye, u_plane == 0 ? u_wedgeX : u_wedgeZ) > 0.0;
     precise vec3 rel = world - u_eyeHigh - u_eyeLow;
-    gl_Position = u_viewProj * vec4(rel, 1.0);
+    gl_Position = exposed ? u_viewProj * vec4(rel, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
     v_world = world;
 }

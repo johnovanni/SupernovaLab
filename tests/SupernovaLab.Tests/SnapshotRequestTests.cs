@@ -163,6 +163,24 @@ public class SnapshotRequestTests
     }
 
     [Fact]
+    public void APresetEntry_MayTurnOnTheCutaway()
+    {
+        // Task 8: "+cutaway" turns the wedge on for that entry only, so plain and cutaway views share one launch.
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset",
+            "default@946080000,default@946080000+cutaway,casa@1e10+densecsm+cutaway" })!;
+        Assert.False(SnapshotRequest.WantsCutaway(r.PresetIds[0]));
+        Assert.True(SnapshotRequest.WantsCutaway(r.PresetIds[1]));
+        Assert.False(SnapshotRequest.WantsDenseCsm(r.PresetIds[1]));
+        Assert.Equal(((string?)null, (double?)946080000), SnapshotRequest.SplitPreset(r.PresetIds[1]));
+        Assert.Equal("-default-t946080000-cutaway", SnapshotRequest.FileSuffix(r.PresetIds[1]));
+        Assert.True(SnapshotRequest.WantsCutaway(r.PresetIds[2]));
+        Assert.True(SnapshotRequest.WantsDenseCsm(r.PresetIds[2]));
+        Assert.Equal(("casa", (double?)1e10), SnapshotRequest.SplitPreset(r.PresetIds[2]));
+        Assert.Equal("-casa-t10000000000-densecsm-cutaway", SnapshotRequest.FileSuffix(r.PresetIds[2]));
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "casa+cut" }));
+    }
+
+    [Fact]
     public void TheDefaultLabOutcome_CanCarryPerEntryTimes()
     {
         // R-P2-20: "default@seconds" takes the lab as launched (no preset) at its own time.

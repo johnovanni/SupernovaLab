@@ -10,8 +10,9 @@ namespace SupernovaLab.Core.Signals;
 /// brightness at 1 GHz, from about 10 to 1,000 years.
 /// <list type="bullet">
 /// <item>Radius (§7.1–7.2): Truelove &amp; McKee's scales R_ch = 3.4 pc M_ej^(1/3) n0^(−1/3) and t_ch = 473 yr E51^(−1/2)
-/// M_ej^(5/6) n0^(−1/3), with Leahy &amp; Williams' uniform-ejecta (n = 0) interpolation from free expansion to
-/// Sedov–Taylor, R* = [(2.01 t*)^(−2.5) + (2.026 t*²)^(−0.5)]^(−0.4). [APPROX] A uniform ambient density n0 = 1 cm⁻³
+/// M_ej^(5/6) n0^(−1/3), with Tang &amp; Chevalier's (2017) uniform-ejecta (n = 0) interpolation from free expansion to
+/// Sedov–Taylor (signals §7.2 credited it to Leahy &amp; Williams 2017 until Project 2 Task 8: structure.md C9,
+/// inconsistency #34), R* = [(2.01 t*)^(−2.5) + (2.026 t*²)^(−0.5)]^(−0.4). [APPROX] A uniform ambient density n0 = 1 cm⁻³
 /// (ρ0 = n0 m_p): the lab has no ambient-density input, and young core-collapse remnants such as Cas A are really still
 /// inside the progenitor's wind (§7.2; the wind solutions are not transcribed).</item>
 /// <item>Size on the sky (§11): θ = 2R / D_A. <see cref="ResolvableTimeS"/> is when θ reaches 0.5″ (Chandra).</item>
@@ -39,10 +40,10 @@ public sealed class RemnantEvolutionModel : ISignalModel
     /// <summary>[APPROX] Ambient density, H atoms per cm³: n0 = 1, the research's reference value.</summary>
     public const double AmbientDensity = 1;
 
-    /// <summary>Proton mass, g (<see cref="PhysicalConstants.ProtonMass"/>); ρ0 = n0 m_p as Leahy &amp; Williams write it (§7.1).</summary>
+    /// <summary>Proton mass, g (<see cref="PhysicalConstants.ProtonMass"/>); ρ0 = n0 m_p as Tang &amp; Chevalier 2017 write it (§7.1).</summary>
     private const double ProtonMass = PhysicalConstants.ProtonMass;
 
-    /// <summary>§7.2 n = 0 constants (Leahy &amp; Williams 2017, Tables 1 and 3, s = 0).</summary>
+    /// <summary>§7.2 n = 0 constants (Tang &amp; Chevalier 2017, MNRAS 465, 3793, Tables 1 and 3, s = 0).</summary>
     private const double LambdaB = 2.01, Xi = 2.026, Alpha = 1.25;
 
     /// <summary>§7.2: ξ^(1/5) = 1.152, the Sedov–Taylor coefficient.</summary>
@@ -74,7 +75,7 @@ public sealed class RemnantEvolutionModel : ISignalModel
 
     public IReadOnlyList<Source> Sources { get; } = new Source[]
     {
-        new("Truelove & McKee 1999, ApJS 120, 299 (R_ch, t_ch); Leahy & Williams 2017, AJ 153, 239 (uniform-ejecta " +
+        new("Truelove & McKee 1999, ApJS 120, 299 (R_ch, t_ch); Tang & Chevalier 2017, MNRAS 465, 3793 (uniform-ejecta " +
             "interpolation, λ = 2.01, ξ = 2.026, α = 1.25); ambient n0 = 1 cm⁻³ [APPROX]; young core-collapse remnants " +
             "really expand into the progenitor's wind (Chevalier & Oishi 2003, not modeled)", "signals §7.1, §7.2"),
         new("θ = 2R/D; resolvable above about 0.5″ (Chandra)", "signals §11"),
@@ -163,7 +164,7 @@ public sealed class RemnantEvolutionModel : ISignalModel
     public static double CharacteristicTimeS(double energyErg, double ejectaMsun, double ambientDensity)
         => 473 * Year / Math.Sqrt(energyErg / 1e51) * Math.Pow(ejectaMsun, 5.0 / 6) / Math.Cbrt(ambientDensity);
 
-    /// <summary>§7.2 (Leahy &amp; Williams, n = 0): R* = [(λ_b t*)^(−2α) + (ξ t*²)^(−2α/5)]^(−1/(2α)).</summary>
+    /// <summary>§7.2 (Tang &amp; Chevalier 2017, n = 0): R* = [(λ_b t*)^(−2α) + (ξ t*²)^(−2α/5)]^(−1/(2α)).</summary>
     public static double ScaledRadius(double scaledTime)
         => Math.Pow(Math.Pow(LambdaB * scaledTime, -2 * Alpha) + Math.Pow(Xi * scaledTime * scaledTime, -2 * Alpha / 5),
             -1 / (2 * Alpha));

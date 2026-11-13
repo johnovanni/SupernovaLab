@@ -1,7 +1,9 @@
 #version 410 core
 // The cut faces' colour (ruling R-P2-21), per pixel: the radius on the face selects the element layer (the particle set's
 // layer boundaries), then the finger cones: hydrogen mixed inward (u_hydrogenMin up to the hydrogen layer's inner boundary), nickel mixed
-// outward (the nickel layer's boundary up to u_nickelMax; nickel wins). Mirrors CutFaceModel.LayerAt (C#): change one, change the other. Schematic.
+// outward (the nickel layer's boundary up to u_nickelMax; nickel wins). Mirrors CutFaceModel.LayerAt and Opacity (C#): change one,
+// change the other. Schematic. Once there are shocks the radii are the confined ones (as the particles), and the opacity reads the
+// speed back through ParticleKinematics.FreeRadiusCm's inverse map (freeRadius below).
 
 in vec3 v_world;
 
@@ -20,8 +22,23 @@ uniform vec3 u_coneAxis[10];
 uniform float u_coneCos;
 uniform float u_transitionRadius; // radius of the profile's break speed v_t, scene units
 uniform float u_densityIndex;     // the profile's outer slope n
+uniform float u_freeScale;        // K = R* + v_max (t - t_bo), scene units: the fastest particle's free radius
+uniform float u_reverse;          // R_r and R_c, scene units, and ruling R-P2-4's weight (0: no shocks)
+uniform float u_contact;
+uniform float u_shockWeight;
 
 out vec4 o_color;
+
+// ParticleKinematics.FreeRadiusCm: the free-expansion radius of the debris drawn at radius r (identity without shocks).
+float freeRadius(float r)
+{
+    if (u_shockWeight <= 0.0 || u_freeScale <= 0.0) return r;
+    float sr = u_reverse / u_freeScale;
+    if (sr >= 1.0 || r <= u_reverse) return r;
+    float slope = (1.0 - u_shockWeight) * u_freeScale + u_shockWeight * (u_contact - u_reverse) / (1.0 - sr);
+    if (slope <= 0.0) return u_reverse;
+    return (sr + (r - u_reverse) / slope) * u_freeScale;
+}
 
 void main()
 {
@@ -46,7 +63,9 @@ void main()
             else if (u_hydrogenMin > 0.0 && rho >= u_hydrogenMin && rho <= u_hydrogenInner) { c = u_hydrogenColor; finger = true; }
         }
     }
-    // Ruling R-P2-23: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (radius ~ speed); fingers are opaque.
-    if (!finger && rho > u_transitionRadius) alpha *= clamp(pow(rho / u_transitionRadius, -u_densityIndex), 0.0, 1.0);
+    // Ruling R-P2-23: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (free radius ~ speed); fingers
+    // are opaque.
+    float free = freeRadius(rho);
+    if (!finger && free > u_transitionRadius) alpha *= clamp(pow(free / u_transitionRadius, -u_densityIndex), 0.0, 1.0);
     o_color = vec4(c, alpha);   // the alpha is also the face mask the tone map reads
 }

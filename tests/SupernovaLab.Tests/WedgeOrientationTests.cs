@@ -100,4 +100,22 @@ public class WedgeOrientationTests
             Assert.Equal(-0.3, again.Z, 12);
         }
     }
+
+    [Fact]
+    public void CutFace_IsDrawnOnlyFromItsExposedSide()
+    {
+        // Task 7 review carry-over: plane 0 (w.x = 0) bounds the removed quarter on its +w.x side, so it is seen only from an eye
+        // with w.x > 0; plane 1 (w.z = 0) only from w.z > 0. cutface.vert mirrors this with the camera's eye position.
+        Assert.True(WedgeOrientation.FaceExposed(0, 0, 1, 0.2, -1));
+        Assert.False(WedgeOrientation.FaceExposed(0, 0, -1, 0.2, 1));
+        Assert.True(WedgeOrientation.FaceExposed(1, 0, -1, 0.2, 1));
+        Assert.False(WedgeOrientation.FaceExposed(1, 0, 1, 0.2, -1));
+        Assert.False(WedgeOrientation.FaceExposed(0, 0, 0, 1, 1));   // edge-on: not drawn
+        double phi = 0.7;
+        var x = WedgeOrientation.BasisX(phi);
+        var z = WedgeOrientation.BasisZ(phi);
+        Assert.True(WedgeOrientation.FaceExposed(0, phi, x.X + 0.1 * z.X, 0, x.Z + 0.1 * z.Z));
+        Assert.True(WedgeOrientation.FaceExposed(1, phi, x.X + 0.1 * z.X, 0, x.Z + 0.1 * z.Z));
+        Assert.False(WedgeOrientation.FaceExposed(1, phi, x.X - 0.1 * z.X, 0, x.Z - 0.1 * z.Z));
+    }
 }

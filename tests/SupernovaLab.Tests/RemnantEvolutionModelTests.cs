@@ -26,7 +26,7 @@ public class RemnantEvolutionModelTests
     [Fact]
     public void ModelRadius_At1000Years_IsNearTheSedovValue()
     {
-        // §7.1–7.2, M_ej = 1 M☉, E = 1e51, n0 = 1: R_ch = 3.4 pc, t_ch = 473 yr, t* = 2.11416. Leahy & Williams' n = 0 form
+        // §7.1–7.2, M_ej = 1 M☉, E = 1e51, n0 = 1: R_ch = 3.4 pc, t_ch = 473 yr, t* = 2.11416. Tang & Chevalier's n = 0 form
         // R* = [(2.01 t*)^-2.5 + (2.026 t*²)^-0.5]^-0.4 = [0.0268635 + 0.332308]^-0.4 = 1.50619 → R = 5.12104 pc, within 10%
         // of the Sedov 5.32524 pc (it is still approaching Sedov–Taylor).
         double r = Model.Sample(Explosion(1e51, 1), ObserverSetup.Default, 1000 * Year, "radiusPc");
