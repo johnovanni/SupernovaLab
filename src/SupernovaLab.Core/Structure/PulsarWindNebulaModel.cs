@@ -47,11 +47,21 @@ public static class PulsarWindNebulaModel
     public static double RadiusCm(Outcome o, double sourceTimeS)
     {
         if (!Applies(o)) return double.NaN;
+        return RadiusCm(o, EjectaStructureModel.For(o)!, ShockStructureModel.At(o, sourceTimeS), sourceTimeS);
+    }
+
+    /// <summary>
+    /// The same radius from inputs the caller already holds (final review I2): the outcome's structure
+    /// (<see cref="EjectaStructureModel.For"/>) and its shocks now (<see cref="ShockStructureModel.At"/>, null before they start).
+    /// The 3D view calls this every frame with the ones its scene caches, so a frame neither rebuilds the structure nor recomputes the
+    /// shocks. The caller must already know <see cref="Applies"/> holds. 0 at t ≤ 0.
+    /// </summary>
+    public static double RadiusCm(Outcome o, EjectaStructure structure, ShockRadii? shocks, double sourceTimeS)
+    {
+        ArgumentNullException.ThrowIfNull(structure);
         if (!(sourceTimeS > 0)) return 0;
-        var structure = EjectaStructureModel.For(o)!;
         var spin = PulsarModel.Spin.Of(o);
         double r = RadiusCm(structure, EffectiveLuminosityErgS(spin, sourceTimeS), sourceTimeS);
-        var shocks = ShockStructureModel.At(o, sourceTimeS);
         if (shocks is not null && shocks.ReverseCm > 0) r = Math.Min(r, shocks.ReverseCm);
         return r;
     }

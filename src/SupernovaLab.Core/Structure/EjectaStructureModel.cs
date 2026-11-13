@@ -105,6 +105,15 @@ public static class EjectaStructureModel
 
     // ---------------------------------------------------------------- the structure
 
+    [ThreadStatic] private static int t_buildCount;
+
+    /// <summary>
+    /// How many times <see cref="For"/> has run on the calling thread (a test hook, final review I2: building a structure bisects a
+    /// 20,000-cell grid, so the 3D view's per-frame <c>ExplosionScene.At</c> must never call it). Per thread, so parallel tests do
+    /// not disturb one another.
+    /// </summary>
+    public static int BuildCountOnThisThread => t_buildCount;
+
     /// <summary>
     /// The ejecta's structure, or null without ejecta (not dead yet, a white dwarf, the pulses of pulsational pair
     /// instability). A failed supernova gives §S10's weak envelope shell (see <see cref="EjectaStructure"/>).
@@ -116,6 +125,7 @@ public static class EjectaStructureModel
     public static EjectaStructure? For(Outcome o)
     {
         ArgumentNullException.ThrowIfNull(o);
+        t_buildCount++;
         if (o.Fate == Fate.FailedSupernova) return EnvelopeShell(o);
         if (!EjectaKinematics.HasEjecta(o)) return null;
         if (!IsThermonuclear(o) && o.Star is null) return null;

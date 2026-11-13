@@ -280,10 +280,12 @@ public static class ShockStructureModel
 
     /// <summary>
     /// The three radii at this source time (cm), with ruling R-P2-4's confinement weight and the reverse shock's running-minimum
-    /// Lagrangian speed; null before <see cref="StartTimeS"/> or for an outcome with no ejecta.
+    /// Lagrangian speed; null before <see cref="StartTimeS"/>, for an outcome with no ejecta, and for a non-finite time (final review
+    /// M4: +∞ would walk the log grid for ever).
     /// </summary>
     public static ShockRadii? At(Outcome o, double sourceTimeS)
     {
+        if (!double.IsFinite(sourceTimeS)) return null;
         if (SetupFor(o) is not { } p || !(sourceTimeS >= p.StartS)) return null;
         var (f, c, r, vm) = Drawn(p, sourceTimeS);
         if (!(f > 0)) return null;
