@@ -218,8 +218,10 @@ public sealed class TourDirector
 
     private void RaiseChanged()
     {
-        SyncOrbit();
+        // The caption's bindings update first; then the view's render mode changes. (The final fix wave's snapshots showed a stale
+        // caption layout at the first tour stop captured after Start with the opposite order; this order is not yet re-checked.)
         Changed?.Invoke(this, EventArgs.Empty);
+        SyncOrbit();
     }
 
     private void OnOutcomeChanged(object? sender, EventArgs e)

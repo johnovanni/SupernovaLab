@@ -91,12 +91,10 @@ public static class TourCaptions
     /// </summary>
     public static string Mixing(Outcome o, Core.Structure.MixingReach m)
     {
-        string what = double.IsFinite(m.HydrogenMinCmS)
-            ? "nickel carried outward and hydrogen pulled inward"
-            : "nickel carried outward";
-        string reach = o.HasEquatorialRing ? "their reach is the one observed in SN 1987A" : "their reach is from 3D simulations";
-        return InTheLab($"A slice through the debris shows the mixing fingers: {what} by Rayleigh–Taylor instabilities as the shock " +
-                        $"crossed the star; {reach}, their shapes schematic (structure §S3).");
+        // Kept short (final fix wave): this stop is usually merged with the peak-light stop, and a long caption covers the slice.
+        string what = double.IsFinite(m.HydrogenMinCmS) ? "nickel carried outward and hydrogen inward" : "nickel carried outward";
+        string reach = o.HasEquatorialRing ? "reach observed in SN 1987A" : "reach from 3D simulations";
+        return InTheLab($"A slice through the debris shows the mixing fingers: {what}; {reach}, shapes schematic (structure §S3).");
     }
 
     /// <summary>", at about V = 12.3 as seen from here" from the light-curve model, or "" when the model gives no finite value.</summary>
