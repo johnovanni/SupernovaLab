@@ -5,10 +5,12 @@ using OpenTK.Mathematics;
 namespace SupernovaLab.Rendering;
 
 /// <summary>
-/// What the particle shader needs each frame. Radius is the scene-unit distance reached by |v| = 1; later tasks add the time
-/// terms, the per-layer colours and the wedge.
+/// What the particle shader needs each frame, in scene units (physical cm divided by the view's unit on the CPU):
+/// <paramref name="StarRadius"/> is R* and <paramref name="Expansion"/> is v_max · (t − t_bo), so a particle at speed
+/// ratio s = v / v_max is at s · (R* + Expansion) (<c>ParticleKinematics.RadiusCm</c> with no shocks). Later tasks add the
+/// shock radii, the per-layer colours and the wedge.
 /// </summary>
-public readonly record struct ParticleUniforms(float Radius, Vector3 Color, float Brightness)
+public readonly record struct ParticleUniforms(float StarRadius, float Expansion, Vector3 Color, float Brightness)
 {
     /// <summary>The dots' size (dip) and opacity at full brightness: soft 2.5 dip dots at 35%, as Project 1.</summary>
     public const float PointDip = 2.5f, Alpha = 0.35f;
@@ -90,7 +92,9 @@ public sealed class ParticleRenderer : IDisposable
         if (_count == 0) return;
         _program.Use();
         _program.SetCamera(cam, viewportPx);
-        _program.Set("u_radius", u.Radius);
+        _program.Set("u_starRadius", u.StarRadius);
+        _program.Set("u_expansion", u.Expansion);
+        _program.Set("u_shocks", 0);
         _program.Set("u_pointPx", (float)(ParticleUniforms.PointDip * pxPerDip));
         _program.Set("u_color", u.Color * u.Brightness);
         _program.Set("u_alpha", ParticleUniforms.Alpha);

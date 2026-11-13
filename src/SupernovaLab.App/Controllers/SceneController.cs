@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using OpenTK.Graphics.OpenGL4;
 using SupernovaLab.App.ViewModels;
 using SupernovaLab.Core.Outcomes;
+using SupernovaLab.Core.Structure;
 using SupernovaLab.Core.Units;
 using SupernovaLab.Rendering;
 
@@ -52,6 +53,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private ParticleRenderer? _particles;
     private HdrPipeline? _hdr;
     private bool _uploadParticles = true;
+    /// <summary>The set on the GPU now (its v_max scales the shader's positions); null when there is none.</summary>
+    private ParticleSet? _uploaded;
     private QualityLevel _quality = QualityLevels.Default;
     private JetRenderer? _jets;
     private RemnantRenderer? _remnant;
@@ -123,9 +126,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     /// <summary>Tone-mapping exposure and bloom strength of the HDR pipeline.</summary>
     private const float Exposure = 0.2f, BloomStrength = 0.5f;
-
-    /// <summary>Particle seed (Project 1's ejecta seed): the set is the same on every run.</summary>
-    private const int ParticleSeed = 1987;
 
     /// <summary>True once the GL context and the renderers exist.</summary>
     public bool IsReady => _star is not null;
@@ -294,6 +294,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         try
         {
             _scene = _sceneFactory(_vm.CurrentOutcome, _vm.CurrentObserver.TimeDilation);
+            _uploadParticles = true;   // a new outcome has a new particle set
             _modelError = null;
         }
         catch (Exception e)
@@ -405,11 +406,14 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
             if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
             if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor);
-            if (s.ShowEjecta)
+            if (s.ShowParticles && _uploaded is { } set)
             {
                 // The brightness is Project 1's, spread over the particle count so the picture keeps its overall level.
-                float perParticle = (float)EjectaRendererReferenceCount / _particles.Count;
-                _particles.Render(Camera, viewportPx, pxPerDip, new ParticleUniforms((float)(s.EjectaRadiusCm / unit),
+                // Positions follow ParticleKinematics.RadiusCm: the shader gets R* and v_max * (t - t_bo) in scene units.
+                float perParticle = (float)ReferenceParticleCount / _particles.Count;
+                double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
+                _particles.Render(Camera, viewportPx, pxPerDip, new ParticleUniforms((float)(starCm / unit),
+                    (float)(set.MaxCmS * s.SinceBreakoutS / unit),
                     new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle));
             }
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
@@ -427,23 +431,20 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Project 1's point count (its brightness was tuned for it).</summary>
-    private const int EjectaRendererReferenceCount = 50_000;
+    /// <summary>Project 1's point count: its brightness was tuned for 50,000 points, so it is scaled by this over the count drawn.</summary>
+    private const int ReferenceParticleCount = 50_000;
 
     /// <summary>
-    /// TEMPORARY (Task 4; the layered velocities arrive in Task 6): an isotropic set with |v| uniform in volume over
-    /// [0.7, 1] of v_max, seed 1987 (the old shell), all in layer 0.
+    /// Uploads the scene's particle set at the current quality (built once per outcome and count by
+    /// <see cref="ExplosionScene.ParticlesFor"/>); nothing for an outcome without ejecta.
     /// </summary>
     private void UploadParticles()
     {
         _uploadParticles = false;
-        int n = (int)_quality;
-        var velocity = EjectaRenderer.UnitShell(n, ParticleSeed);
-        var layer = new float[n];
-        var seed = new float[n];
-        var random = new Random(ParticleSeed + 1);
-        for (int i = 0; i < n; i++) seed[i] = (float)random.NextDouble();
-        _particles!.Upload(velocity, layer, seed, n);
+        var set = _scene?.ParticlesFor((int)_quality);
+        _uploaded = set;
+        if (set is null) _particles!.Upload(Array.Empty<float>(), Array.Empty<float>(), Array.Empty<float>(), 0);
+        else _particles!.Upload(set.Velocity, set.Layer, set.Seed, set.Count);
     }
 
     /// <summary>The frame just drawn, top row first, as a 96-dpi bitmap; null if the read fails (the error is cleared).</summary>

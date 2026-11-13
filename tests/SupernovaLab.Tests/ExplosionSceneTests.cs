@@ -35,7 +35,8 @@ public class ExplosionSceneTests
         Assert.True(s.ShowEjecta);
         Assert.Equal(SceneMarker.NeutronStar, s.Marker);
         Assert.Equal(EjectaKinematics.RadiusCm(o, Day), s.EjectaRadiusCm);
-        Assert.Equal(s.EjectaRadiusCm, s.FrameRadiusCm);
+        // Ruling P1: the framing radius is the larger of Project 1's radius and the 99%-of-mass particle radius.
+        Assert.Equal(Math.Max(s.EjectaRadiusCm, s.Frame99RadiusCm), s.FrameRadiusCm);
     }
 
     [Fact]
@@ -256,5 +257,77 @@ public class ExplosionSceneTests
         var s = new ExplosionScene(o).At(100 * Year);
         Assert.True(s.ShowStar);
         Assert.False(s.ShowEjecta);
+    }
+
+    // ---------------------------------------------------------------- Project 2, Task 6: layered particles
+
+    [Fact]
+    public void Scene_FrameRadius_IsAtLeastTheFrame99Radius()
+    {
+        var o = Exploding();
+        var scene = new ExplosionScene(o);
+        foreach (double t in new[] { Day, 30 * Day, Year })
+        {
+            var s = scene.At(t);
+            Assert.True(s.Frame99RadiusCm > 0);
+            Assert.True(s.FrameRadiusCm >= s.Frame99RadiusCm);
+            Assert.True(s.FrameRadiusCm >= s.EjectaRadiusCm);
+            Assert.True(s.MaxRadiusCm >= s.Frame99RadiusCm);
+        }
+        // The radius readout keeps Project 1's value and label (ruling P1).
+        Assert.Equal(EjectaKinematics.RadiusCm(o, Day), scene.At(Day).RadiusCm);
+        Assert.Equal("Ejecta radius", scene.At(Day).RadiusLabel);
+    }
+
+    [Fact]
+    public void Scene_NoEjecta_HasNoParticles_AndStillFrames()
+    {
+        var o = TestOutcomes.Star(0.85);
+        var scene = new ExplosionScene(o);
+        Assert.Null(scene.Structure);
+        Assert.Null(scene.Particles);
+        var s = scene.At(100 * Year);
+        Assert.False(s.ShowParticles);
+        Assert.True(s.FrameRadiusCm > 0);
+        Assert.Equal(o.Star!.RadiusCm.Value, s.FrameRadiusCm);
+    }
+
+    [Fact]
+    public void Scene_Particles_AreBuiltOnce_PerOutcome()
+    {
+        var scene = new ExplosionScene(Exploding());
+        var first = scene.Particles;
+        Assert.NotNull(first);
+        scene.At(Day);
+        scene.At(Year);
+        Assert.Same(first, scene.Particles);
+        Assert.Equal((int)QualityLevels.Default, first!.Count);
+        // Another count is built once and kept too.
+        var low = scene.ParticlesFor((int)QualityLevel.Low);
+        Assert.Equal((int)QualityLevel.Low, low!.Count);
+        Assert.Same(low, scene.ParticlesFor((int)QualityLevel.Low));
+    }
+
+    [Fact]
+    public void Scene_Particles_AreShownFromBreakout_WithTheMixingNote()
+    {
+        var scene = new ExplosionScene(Exploding());
+        Assert.False(scene.At(1e-3).ShowParticles);
+        var s = scene.At(Day);
+        Assert.True(s.ShowParticles);
+        Assert.True(s.SinceBreakoutS > 0);
+        bool fingers = scene.Structure!.Mixing.HasFingers;
+        Assert.Equal(fingers, s.Notes.Contains(ExplosionScene.MixingNote));
+        Assert.Equal("Mixing fingers: shapes schematic; their reach is from 3D simulations (structure §S3)", ExplosionScene.MixingNote);
+    }
+
+    [Fact]
+    public void TypeIa_Particles_StartAtTheExplosion()
+    {
+        var scene = new ExplosionScene(TestOutcomes.TypeIa());
+        var s = scene.At(Day);
+        Assert.True(s.ShowParticles);
+        Assert.Equal(Day, s.SinceBreakoutS, 6);
+        Assert.DoesNotContain(ExplosionScene.MixingNote, s.Notes);
     }
 }

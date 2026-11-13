@@ -1,6 +1,7 @@
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Signals;
+using SupernovaLab.Core.Structure;
 using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.Rendering;
@@ -47,6 +48,15 @@ public sealed record SceneState
     /// <summary>The lab's model spin period (s) now; NaN unless <see cref="Marker"/> is <see cref="SceneMarker.Pulsar"/>.</summary>
     public double PulsarPeriodS { get; init; } = double.NaN;
     public IReadOnlyList<string> Notes { get; init; } = Array.Empty<string>();
+
+    /// <summary>Whether the layered particles are drawn now (an explosion past breakout, or a failed supernova's envelope shell past its launch).</summary>
+    public bool ShowParticles { get; init; }
+    /// <summary>t - t_bo, s: the time the particles have moved since breakout (ruling P4); 0 when they are not drawn.</summary>
+    public double SinceBreakoutS { get; init; }
+    /// <summary>The radius of the fastest particle (v = v_max) now, cm (<see cref="ParticleKinematics.RadiusCm"/>); NaN when no particles.</summary>
+    public double MaxRadiusCm { get; init; } = double.NaN;
+    /// <summary>The radius of the particles at the 99%-of-mass speed now, cm (ruling P1's framing radius); NaN when no particles.</summary>
+    public double Frame99RadiusCm { get; init; } = double.NaN;
 }
 
 /// <summary>
@@ -94,6 +104,9 @@ public sealed class ExplosionScene
 
     public const string SchematicNote = "Colours schematic";
 
+    /// <summary>Shown while the Rayleigh-Taylor fingers are drawn (structure S3).</summary>
+    public const string MixingNote = "Mixing fingers: shapes schematic; their reach is from 3D simulations (structure §S3)";
+
     public const string GasNote =
         "Gas around the star (schematic): its extent is not in the research; drawn to 1e15 cm, like SN 2023ixf's";
 
@@ -113,6 +126,9 @@ public sealed class ExplosionScene
 
     private readonly double _z1;
     private readonly bool _ejecta, _thermonuclear, _gas, _lowLuminosityGrb, _pinnedGrb;
+    private readonly object _particleLock = new();
+    private ParticleSet? _particles;
+    private readonly double _particleStartS;
     private readonly double _breakoutS, _peakLuminosity, _lightCurveEndS, _whiteDwarfS, _pulsarS, _jetsFromS, _jetsToS;
 
     /// <summary>The scene for this outcome; <paramref name="timeDilation"/> (1 + z) puts the notes' times in observer time.</summary>
@@ -152,9 +168,62 @@ public sealed class ExplosionScene
         // A Type Ia's white dwarf is drawn while the debris are within about its own radius of it.
         double v = EjectaKinematics.OuterVelocityCmS(outcome);
         _whiteDwarfS = _thermonuclear && outcome.Star is { } wd && v > 0 ? wd.RadiusCm.Value / v : 0;
+
+        // The layered ejecta (Project 2): built once for the outcome; the particles are sampled on first use.
+        Structure = EjectaStructureModel.For(outcome);
+        _particleStartS = Structure is null ? 0
+            : Structure.EnvelopeShellLaunchS ?? (double.IsFinite(_breakoutS) ? _breakoutS : 0);
     }
 
     public Outcome Outcome { get; }
+
+    /// <summary>The ejecta's layers, velocity profile and mixing (null without ejecta); a failed supernova gives its envelope shell.</summary>
+    public EjectaStructure? Structure { get; }
+
+    /// <summary>The particles at the default <see cref="QualityLevel"/>, sampled once per scene; null without ejecta.</summary>
+    public ParticleSet? Particles => ParticlesFor((int)QualityLevels.Default);
+
+    /// <summary>
+    /// The particles at this count (seed 1987). The last count asked for is kept, so a set is built once per outcome and
+    /// again only when the count (the quality level) changes. Null without ejecta.
+    /// </summary>
+    public ParticleSet? ParticlesFor(int count)
+    {
+        if (Structure is null) return null;
+        lock (_particleLock)
+        {
+            if (_particles is null || _particles.Count != count)
+                _particles = ParticleSampler.Sample(Structure, count, ParticleSampler.DefaultSeed);
+            return _particles;
+        }
+    }
+
+    /// <summary>
+    /// The particle fields of the state at source time t, and the framing radius they imply (ruling P1: the larger of
+    /// Project 1's frame radius and the radius enclosing 99% of the particle mass). Not shown before the particles start
+    /// (breakout, or a shell's launch).
+    /// </summary>
+    private SceneState WithParticles(SceneState state, double t, double starRadiusCm)
+    {
+        if (Structure is null || t < _particleStartS) return state;
+        double since = t - _particleStartS, vmax = (_particles ?? Particles!).MaxCmS;
+        double max = ParticleKinematics.RadiusCm(vmax, since, starRadiusCm, vmax, null);
+        double frame99 = double.IsFinite(Structure.Frame99CmS)
+            ? ParticleKinematics.RadiusCm(Structure.Frame99CmS, since, starRadiusCm, vmax, null) : double.NaN;
+        double frame = double.IsFinite(frame99) && !(frame99 <= state.FrameRadiusCm) ? frame99 : state.FrameRadiusCm;
+        return state with
+        {
+            ShowParticles = true, SinceBreakoutS = since, MaxRadiusCm = max, Frame99RadiusCm = frame99, FrameRadiusCm = frame,
+        };
+    }
+
+    /// <summary>The scene notes the structure carries (layer scaling, relativistic, shell label) and the mixing note.</summary>
+    private void AddStructureNotes(List<string> notes, bool beforeLast)
+    {
+        int at = beforeLast ? Math.Max(0, notes.Count - 1) : notes.Count;
+        foreach (string n in Structure!.Notes) if (!notes.Contains(n)) notes.Insert(at++, n);
+        if (Structure.Mixing.HasFingers && !Structure.IsEnvelopeShell) notes.Insert(at, MixingNote);
+    }
 
     /// <summary>The view at this source time (s after bounce, or ignition for a Type Ia).</summary>
     public SceneState At(double sourceTimeS)
@@ -199,6 +268,8 @@ public sealed class ExplosionScene
             EjectaTemperatureK = temperature, EjectaColor = BlackbodyColor.FromTemperature(temperature),
             EjectaBrightness = Brightness(t), Marker = marker, PulsarPeriodS = period, Notes = notes,
         };
+        state = WithParticles(state, t, double.IsNaN(r0) ? 0 : r0);
+        if (state.ShowParticles) AddStructureNotes(notes, beforeLast: true);
         return WithGas(state, notes, r);
     }
 
@@ -260,11 +331,25 @@ public sealed class ExplosionScene
                     state = state with { ShowStar = true };
                     break;
                 }
+                bool shell = o.Fate == Fate.FailedSupernova && Structure is { IsEnvelopeShell: true } && t >= _particleStartS;
                 notes.Add(o.Fate == Fate.FailedSupernova
-                    ? "No explosion: the core collapsed to a black hole, and the star is simply removed here"
+                    ? shell ? "No explosion: the core collapsed to a black hole; only the star's weak outer envelope is thrown off"
+                        : "No explosion: the core collapsed to a black hole, and the star is simply removed here"
                     : "The core collapsed to a black hole; the shells thrown off by the pulses are not drawn");
                 notes.Add("Black hole (schematic marker)");
                 state = state with { Marker = SceneMarker.BlackHole, RadiusLabel = "Former star's radius" };
+                if (shell)
+                {
+                    // Ruling R-P2-19: the shell starts at its launch. It has no light curve: drawn dimly at the floor colour.
+                    state = state with
+                    {
+                        EjectaTemperatureK = EjectaKinematics.TemperatureFloorK,
+                        EjectaColor = BlackbodyColor.FromTemperature(EjectaKinematics.TemperatureFloorK),
+                        EjectaBrightness = MinBrightness,
+                    };
+                    state = WithParticles(state, t, double.IsNaN(state.StarRadiusCm) ? 0 : state.StarRadiusCm);
+                    AddStructureNotes(notes, beforeLast: false);
+                }
                 break;
             default:
                 state = state with { ShowStar = o.Star is not null };
