@@ -23,7 +23,7 @@ The spec (§3.2, §4) quoted these from memory. What the sources say:
 
 | # | Spec said | Sources say | Section |
 |---|---|---|---|
-| C1 | SN 1987A's equatorial ring radius ≈ 0.6 ly | **≈ 0.66 ly** (6.2–6.3 × 10¹⁷ cm): semi-major axis 0.820″ ± 0.005″ (Sugerman et al. 2005, Table 2) [V] at the preset's 51.4 kpc gives 6.31 × 10¹⁷ cm = 0.666 ly [D]; Panagia's (6.23 ± 0.08) × 10¹⁷ cm = 0.659 ly [R]. | §S8 |
+| C1 | SN 1987A's equatorial ring radius ≈ 0.6 ly | **0.665 ly** (6.29 × 10¹⁷ cm) at the preset's 51.4 kpc: Sugerman et al. 2005's 3D fit gives a = 0.647 ly at 50 kpc (Table 3) [V], scaled by 51.4/50 [D]. Consistent with the 0.820″ semi-major axis (Table 2) [V] and Panagia's (6.23 ± 0.08) × 10¹⁷ cm [R]. | §S8 |
 | C2 | Ring tilted ≈ 43° to our line of sight | **Confirmed:** 43.0° ± 0.1° (Sugerman et al. 2005, Table 2) [V]. | §S8 |
 | C3 | SN 1987A's nickel reaches 3,000–4,000 km/s | **Refined:** the *bulk* of ⁵⁶Ni reaches only **≈ 3,000 km/s** (Colgan et al. 1994, [Ni II]/[Fe II] at day 640); one small fast clump (~10⁻³ M☉) moved at **4,700 km/s** (Utrobin, Chugai & Andronova 1995) [both V via Utrobin et al. 2019]. "3,500–4,000 km/s" is the older observed maximum quoted by Kifonidis et al. 2003 [V]. So: bulk to 3,000, a trace to 4,700. | §S3 |
 | C4 | SN 1987A's hydrogen mixed down to under 1,000 km/s | **Confirmed and sharpened:** down to **≤ 700 km/s** (Kozma & Fransson 1998), 600 km/s (Chugai 1991), molecular hydrogen's lowest velocities 400–800 km/s (Larsson et al. 2019), line shapes suggesting mixing to near zero (Maguire et al. 2012) [all V via Utrobin et al. 2019]. | §S3 |
@@ -31,8 +31,8 @@ The spec (§3.2, §4) quoted these from memory. What the sources say:
 | C6 | Hotspots from about day 3,000; peak about day 8,000 | **Confirmed:** first hotspot 1995 (≈ day 3,000; signals §6.3); optical ring flux peaked ≈ day 7,000 (Chevalier & Fransson 2017) to a plateau in 2009 ≈ day 8,000 (Barlow 2025 review) [V]. | §S8 |
 | C7 | Dense shell 10¹⁵ cm from SN 2023ixf | **Confirmed:** CSM confined to r = (0.5–1) × 10¹⁵ cm (Jacobson-Galán et al. 2023) [V]. Long-lasting IIn (SN 2010jl-like) need ≳ 3 × 10¹⁶ cm (§S7). | §S7 |
 | C8 | (§3.1) particle velocities scaled "so the outer edge agrees with Project 1's EjectaKinematics" | **Not possible with a published profile.** EjectaKinematics' edge is v_ej = √(10E/3M), the edge of a *uniform* sphere. The broken power law's 99.9%-mass speed is 1.72× (red supergiant) to 2.0× (blue supergiant, Type Ia) that [D]. See §S1 and inconsistency #32. | §S1 |
-| C9 | (§3.4) Project 1's blast wave is "Leahy & Williams (2017)" | **Mis-attributed.** The interpolation and constants Project 1 uses (λ_b 2.01, α = 1.25 for n = 0; b = 1.06, α = 20.3 for n = 7) and arXiv:1607.06391 are **Tang & Chevalier 2017** (MNRAS 465, 3793) [V for the arXiv text; journal ref R]. Leahy & Williams 2017 (AJ 153, 239; arXiv:1701.05942) is an SNR calculator that uses Truelove & McKee 1999 directly and contains none of those constants [V]. The numbers are right; the label is wrong (inconsistency #34). | §S4.3 |
-| C10 | (§3.4) the forward shock "must agree with Project 1's blast-wave radius" | **True only for uniform ejecta (n = 0).** Real ejecta have steep outer layers (n = 7–12). For those, Truelove & McKee's forward shock runs ahead of Project 1's n = 0 radius: for a 10 M☉, 10⁵¹ erg core collapse with n = 12, 2.6× at 10 yr, +45% at 100 yr and ≈ 0 at 1,000 yr; for n = 7, +280% at t* = 0.01 and +48% at t* = 0.1 [D]. §S4.3 recommends keeping Project 1's radius for the drawn forward shock and disclosing this (inconsistency #33). | §S4.3 |
+| C9 | (§3.4) Project 1's blast wave is "Leahy & Williams (2017)" | **Mis-attributed.** The interpolation and constants Project 1 uses (λ_b 2.01, α = 1.25 for n = 0; b = 1.06, α = 20.3 for n = 7) and arXiv:1607.06391 are **Tang & Chevalier 2017** (MNRAS 465, 3793) [V for the arXiv text; journal ref R]. Leahy & Williams 2017 (AJ 153, 239; arXiv:1701.05942) is an SNR calculator that uses Truelove & McKee 1999 directly; it uses the Sedov constant ξ = 2.026 but not the interpolation's λ_b, α or b [V]. The ρ₀ = n₀ m_p convention signals §7.1 attributes to them is also Tang & Chevalier's; Leahy & Williams write ρ₀ = μ_H n₀ m_H [V, checked by the Task 1 reviewer]. The numbers are right; the label is wrong (inconsistency #34). | §S4.3 |
+| C10 | (§3.4) the forward shock "must agree with Project 1's blast-wave radius" | **True only for uniform ejecta (n = 0).** Real ejecta have steep outer layers (n = 7–12). For those, Truelove & McKee's forward shock runs ahead of Project 1's n = 0 radius: for a 10 M☉, 10⁵¹ erg core collapse with n = 12, 2.6× at 10 yr, +45% at 100 yr and ≈ 0 at 1,000 yr; for n = 7, +280% at t* = 0.01 and +48% at t* = 0.1 [D]. Ruling R-P2-10: the drawn forward shock is Project 1's n = 0 radius and the gap is disclosed (inconsistency #33); the spec is corrected to say so. | §S4.3 |
 
 ---
 
@@ -73,7 +73,7 @@ arXiv:1510.07662, eq. 1–3]. The local slope of the exponential is n_eff = v/v_
 |---|---|---|---|
 | Red supergiant (H-rich, R ≥ 158 R☉, the breakout model's convective test) | 1 | **12** (MM99 11.73) | CF17 [V]; MM99 [V] |
 | Blue supergiant (H-rich, compact) | 1 | **10.18** | MM99 [V] |
-| Stripped envelope (IIb compact, Ib, Ic, Ic-BL, SLSN-I; Wolf–Rayet) | 1 | **10.18** | MM99 radiative [V]; n = 10.18 for Wolf–Rayet explosions (Chomiuk et al. 2016 citing Berger et al. 2002 and Chevalier & Fransson 2006) [V via Chomiuk] |
+| Stripped envelope (Ib, Ic, Ic-BL, Ibn, Icn, SLSN-I; Wolf–Rayet). Type IIb counts as hydrogen-rich (as in `ShockBreakoutModel`) and is classed by radius | 1 | **10.18** | MM99 radiative [V]; n = 10.18 for Wolf–Rayet explosions (Chomiuk et al. 2016 citing Berger et al. 2002 and Chevalier & Fransson 2006) [V via Chomiuk] |
 | Type Ia (and Iax, sub-Chandrasekhar) | 1 | **10** | Kasen 2010 [V] |
 | Pair instability | by its envelope (as above) | | [APPROX] |
 
@@ -132,11 +132,14 @@ Known weakness (inconsistency #35): δ = 1 puts little mass at low speed. 3D red
 
 ### App implementation (§S1)
 
-- Class → (δ, n): RSG (1, 12); BSG (1, 10.18); stripped envelope (1, 10.18); Type Ia/Iax (1, 10). The class test is
-  the breakout model's: H-rich and R ≥ √(500 × 50) R☉ = 158 R☉ → RSG; other H-rich → BSG; H-free → stripped.
+- Class → (δ, n): RSG (1, 12); BSG (1, 10.18); stripped envelope (1, 10.18); Type Ia and Iax (1, 10). One class
+  test, the breakout model's: hydrogen-rich per `ShockBreakoutModel.IsHydrogenRich` (every type except Ib, Ic, Ic-BL,
+  Ibn, Icn and SLSN-I; pair instability and None by HydrogenEnvelopeMass > 0) and R ≥ √(500 × 50) R☉ = 158 R☉ → RSG;
+  other hydrogen-rich (including a compact IIb) → BSG; not hydrogen-rich → stripped. Thermonuclear → Type Ia.
 - v_t from §S1.2 with the outcome's E and M_ej.
-- Particle i of N gets m_i = 0.999 (i + u_i)/N (u_i uniform in [0, 1), stratified) and v_i = v(m_i) from §S1.3; each
-  particle carries M_ej/N (so the drawn masses add to M_ej exactly, ruling P1; the 0.1% beyond v_max is folded in).
+- Particle i of N (i = 0 … N−1) sits at q_i = (i + 0.5)/N (ruling P3; no jitter) and gets v_i = v(0.999 q_i) from §S1.3
+  (ruling P1). Layers are assigned on q_i (§S2). Each particle carries M_ej/N, so the drawn masses add to M_ej exactly.
+  Directions are seeded and isotropic.
 - Tests: the RSG worked example above (v_t 3,955 km/s, v_max 7,050 km/s, m_t 0.8182) to 0.1%; Σ particle mass = M_ej.
 
 ---
@@ -156,11 +159,14 @@ X(H) = 0.2) and the CO-core mass M_CO (where X(He) = 0.2). Ruling P2:
 | H envelope | M_f − M_He | **Confirmed with a label caveat:** this is the H-*rich* envelope, X_H ≈ 0.45–0.68, not pure hydrogen (outcomes §1.3) [V there]. |
 
 Sum: M_Ni + (M_CO − M_rem − M_Ni) + (M_He − M_CO) + (M_f − M_He) = M_f − M_rem = M_ej (outcomes §8.2) [D]. The mapping
-is confirmed. Two corrections are needed for edge cases [D]:
+is confirmed. Two edge cases make CO/Si zero or negative before the floor [D]:
 
 1. **Remnant larger than the CO core.** For the lightest stars the baryonic remnant can reach or exceed M_CO (S16
-   9 M☉: M_CO = 1.40, remnant ≈ 1.35–1.4) [D from outcomes §1.3–1.4]. The CO/Si layer must not go negative.
+   9 M☉: M_CO = 1.40, remnant ≈ 1.35–1.4) [D from outcomes §1.3–1.4].
 2. **Fallback black holes** have M_Ni ≈ 0 and remnants of 3–7 M☉ (outcomes §1.4) that can swallow the He shell too.
+
+Ruling P2's floor at 0 plus its common scale factor on the non-nickel layers handles both: the excess comes out of He
+and H in proportion, and the scene note fires when the factor leaves 0.9–1.1.
 
 ### S2.2 Type Ia (near-Chandrasekhar)
 
@@ -177,24 +183,35 @@ So with the outcome's M_Ni [D]: stable Fe = 0.20; IME = max(0, 1.05 − M_Ni −
 Examples: M_Ni = 0.6 → 0.20 / 0.60 / 0.25 / 0.33; M_Ni = 0.4 → 0.20 / 0.40 / 0.45 / 0.33; M_Ni = 0.9 → IME 0, CO 0.28.
 Mixing: Ia ejecta are stratified (that is Mazzali's result), so no Rayleigh–Taylor fingers (§S3).
 
-Sub-Chandrasekhar and Iax [APPROX]: no layer masses found this session. Sub-Ch: scale the near-Ch fractions (stable
-0.145, unburned 0.24 of M_ej) and put the rest in IME; Iax (deflagration, Kromer et al. 2013 [R]) is well mixed:
-draw it unlayered.
+Sub-Chandrasekhar and Iax [APPROX]: no layer masses found this session. Both take the near-Ch fractions of M_ej
+(stable iron group 0.20/1.38 = 0.145, unburned CO 0.33/1.38 = 0.24) with IME the remainder. Iax are really
+deflagrations whose ejecta are mixed (Kromer et al. 2013 [R]); the layering is schematic for them.
 
 ### App implementation (§S2)
 
-Core collapse, inside out, every layer clamped at ≥ 0 and the deficit passed outward [D]:
+Core collapse and pair instability (ruling P2, R-P2-12), masses in M☉ from `Outcome.Star` and the outcome:
 
-    rem = M_rem,bary
-    ni  = min(M_Ni, M_ej)
-    co  = max(0, M_CO − rem − ni);        carry = max(0, rem + ni − M_CO)
-    he  = max(0, (M_He − M_CO) − carry);  carry = max(0, carry − (M_He − M_CO))
-    h   = max(0, (M_f − M_He) − carry)
-    scale all four by M_ej / (ni + co + he + h) so they add to M_ej exactly (absorbs rounding only)
+    H    = Star.HydrogenEnvelopeMass
+    He   = Star.HeliumEnvelopeMass
+    rem  = RemnantModel.BaryonicMass(Remnant.Mass)   for a neutron star (Outcome has no baryonic field)
+         = Remnant.Mass                              for a black hole
+         = 0                                         for no remnant (pair instability)
+    Ni   = NickelMass
+    CO   = max(0, Star.CoCoreMass − rem − Ni)
+    s    = (EjectaMass − Ni) / (H + He + CO)          one common factor on the non-nickel layers
+                                                      (if Ni ≥ EjectaMass: Ni = EjectaMass and s = 0)
+    layers = Ni, s·CO, s·He, s·H                      (centre outward)
+    if s < 0.9 or s > 1.1: scene note "Layer masses scaled by ×{s:0.00} to match the published ejecta mass"
 
-Layers are assigned by mass coordinate from §S1 (Ni innermost), then mixing (§S3) moves particles. Type Ia: stable Fe
-0.20, Ni = M_Ni, IME and CO as in §S2.2. Pair instability: the same core-collapse mapping with rem = 0. Test: each
-layer's drawn mass within 1% of these (spec success criterion 2).
+Type Ia (ruling P3's three layers, centre outward; M = EjectaMass) [D from Mazzali 2007]:
+
+    near-Chandrasekhar (M ≥ 1.3):  Fe+Ni = min(M, 0.20 + NickelMass)   (drawn as "nickel and iron")
+                                   IME   = max(0, min(M − Fe+Ni, 1.05 − Fe+Ni))
+                                   CO    = M − Fe+Ni − IME
+    sub-Ch and Iax (M < 1.3):      Fe+Ni = min(M, 0.145 M + NickelMass);  CO = min(M − Fe+Ni, 0.24 M);  IME = M − Fe+Ni − CO
+
+Layers are assigned on the particles' stratified q_i (§S1), then mixing (§S3) moves particles. Test: each layer's
+drawn mass within 1% of these (spec success criterion 2).
 
 ---
 
@@ -248,22 +265,36 @@ as multiples of v_t (§S1.2, computed with the model's E and M_ej) they are [D].
   (Kifonidis 2003's ≈ 10 cusps, 20° apart, in 2D).
 - **f (fraction of the sphere's solid angle):** **not found** in any source read. [APPROX] BSG f = 0.10 (four cones of
   half-angle 18°: 4 × (1 − cos 18°)/2 = 0.098); RSG and stripped f = 0.20 (more, narrower fingers). Schematic, labelled.
-- **Fraction of nickel in the fingers:** 0.5 (WMJ15 B15-1-pw, > 50%) [V]; used for every core-collapse class [APPROX
-  outside BSG].
+- **Fraction of nickel in the fingers, F_Ni:** 0.5 (WMJ15 B15-1-pw, > 50% of the nickel mass in fingers faster than
+  ≈ 1,100 km/s) [V], the only published value. Used for the other core-collapse classes [APPROX]: red supergiants mix
+  at least as strongly as blue supergiants (WMJ15), and no stripped-envelope value was found.
 
 ### App implementation (§S3)
 
-| Class | NickelMax | HydrogenMin | K | f | Ni fraction in fingers |
-|---|---|---|---|---|---|
-| Red supergiant | 1.0 v_t [D, WMJ15 range 0.82–1.18] | 0.2 v_t [D, WMJ15 < 0.22] | 8 [APPROX] | 0.2 [APPROX] | 0.5 [APPROX] |
-| Blue supergiant | 0.9 v_t bulk [D, 1987A 0.91; Utrobin B15-2 0.89]; finger tips to 1.4 v_t [D, 1987A clump 1.43; HJM10 1.38] | 0.2 v_t [D, 1987A ≤ 0.21] | 4 [V] | 0.1 [APPROX] | 0.5 [V] |
-| Stripped envelope | 0.4 v_t [D from one 2D model; APPROX for other stripped types] | — (no H; IIb: as BSG) [APPROX] | 10 [APPROX] | 0.2 [APPROX] | 0.5 [APPROX] |
-| Type Ia | none | — | 0 | 0 | 0 [V stratified] |
-| **SN 1987A preset** | **3,000 km/s bulk, 4,700 km/s tips** [V] | **700 km/s** [V] | 4 | 0.1 | 0.5 |
+One value per class (ruling R-P2-13). NickelMax is the finger-tip speed. v_t is §S1.2's for the outcome.
 
-Rules: a finger particle's speed is drawn between its layer speed and NickelMax (tips at NickelMax; the shape inside
-the cone is schematic). Hydrogen particles inside the cones may be moved inward to HydrogenMin. Mixing changes only
-velocities, never masses. Tests: max nickel speed ≤ NickelMax; min hydrogen speed ≥ HydrogenMin; layer masses unchanged.
+| Class | NickelMax (tip) | HydrogenMin | K | f | F_Ni |
+|---|---|---|---|---|---|
+| Red supergiant | 1.0 v_t [D, WMJ15's v_max(Ni) on the 3% isosurface: 0.82–1.18 v_t] | 0.2 v_t [D, WMJ15 < 0.22] | 8 [APPROX] | 0.2 [APPROX] | 0.5 [APPROX] |
+| Blue supergiant (incl. compact IIb) | 1.4 v_t [D, SN 1987A's clump 1.43; HJM10 1.38] | 0.2 v_t [D, SN 1987A ≤ 0.21] | 4 [V] | 0.1 [APPROX] | 0.5 [V] |
+| Stripped envelope | 0.4 v_t [D, one 2D model; APPROX for the class] | none (no hydrogen layer) | 10 [APPROX] | 0.2 [APPROX] | 0.5 [APPROX] |
+| Type Ia, Iax | no mixing | — | 0 | 0 | 0 [V, stratified] |
+| **SN 1987A-like (Outcome.HasEquatorialRing)** | **4,700 km/s** [V] | **700 km/s** [V] | 4 [V] | 0.1 [APPROX] | 0.5 [V] |
+
+Rules (R-P2-13):
+
+- K cone axes are seeded and isotropic; each cone's half-angle θ is set so the union of the K cones covers a fraction
+  f of the sphere (ruling R-P2-3).
+- **Nickel:** a fraction F_Ni of the nickel particles, chosen by seed, is redirected into the cones: the particle's
+  direction is re-drawn uniformly inside the nearest cone, and its speed becomes v' = v + (NickelMax − v)·u², with u
+  seeded and uniform in [0, 1). A particle already faster than NickelMax keeps its speed.
+- **Hydrogen [APPROX, the mirror of the nickel rule]:** a hydrogen particle whose direction lies inside a cone gets
+  v' = v − (v − HydrogenMin)·u², if v > HydrogenMin.
+- Mixing changes directions and speeds only, never masses. Tests: the moved nickel fraction is F_Ni ± 0.03 and every
+  moved particle lies inside a cone; max nickel speed ≤ max(NickelMax, unmoved speeds); every moved hydrogen particle
+  has a speed ≥ HydrogenMin; the layer masses are unchanged.
+- SN 1987A's observed bulk-nickel edge (3,000 km/s = 0.91 v_t) is the result to compare against, not a parameter:
+  with u² weighting, the median moved particle travels a quarter of the way to NickelMax.
 
 ---
 
@@ -357,6 +388,10 @@ R_c* = [(ζ_c t*^((n−3)/n))^−α + (c t*^b)^−α]^(−1/α), valid to t*_lim
 | n | α | b | c | ζ_c | t*_lim |
 |---|---|---|---|---|---|
 | 0 | 0.89 | −0.37 | 1.66 | (10/3)^{1/2} = 1.826 and t*^1 in place of t*^((n−3)/n) [D, the uniform ejecta's edge] | 4 |
+
+(n = 0 caveat [D]: this contact and TM99's n = 0 reverse shock come from different fits. Taken as raw radii, the
+reverse shock lies up to 1.0% outside the contact for t* below ≈ 0.16; as ratios to their own forward shocks, up to
+0.5% for t* below ≈ 0.08. The App block uses the ratios and caps R_r at R_c.)
 | 7 | 4.28 | −0.11 | 1.09 | 0.89 | 4.5 |
 | 10 | 2.92 | −0.12 | 1.07 | 1.01 | 4 |
 | 12 | 2.35 | −0.16 | 1.11 | 1.08 | 4 |
@@ -389,19 +424,49 @@ Williams; C9). Forward-shock radius R* [D]:
 
 ### App implementation (§S4)
 
-- **Before about 3 yr (wind interaction, s = 2):** the forward radius is the one the lab's circumstellar model already
-  uses (signals §6.1, R = v_s t). Contact R_c = R_forward / q₁ and reverse R_r = R_c × q₂, with (q₁, q₂) from the S4.1
-  table for the class's n: RSG n = 12 (1.2259, 0.9874), BSG and stripped n = 10.18 (1.2374, 0.9840), Ia n = 10
-  (1.2389, 0.9836).
-- **Remnant era (Project 1's hand-off, ≥ 3–10 yr):** the drawn forward shock is **Project 1's radius** (spec ground
-  rule: the view never contradicts a panel). Contact and reverse are placed with the **n = 0** TM99/TC17 ratios
-  R_r/R_b and R_c/R_b evaluated at the same t* (so all three are mutually consistent), with R_r = max(0, …).
-  Disclose in the overlay that real ejecta (n = 7–12) would put the shocks further out before t* ≈ 0.4 (inconsistency
-  #33).
-- **Flagged alternative (spec §9, changes a panel):** run RemnantEvolutionModel with the class's n (same code: b and α
-  from TC17 Table 3 above) and use the n = 7/10/12 reverse-shock rows.
-- Tests: TM99 Tables 5 and 7 values at t* = 0.1, 0.495, 1, 2; reverse-shock zero crossings 2.58 (n = 0) and 2.69
-  (n = 7) ± 0.01; S4.1 ratios to 0.001.
+Rulings R-P2-4, R-P2-10 and R-P2-11. One rule for all three radii:
+
+    R_f(t) = EjectaKinematics.RadiusCm(o, t)          the drawn forward shock = Project 1's radius, always
+    R_c(t) = q_c(t) · R_f(t)
+    R_r(t) = min(q_r(t) · R_f(t), R_c(t))
+
+**Start.** Shocks exist from t_start = the circumstellar model's start for outcomes `CsmInteractionModel` applies to,
+otherwise (Type Ia, Iax) t_start = `EjectaKinematics.BlendStartS` (3 yr). Particle confinement (ruling P4) is applied
+with weight w = clamp(log10(t / t_start), 0, 1), r = lerp(free, confined, w), so nothing jumps when shocks appear.
+
+**Wind-era ratios** (Chevalier 1982, s = 2, §S4.1, with the class's n from §S1): q_c,wind = 1/q₁, q_r,wind = q₂/q₁:
+
+| Class (§S1) | n | q_c,wind | q_r,wind |
+|---|---|---|---|
+| Red supergiant | 12 | 0.8157 | 0.8054 |
+| Blue supergiant, stripped envelope | 10.18 | 0.8081 | 0.7952 |
+
+**Remnant-era ratios** (uniform ejecta, n = 0, for every class: R-P2-10), each the ratio to its own paper's forward
+shock, with t* = t / t_ch in the lab's units (§S4.2: 473 yr E51^{−1/2} M_ej^{5/6} n₀^{−1/3}, n₀ = 1 as in Project 1):
+
+    q_c,rem(t*) = R_c,TC(t*) / R_b,TC(t*)
+       R_c,TC = [ (1.826 t*)^−0.89 + (1.66 t*^−0.37)^−0.89 ]^(−1/0.89)        (TC17 eq. 32, Table 5)
+       R_b,TC = [ (2.01 t*)^−2.5 + (2.026 t*²)^−0.5 ]^−0.4                   (TC17 Tables 1, 3 = Project 1's form)
+       for t* > 4 (TC17's t*_lim) hold q_c,rem at its t* = 4 value, 0.4208 [APPROX]
+    q_r,rem(t*) = R_r,TM(t*) / R_b,TM(t*)
+       t* ≤ 0.495:  R_r,TM = 1.83 t* (1 + 3.26 t*^{3/2})^{−2/3};   R_b,TM = 2.01 t* (1 + 1.72 t*^{3/2})^{−2/3}
+       t* > 0.495:  R_r,TM = max(0, t* (0.779 − 0.106 t* − 0.533 ln t*));   R_b,TM = (1.42 t* − 0.254)^{2/5}
+                                                                            (TM99 Table 5)
+
+Values [D]: t* = 0.01: q_c 0.906, q_r 0.910 (so the min() binds below t* ≈ 0.08, by < 0.5%); 0.1: 0.887, 0.884;
+0.3: 0.866, 0.808; 1: 0.758, 0.633; 2: 0.602, 0.270; q_r = 0 from t* = 2.58.
+
+**Blend** between the eras, over Project 1's own window (3 yr → 10 yr), geometric with the same smoothstep in log t as
+`EjectaKinematics.RadiusCm`:
+
+    t ≤ 3 yr:        q = q_wind
+    3 yr < t < 10 yr: x = ln(t / 3 yr) / ln(10/3),  s = x²(3 − 2x),  ln q = (1 − s) ln q_wind + s ln q_rem(t*)
+    t ≥ 10 yr:       q = q_rem(t*)
+
+Outcomes with no wind era (t_start = 3 yr) use q_rem from the start, with no blend. The class's own n (§S4.2) is
+**not** drawn; the gap is disclosed in the overlay (inconsistency #33). Tests: TM99 Tables 5 and 7 values at t* = 0.1,
+0.495, 1, 2; zero crossings 2.58 (n = 0) and 2.69 (n = 7) ± 0.01; §S4.1 ratios to 0.001; R_r ≤ R_c ≤ R_f at every t;
+q continuous at 3 yr and 10 yr.
 
 ---
 
@@ -452,15 +517,20 @@ F(0) = 0, F(1) = 1, monotonic. Tests: R_s(t_bo) = R*; R_s increasing; the two ta
 
 RSG CO core [APPROX]: no value found. MM99: core and mantle evolution "appears to be nearly independent of mass loss
 ... while a hydrogen envelope persists" [V], so the BSG cores' 3.5–6 × 10⁹ cm are taken for RSGs too (≈ 10⁻⁴ R*).
-Wolf–Rayet CO core [APPROX]: the same absolute 5 × 10⁹ cm, capped at half the stellar radius.
+Wolf–Rayet CO core [APPROX]: the same absolute 4.2 × 10⁹ cm, capped at half the stellar radius.
 
 At the star's scale an RSG's He core (≤ 10⁻³ R*) is far below a pixel: the cutaway will show the hydrogen envelope
 only, and the inner layers become visible after expansion, in velocity space (§S1–§S3).
 
 ### App implementation (§S6)
 
-r_CO = min(5 × 10⁹ cm, 0.5 R*) [APPROX, from 3.5–6.1 × 10⁹ V]; r_He = 5 × 10¹⁰ cm for H-rich stars (V range
-1.8–7.1 × 10¹⁰), capped at R*; for H-free stars r_He = R*. Draw nothing smaller than one pixel.
+- r_CO = min(4.2 × 10⁹ cm, 0.5 R*) [APPROX]: 4.2 × 10⁹ cm is the geometric mean of the three verified BSG values
+  (3.55, 3.5 and 6.1 × 10⁹ cm) and is used for every class (see above).
+- r_He = min(3.6 × 10¹⁰ cm, R*) for hydrogen-rich stars [APPROX]: 3.6 × 10¹⁰ cm is the geometric mean of the
+  verified range 1.8–7.1 × 10¹⁰ cm and equals Lovegrove & Woosley's 15 M☉ red supergiant. The lab has no per-star He-core
+  radius.
+- For stripped stars r_He = R*.
+- Draw nothing smaller than one pixel.
 
 ---
 
@@ -494,8 +564,15 @@ r_CO = min(5 × 10⁹ cm, 0.5 R*) [APPROX, from 3.5–6.1 × 10⁹ V]; r_He = 5 
 - Wind haze from the star's own A_* (unchanged), out to r_w = (Ṁ v_w / (4π p))^{1/2} with p/k = 10⁴ cm⁻³ K [APPROX
   ISM pressure], i.e. ≈ 0.6–2 pc for red supergiants and ≈ 20 pc for a Wolf–Rayet wind (Ṁ 10⁻⁵, 1,000 km/s) [D]. Beyond
   it, empty (bubble).
-- Dense shell: 10¹⁵ cm for the dense-CSM input and SN 2023ixf-like presets (confirmed, C7); 3 × 10¹⁶ cm for a
-  long-lasting IIn [D]. Labelled with its source.
+- Dense shell, only when `CsmInteractionModel.HasDenseCsm(o)` (the dense-CSM input, pulsational pair instability, or
+  type IIn/Ibn/Icn). Outer radius:
+  - `o.Type == SupernovaType.IIn`: **3 × 10¹⁶ cm** [D]. The lab's IIn is the class whose CSM is not modeled and whose
+    radio is the brightest (signals §6.1: IIn mean 3 × 10²⁶ erg/s/Hz). That matches the long-lasting, SN 2010jl-like
+    class (CF17 §6.4).
+  - every other HasDenseCsm outcome: **10¹⁵ cm**. This is [V] for confined CSM around II-P stars (SN 2023ixf; the
+    SN 2023ixf preset) and for 1998S-like IIn. It is [APPROX] for Ibn, Icn and pulsational-pair-instability shells,
+    which were not researched.
+  - Labelled with its source.
 
 ---
 
@@ -509,7 +586,7 @@ r_CO = min(5 × 10⁹ cm, 0.5 R*) [APPROX, from 3.5–6.1 × 10⁹ V]; r_He = 5 
 | ER major-axis position angle | 81.1° ± 0.8° E of N | same [V] |
 | ER expansion | 10.5 ± 0.3 km/s | Crotts & Heathcote 2000, arXiv:astro-ph/9907367 [V] |
 | Outer rings (semi-major axes) | north 1.77″ (b/a 0.678), south 1.84″ (b/a 0.513) | Burrows et al. 1995 [V via Sugerman 2005 §8.3] |
-| Outer-ring radii | 1.36 × 10¹⁸ cm (1.44 ly), 1.42 × 10¹⁸ cm (1.50 ly) at 51.4 kpc [D]; "≈ 2 × 10¹⁸ cm" (CF17) [V] | |
+| Outer-ring radii (from the projected semi-major axes; superseded by the 3D fit below) | 1.36 × 10¹⁸ cm (1.44 ly), 1.42 × 10¹⁸ cm (1.50 ly) at 51.4 kpc [D]; "≈ 2 × 10¹⁸ cm" (CF17) [V] | |
 | Offsets along the symmetry axis | north ring 1.3 ly, south ring 1.0 ly from the SN | Sugerman 2005 abstract [V]; Crotts & Heathcote's kinematic model: 1.32 and 1.04–1.24 ly [V via Sugerman] |
 | Outer-ring inclinations (if circular) | north 43°, south 31° (so the south ring cannot be circular at 43°) | Burrows 1995 [V via Sugerman] |
 | Outer-ring expansion; kinematic age | 26 km/s; ≈ 20,000 yr before the explosion | Crotts & Heathcote 2000 [V] |
@@ -517,14 +594,26 @@ r_CO = min(5 × 10⁹ cm, 0.5 R*) [APPROX, from 3.5–6.1 × 10⁹ V]; r_He = 5 
 | First hotspot | 1995 (≈ day 3,000), north-east side | signals §6.3; Barlow 2025 [V] |
 | Ring brightening and peak | 26 hotspots by 2003; optical peak ≈ day 7,000 (CF17) to a plateau in 2009 (≈ day 8,000); fading since; R-band projected to reach zero ≈ 2035 (Larsson et al. 2019) | [V via CF17 and Barlow 2025] |
 | Forward shock near the ring | 4,100–6,700 km/s; ≤ 500 km/s inside the dense clumps | Barlow 2025 [V] |
+| **3D fit of all three rings (used by the app)** | at 50 kpc: ER a = 0.647 ly, b/a 0.98, P.A. 81.1°, z₀ = 0; north ring a = 1.42 ly, b/a 0.94, z₀ = 1.36 ly; south ring a = 1.59 ly, b/a 0.92, z₀ = 1.00 ly, on the other side of the ER plane (z₀ = distance from the SN along the axis; rings fitted as planar ellipses viewed along the axis) | Sugerman 2005 Table 3 and §8.3 [V] |
 
 ### App implementation (§S8)
 
-For SN 1987A-like presets only (ring flag): ER radius 6.3 × 10¹⁷ cm (or 0.820″ × the preset distance), normal tilted
-43.0° from the line of sight, major axis at P.A. 81°. Outer rings of radius 1.36 × 10¹⁸ and 1.42 × 10¹⁸ cm, parallel
-to the ER, centred on the axis 1.3 ly (north) and 1.0 ly (south) from the SN (schematic: the measured 0.4″ offset and
-the south ring's distortion are not drawn, and the overlay says so). Hotspot brightness follows signals §6.3's ring
-component (logistic rise 3,000–9,000 d, plateau, decline after ≈ 10,000 d).
+For SN 1987A-like outcomes only (`Outcome.HasEquatorialRing`). There is one geometry source, Sugerman et al. 2005
+Table 3, with every length scaled by D/50 kpc, where D is the preset's distance [D]. At the preset's 51.4 kpc
+(factor 1.028):
+
+| Ring | Radius (semi-major axis) | Centre on the symmetry axis |
+|---|---|---|
+| Equatorial | 0.665 ly = 6.29 × 10¹⁷ cm | 0 (the SN) |
+| North | 1.460 ly = 1.381 × 10¹⁸ cm | 1.398 ly = 1.323 × 10¹⁸ cm, north side |
+| South | 1.635 ly = 1.546 × 10¹⁸ cm | 1.028 ly = 9.73 × 10¹⁷ cm, south side |
+
+- All three rings are drawn as circles in planes perpendicular to one symmetry axis. The axis is tilted 43.0° from the
+  line of sight; the ER's major axis lies at P.A. 81°.
+- Schematic and labelled: the fitted in-plane ellipticities (b/a 0.92–0.98), the rings' small centroid offsets and
+  Burrows' 0.4″ misalignment are not drawn.
+- Hotspot brightness follows signals §6.3's ring component (logistic rise over 3,000–9,000 d, a plateau, and a decline
+  after ≈ 10,000 d).
 
 ---
 
@@ -587,12 +676,26 @@ out through the star (Lovegrove & Woosley 2013, ApJ 769, 109, arXiv:1303.5055; F
 
 ### App implementation (§S10)
 
-Draw (labelled "weak envelope ejection, Lovegrove & Woosley 2013; Fernández et al. 2018") a shell of mass
-min(4.5 M☉, M_env) at 75 km/s for red supergiants; 0.1 M☉ at 700 km/s for compact H-poor stars; 10⁻³ M☉ at 2,300 km/s
-for Wolf–Rayet stars [D midpoints of the table; APPROX in choosing one value]. The panels are unchanged (the lab's
-failed supernova has no ejecta). It starts when the pulse reaches the surface — red supergiants ≈ 10⁷ s (F18 ran to
-10⁷ s, "shortly after the shock breaks out") [V]; the others' times were not found: [APPROX] use §S5's delay with E =
-10⁴⁷ erg.
+For a failed supernova, draw a shell labelled "weak envelope ejection, Lovegrove & Woosley 2013; Fernández et al.
+2018". The class comes from §S1's test. Each value is the table's midpoint [D]; choosing one value is [APPROX].
+
+| §S1 class | Shell mass M_s | Speed v_s |
+|---|---|---|
+| Red supergiant | min(4.5 M☉, HydrogenEnvelopeMass) | 75 km/s |
+| Blue supergiant (compact, H-poor 35–40 M☉ stars) | 0.1 M☉ | 700 km/s |
+| Stripped (Wolf–Rayet) | 10⁻³ M☉ | 2,300 km/s |
+
+E_s = ½ M_s v_s². The shell starts at the star's surface when the pulse arrives:
+
+    t_s = ShockBreakoutModel.KistlerDelayS(n, energyErg = E_s, ejectaMass = max(M_s, FinalMass − M_BH),
+                                           radiusRsun = R*/R☉, remnantMass = M_BH)
+
+Here n is chosen as in §S5, M_BH = Remnant.Mass, and "ejectaMass" is the mass the pulse crosses (the star above the
+black hole), not the shell. Kistler's fit is for explosion shocks, so applying it to this weak pulse is [APPROX].
+Check [D]: for the S16 22 M☉ red supergiant (M_f 16.2, M_BH = M_He = 7.0, 1,168 R☉, E_s = 2.5 × 10⁴⁷ erg) this gives
+7.6 × 10⁶ s, the same order as Fernández et al.'s ≈ 10⁷ s ("shortly after the shock breaks out") [V].
+
+After t_s the shell coasts: r = R* + v_s (t − t_s). The panels are unchanged (the lab's failed supernova has no ejecta).
 
 ---
 

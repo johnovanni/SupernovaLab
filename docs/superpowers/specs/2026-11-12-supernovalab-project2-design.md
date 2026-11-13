@@ -80,7 +80,11 @@ Plus a **guided tour** for every explosion, alongside free play.
 - About 200,000 particles (§7.2 for the quality setting). Each is given a mass coordinate, an element layer and a
   velocity when the outcome is built.
 - Velocities come from a published ejecta density profile (a flat inner core and a steep outer power law), scaled to
-  the outcome's energy and ejecta mass, so the outer edge agrees with Project 1's `EjectaKinematics`.
+  the outcome's energy and ejecta mass and truncated at the speed that encloses 99.9% of the mass (plan ruling P1).
+  That edge runs 1.7–2.0× ahead of Project 1's uniform-ball edge in `EjectaKinematics`, as its own note says the
+  fastest layers do. The radius readout keeps Project 1's value, and the director frames whichever is larger
+  (`structure.md` §S1 and correction C8; inconsistency #32). Corrected 2026-11-12: this line earlier asked for the
+  outer edge to agree with `EjectaKinematics`, which no published profile allows.
 - Layer masses come from the outcome: nickel (and iron), then silicon and oxygen (the CO core), helium, hydrogen
   envelope. Stripped stars lack the outer layers (Ib: no hydrogen; Ic: neither).
 - **Type Ia:** stratified white-dwarf debris: a nickel core, then silicon and other intermediate-mass elements, then
@@ -106,8 +110,13 @@ Plus a **guided tour** for every explosion, alongside free play.
 
 ### 3.4 Shocks after breakout
 - Once the debris meet surrounding gas, the forward shock, the contact surface and the reverse shock are thin
-  translucent surfaces. Radii from Truelove & McKee (1999), added to the research beside the Leahy & Williams (2017)
-  blast wave Project 1 uses; the forward shock must agree with Project 1's blast-wave radius.
+  translucent surfaces. Radii from Truelove & McKee (1999) and Tang & Chevalier (2017), the source of the blast wave
+  Project 1 uses (earlier mislabelled Leahy & Williams 2017: `structure.md` C9).
+- The drawn forward shock is Project 1's uniform-ejecta (n = 0) radius, and the contact and reverse shock use the
+  matching n = 0 solutions (ruling R-P2-10, `structure.md` §S4). For the steep outer layers of real ejecta, the forward
+  shock would run ahead of this early on (up to about 2.6× at 10 years for a red supergiant). The overlay discloses
+  that gap (correction C10; inconsistency #33). Corrected 2026-11-12: this line earlier said the forward shock "must
+  agree" with Project 1's radius, which holds only for uniform ejecta.
 - Particles the reverse shock has passed pile up behind the contact surface and glow as hot gas.
 - While the debris coast, positions are velocity × time (homologous expansion), computed on the GPU. After that,
   positions follow the shock solutions.
