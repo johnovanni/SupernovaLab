@@ -442,7 +442,7 @@ public class ExplosionSceneTests
         Assert.Equal(early.Shocks!.ForwardCm, early.ForwardShockCm);
         Assert.Equal(Math.Max(early.EjectaRadiusCm, early.Frame99RadiusCm), early.FrameRadiusCm);   // before 3 yr: the debris frame
         var blend = scene.At(5 * Year);
-        Assert.Equal("Forward shock", blend.ForwardShockLabel);
+        Assert.Equal("Forward shock (join between the wind and remnant models; schematic)", blend.ForwardShockLabel);
         Assert.Equal("Outer radius", blend.RadiusLabel);
 
         // Before the shocks start there is no second line.

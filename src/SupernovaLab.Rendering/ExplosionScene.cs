@@ -146,8 +146,8 @@ public sealed class ExplosionScene
     /// <summary>The forward-shock readout's label in the wind era, to 3 yr: the radio model's shock (ruling R-P2-25).</summary>
     public const string RadioShockLabel = "Forward shock (radio model's shock)";
 
-    /// <summary>The forward-shock readout's label while the two eras blend, 3 to 10 yr (ruling R-P2-25).</summary>
-    public const string BlendShockLabel = "Forward shock";
+    /// <summary>The forward-shock readout's label while the two eras blend, 3 to 10 yr (rulings R-P2-25, R-P2-26).</summary>
+    public const string BlendShockLabel = "Forward shock (join between the wind and remnant models; schematic)";
 
     /// <summary>From 10 yr (ruling R-P2-24): Project 1's uniform-ejecta value, which the panels use ({0}: the radius).</summary>
     public const string UniformRemnantNoteFormat =

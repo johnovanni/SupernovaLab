@@ -58,7 +58,7 @@
 
                     <StackPanel Margin="10,8" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False">
                         <TextBlock Text="{Binding TimeText}" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding RadiusText}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding RadiusText}" Margin="0,2,0,0" MaxWidth="340" TextWrapping="Wrap" HorizontalAlignment="Left"/>
                     </StackPanel>
                     <TextBlock Text="{Binding NotesText}" Style="{StaticResource Muted}" Margin="10,8" MaxWidth="320"
                                HorizontalAlignment="Right" VerticalAlignment="Top" TextAlignment="Right" TextWrapping="Wrap"

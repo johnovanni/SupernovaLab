@@ -41,9 +41,11 @@ public class ShockStructureTests
     [InlineData(7, 1.0, 1.041876, 0.699000)]
     [InlineData(7, 2.0, 1.449142, 0.457604)]
     [InlineData(10, 0.1, 0.228857, 0.195536)]
+    [InlineData(10, 0.5, 0.704443, 0.573138)]
     [InlineData(10, 1.0, 1.048800, 0.758600)]
     [InlineData(10, 2.0, 1.453374, 0.549847)]
     [InlineData(12, 0.1, 0.215172, 0.187075)]
+    [InlineData(12, 0.5, 0.712891, 0.584481)]
     [InlineData(12, 1.0, 1.053476, 0.795800)]
     [InlineData(12, 2.0, 1.456247, 0.594277)]
     public void TrueloveMcKee_MatchesTheTables(int n, double tStar, double forward, double reverse)
@@ -62,6 +64,8 @@ public class ShockStructureTests
     [InlineData(7, 0.1, 0.238732)]
     [InlineData(7, 1.0, 0.819996)]
     [InlineData(10, 0.1, 0.201287)]
+    [InlineData(10, 0.5, 0.590793)]
+    [InlineData(12, 0.5, 0.591525)]
     [InlineData(10, 2.0, 0.918466)]
     [InlineData(12, 0.1, 0.191500)]
     [InlineData(12, 1.0, 0.815042)]
@@ -136,8 +140,10 @@ public class ShockStructureTests
         foreach (double t in new[] { 10 * Day, 100 * Day, Year, 3 * Year })
         {
             var s = ShockStructureModel.At(o, t)!;
-            Assert.Equal(1, s.ForwardCm / CsmInteractionModel.ShockRadiusCm(o, t), 12);
-            Assert.Equal(1, s.ForwardCm / (vs * t), 9);
+            // R_f is the running maximum on the log grid (R-P2-26): exact for v_s t, except within one grid step of the 3-yr
+            // join, where the power-law interpolation across the start of the blend is off by < 1e-4.
+            Assert.Equal(1, s.ForwardCm / CsmInteractionModel.ShockRadiusCm(o, t), 1e-4);
+            Assert.Equal(1, s.ForwardCm / (vs * t), 1e-4);
             Assert.Equal(1 / 1.2259, s.ContactCm / s.ForwardCm, 9);
             Assert.Equal(0.9874 / 1.2259, s.ReverseCm / s.ForwardCm, 9);
         }
@@ -147,7 +153,8 @@ public class ShockStructureTests
     public void Shocks_InTheRemnantEra_AreTheClassNTrajectories()
     {
         // From 10 yr: TM99 forward and reverse, TC17 contact, for n = 12 (default red supergiant), 10 (Cas A), 7 (Type Ia), in
-        // characteristic units with the outcome's E and M_ej and n0 = 1.
+        // characteristic units with the outcome's E and M_ej and n0 = 1. R_f is the running maximum on a log grid with power-law
+        // interpolation (ruling R-P2-26): equal to TM99 to the interpolation error (~1e-5) where TM99 rises, as it does here.
         foreach (var (o, n) in new[] { (Default(), 12), (Preset("casa"), 10), (TestOutcomes.TypeIa(), 7) })
         {
             var (rch, tch) = ShockStructureModel.CharacteristicScales(o.ExplosionEnergyErg!.Value, o.EjectaMass!.Value, 1);
@@ -155,10 +162,10 @@ public class ShockStructureTests
             {
                 double t = yr * Year, ts = t / tch;
                 var s = ShockStructureModel.At(o, t)!;
-                Assert.Equal(1, s.ForwardCm / (ShockStructureModel.TmForward(n, ts) * rch), 12);
-                Assert.Equal(1, s.ContactCm / (Math.Min(ShockStructureModel.TcContact(n, ts), ShockStructureModel.TmForward(n, ts)) * rch), 12);
+                Assert.Equal(1, s.ForwardCm / (ShockStructureModel.TmForward(n, ts) * rch), 4);
+                Assert.Equal(1, s.ContactCm / (Math.Min(ShockStructureModel.TcContact(n, ts), ShockStructureModel.TmForward(n, ts)) * rch), 4);
                 double reverse = ShockStructureModel.TmReverse(n, ts) * rch;
-                Assert.Equal(Math.Min(reverse, s.ContactCm), s.ReverseCm, s.ContactCm * 1e-12);
+                Assert.Equal(Math.Min(reverse, s.ContactCm), s.ReverseCm, s.ContactCm * 1e-4);
             }
         }
     }
@@ -222,7 +229,7 @@ public class ShockStructureTests
         Assert.Equal(0.5, ShockStructureModel.BlendWeight(tm), 12);
         var (rch, tch) = ShockStructureModel.CharacteristicScales(d.ExplosionEnergyErg!.Value, d.EjectaMass!.Value, 1);
         double expected = Math.Sqrt(CsmInteractionModel.ShockRadiusCm(d, tm) * ShockStructureModel.TmForward(12, tm / tch) * rch);
-        Assert.Equal(1, ShockStructureModel.At(d, tm)!.ForwardCm / expected, 9);
+        Assert.Equal(1, ShockStructureModel.At(d, tm)!.ForwardCm / expected, 1e-4);   // grid interpolation (R-P2-26)
     }
 
     [Fact]
@@ -265,6 +272,43 @@ public class ShockStructureTests
                 Assert.True(!before || after, $"{o.Type}: v = {v / 1e5:0} km/s un-shocked between {times[k] / Year} and {times[k + 1] / Year} yr");
             }
         }
+    }
+
+    [Fact]
+    public void ForwardShock_NeverContracts_AcrossTheJoin()
+    {
+        // Ruling R-P2-26: R_f is the running maximum of the blended radius. Review Critical 1: for hydrogen-poor outcomes the
+        // radio model's v_s t runs 2-3 times ahead of TM99 n = 10 at 3 yr, so the bare geometric blend contracted (SN 1998bw
+        // 0.591 -> 0.454 pc). Checked on a fine log grid from the start to 1,000 yr: dense (200 per decade) for the presets and the
+        // hand-built Ic, every outcome of the strip at Z = 1 and 0.1 at 80 per decade.
+        var dense = new List<Outcome> { TestOutcomes.Custom(SupernovaType.Ic, 1e51, 3, 0.1, 1e11), TestOutcomes.Custom(SupernovaType.Ic, 1e52, 0.1, 0.01, 1e11) };
+        dense.AddRange(PresetCatalog.LoadEmbedded().Select(p => TestOutcomes.Engine.Compute(p.Inputs, p.Pins)));
+        var strip = new List<Outcome>();
+        foreach (double z in new[] { 1.0, 0.1 })
+        {
+            var template = LabInputs.Default with { Metallicity = z };
+            foreach (var cell in OutcomeMap.Strip(TestOutcomes.Engine, template))
+                strip.Add(TestOutcomes.Engine.Compute(template with { InitialMass = cell.InitialMass }));
+        }
+        int series = 0;
+        foreach (var (set, perDecade) in new[] { (dense, 200), (strip, 80) })
+        foreach (var o in set)
+        {
+            double start = ShockStructureModel.StartTimeS(o);
+            if (double.IsNaN(start)) continue;
+            int steps = (int)Math.Ceiling(Math.Log10(1000 * Year / start) * perDecade);
+            double previous = 0;
+            for (int i = 0; i <= steps; i++)
+            {
+                double t = start * Math.Pow(1000 * Year / start, (double)i / steps);
+                var s = ShockStructureModel.At(o, t)!;
+                Assert.True(s.ForwardCm >= previous, $"{o.Inputs.InitialMass:0.##} M☉ {o.Type}: R_f fell at {t / Year:0.###} yr ({s.ForwardCm} < {previous})");
+                Assert.True(s.ReverseCm <= s.ContactCm && s.ContactCm <= s.ForwardCm);
+                previous = s.ForwardCm;
+            }
+            series++;
+        }
+        Assert.True(series > 100, $"{series}");
     }
 
     [Fact]

@@ -119,9 +119,16 @@ Plus a **guided tour** for every explosion, alongside free play.
   - **From 10 years:** all three come from Truelove & McKee (1999) and Tang & Chevalier (2017) for the class's steep
     ejecta (n = 7 Type Ia, 12 red supergiant, 10 otherwise).
   - **Between 3 and 10 years:** each radius blends smoothly from the first to the second.
-  - **Readout:** from 10 years the radius readout is this forward shock, and a note gives Project 1's uniform-ejecta value,
-    which the remnant panel keeps (up to about 2.6× smaller at 10 years for a red supergiant; correction C10;
-    inconsistency #33).
+  - **The join:** the drawn forward shock never shrinks. It is the running maximum of the blend, because the radio
+    model's shock and the remnant solution can be 2–3× apart for stripped stars (ruling R-P2-26). The 3–10 year join is
+    labelled schematic (inconsistency #45).
+  - **Readout** (ruling R-P2-25):
+    - The first line is always the debris radius as Project 1 gives it.
+    - While shocks are drawn, a second line gives the forward shock, labelled by era (radio model's shock / join,
+      schematic / steep-ejecta solution).
+    - From 10 years a note gives Project 1's uniform-ejecta value, which the remnant panel keeps (up to about 2.6× smaller
+      at 10 years for a red supergiant; correction C10; inconsistency #33).
+    - The view's framing blends to include the forward shock between 3 and 10 years, so nothing jumps.
 
   Corrected 2026-11-12: this line first said the forward shock "must agree" with Project 1's radius, then (ruling
   R-P2-10) drew Project 1's n = 0 radius; the research and Task 8 showed both misplace the shocks.

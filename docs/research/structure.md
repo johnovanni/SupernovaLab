@@ -469,16 +469,32 @@ outcome's E and M_ej and n₀ = `RemnantEvolutionModel.AmbientDensity` = 1, with
 
 Outcomes with no wind era use the remnant-era solution from their start (TM99 hold from early times).
 
+**Monotone forward shock (ruling R-P2-26).** The drawn R_f is the running maximum over time of the blended radius. It is
+computed on the same log grid as the confinement below, interpolated as a power law between nodes, so it is continuous and
+never decreases. R_c and R_r keep their blended ratios (R_c/R_f, R_r/R_f at t), applied to this R_f.
+- Why: for hydrogen-poor outcomes the radio model's v_s t runs 2–3× ahead of TM99 n = 10 at 3 yr, so the bare blend
+  contracted. SN 1998bw went 0.591 pc at 4 yr → 0.456 pc at 8.1 yr; the maximum holds 0.591 pc until TM99 overtakes it at
+  ≈ 12 yr.
+- Hydrogen-rich joins instead accelerate mildly (d ln R/d ln t up to ≈ 1.3); that is disclosed, not corrected.
+- The join is schematic (inconsistency #45).
+
 **Order.** R_c := min(R_c, R_f) and R_r := min(R_r, R_c). Neither binds for the class-n solutions (checked for t* to 50).
 
 **Confinement.** The reverse shock's Lagrangian speed is the running minimum over [t_start, t] of v(t') = R_r(t') / (t' − t_bo).
-It is evaluated on a log grid of 64 nodes per decade from t_start, interpolated as a power law between nodes, so a shocked
+It is evaluated on a log grid of 128 nodes per decade from t_start, interpolated as a power law between nodes, so a shocked
 particle stays shocked. Particles with v > v_m are placed between R_r and R_c in order of speed (ruling P4).
 
-**Readout.** From 10 yr the radius readout is the drawn forward shock ("Forward shock (steep-ejecta solution)"), and the
-framing includes it. A note gives Project 1's uniform-ejecta value, which the remnant panel uses (inconsistency #33). Before
-10 yr the readout and framing are Project 1's. Project 1's remnant model is unchanged; using the class-n solution there would
-change a panel (spec §9).
+**Readout and frame (ruling R-P2-25).**
+- The readout's first line is always the debris radius as Project 1 gives it (label and value).
+- While shocks are drawn, a second line gives the drawn forward shock. It is labelled "Forward shock (radio model's shock)"
+  to 3 yr and "Forward shock (join between the wind and remnant models; schematic)" over 3–10 yr (R-P2-26). It is labelled
+  "Forward shock (steep-ejecta solution)" from 10 yr, and throughout for an outcome with no wind era.
+- From 10 yr a note gives Project 1's uniform-ejecta value, which the remnant panel uses (inconsistency #33).
+- The frame blends geometrically from the debris frame F_d (Project 1's radius or the 99%-mass particle radius) to
+  max(F_d, R_f) over 3–10 yr, with the same smoothstep in log t. So it includes R_f from 10 yr and never jumps; before 3 yr
+  the wind-era shell may extend past the view.
+
+Project 1's remnant model is unchanged; using the class-n solution there would change a panel (spec §9).
 
 **Joins and steps [D].** TM99's own pieces meet at t*_ST and t*_core with small steps:
 - forward shock: 0.73% (n = 7, at t* = 0.732), 0.20% (n = 10), 0.14% (n = 12);
@@ -486,7 +502,9 @@ change a panel (spec §9).
 
 They are drawn as published.
 
-**Tests.** TM99 Tables 5 and 7 and the n = 10/12 rebuilds at t* = 0.1, 0.5, 1 and 2. Zero crossings: 2.5811 (n = 0),
+**Tests.** TM99 Tables 5 and 7 and the n = 10/12 rebuilds at t* = 0.1, 0.5, 1 and 2 (TC17 contact likewise for n = 10 and 12 at 0.1 and 0.5).
+R_f never decreases (fine log grid from the start to 1,000 yr, every preset, the outcome-map strip at Z = 1 and 0.1, and
+hand-built Ic outcomes). Zero crossings: 2.5811 (n = 0),
 2.6812 (7), 2.7411 (10) and 2.7372 (12), each within 0.01 of §S4.2's 2.58, 2.69, 2.74 and 2.74. §S4.1 ratios to 0.001.
 R_f equals the radio model's v_s t in the wind era. R_r ≤ R_c ≤ R_f at every t. Every radius is continuous at 3 yr and 10 yr.
 The running-minimum speed never rises, and the shocked speeds are nested.

@@ -18,14 +18,20 @@ namespace SupernovaLab.Core.Structure;
 /// <item><b>3 → 10 yr</b>: each radius blended geometrically, ln R = (1 − s) ln R_wind + s ln R_rem, with the smoothstep in log t
 /// that <see cref="EjectaKinematics.RadiusCm"/> uses. Outcomes with no wind era (Type Ia, Iax, no wind) start at 3 yr
 /// (R-P2-4) with the remnant-era solution, which TM99 give from early times.</item>
+/// <item><b>Monotone forward shock</b> (ruling R-P2-26): the drawn R_f is the running maximum over time of the blended radius
+/// above (log grid, <see cref="LagrangianNodesPerDecade"/> nodes per decade from the start, power-law interpolation between
+/// nodes), so it never contracts where the radio model's wind shock runs ahead of the remnant solution (hydrogen-poor
+/// outcomes). R_c and R_r keep their blended ratios to the blended radius, applied to this R_f.</item>
 /// <item>R_c := min(R_c, R_f) and R_r := min(R_r, R_c) (neither binds for the class-n solutions in practice; they guard the
 /// joins).</item>
 /// <item>The reverse shock's Lagrangian speed for the particles' confinement (ruling P4) is the running minimum over time of
 /// R_r(t') / (t' − t_bo) from the start to t (<see cref="ShockRadii.ReverseLagrangianCmS"/>), so a shocked particle stays
-/// shocked even where the joined fits move the reverse shock outward through the debris.</item>
+/// shocked even where the joined fits move the reverse shock outward through the debris (R-P2-24).</item>
 /// </list>
-/// Project 1's uniform-ejecta remnant model (<see cref="RemnantEvolutionModel"/>, behind the panels) is not changed: from 10
-/// yr the 3D view's readout is this forward shock and a note gives Project 1's value (inconsistency #33).
+/// Project 1's uniform-ejecta remnant model (<see cref="RemnantEvolutionModel"/>, behind the panels) is not changed. The 3D
+/// view's readout (ruling R-P2-25) keeps Project 1's debris radius on its first line and gives this forward shock on a second
+/// line while shocks are drawn; from 10 yr a note gives Project 1's value (inconsistency #33). The frame blends to include R_f
+/// over 3–10 yr.
 /// </summary>
 public static class ShockStructureModel
 {
@@ -213,41 +219,61 @@ public static class ShockStructureModel
     private static double Geometric(double a, double b, double s)
         => a > 0 && b > 0 ? Math.Exp((1 - s) * Math.Log(a) + s * Math.Log(b)) : 0;
 
-    /// <summary>The running minimum's grid: this many log-spaced nodes per decade from the start.</summary>
-    public const int LagrangianNodesPerDecade = 64;
+    /// <summary>The running extremes' grid (R_f's maximum, v_m's minimum): this many log-spaced nodes per decade from the start.</summary>
+    public const int LagrangianNodesPerDecade = 128;
+
+    /// <summary>Power-law (log-log) interpolation between two node values at fraction <paramref name="frac"/> of the log-t step; +∞ if either is.</summary>
+    private static double PowerLaw(double a, double b, double frac)
+        => !double.IsFinite(a) || !double.IsFinite(b) ? double.PositiveInfinity
+            : a > 0 && b > 0 ? Math.Exp(Math.Log(a) + (Math.Log(b) - Math.Log(a)) * frac)
+            : a + (b - a) * frac;
 
     /// <summary>
-    /// The reverse shock's Lagrangian speed for the confinement (ruling R-P2-24): the running minimum over [start, t] of
-    /// v(t') = R_r(t') / (t' − t_bo), on a log grid fixed by the start (<see cref="LagrangianNodesPerDecade"/> nodes per decade),
-    /// interpolated as a power law (log v linear in log t) between nodes. A running minimum of a continuous function, so it never
-    /// rises; it can lag the present value only by the interpolation error between two nodes.
-    /// +∞ while nothing has been shocked yet (t' ≤ t_bo).
+    /// The drawn shocks at t with the two running extremes, in one pass over a log grid fixed by the start
+    /// (<see cref="LagrangianNodesPerDecade"/> nodes per decade), each interpolated as a power law between nodes:
+    /// <list type="bullet">
+    /// <item>R_f = the running maximum of the blended forward shock (ruling R-P2-26). As the running maximum of a continuous
+    /// interpolant it is continuous and never decreases; where the blended radius rises it equals it to the interpolation error
+    /// (exactly for a power law such as v_s t or TM99's ejecta-dominated pieces, ~1e-5 on the Sedov pieces).</item>
+    /// <item>R_c, R_r: the blended ratios C/F and R/F at t times this R_f, then R_r ≤ R_c ≤ R_f.</item>
+    /// <item>v_m = the running minimum of R_r(t′) / (t′ − t_bo) (ruling R-P2-24; +∞ while t′ ≤ t_bo), with R_r(t′) the drawn one.</item>
+    /// </list>
     /// </summary>
-    private static double LagrangianSpeed(Setup p, double t)
+    private static (double F, double C, double R, double Vm) Drawn(Setup p, double t)
     {
-        double V(double tp)
+        static (double F, double C, double R) Apply((double F, double C, double R) blended, double forward)
+        {
+            double c = Math.Min(blended.C / blended.F * forward, forward);
+            return (forward, c, Math.Min(blended.R / blended.F * forward, c));
+        }
+
+        double V(double tp, double reverse)
         {
             double since = tp - p.BreakoutS;
-            return since > 0 ? Radii(p, tp).R / since : double.PositiveInfinity;
+            return since > 0 ? reverse / since : double.PositiveInfinity;
         }
 
         double step = Math.Log(10) / LagrangianNodesPerDecade;
-        double min = double.PositiveInfinity, prev = V(p.StartS), prevT = p.StartS;
-        min = Math.Min(min, prev);
+        var first = Radii(p, p.StartS);
+        double maxF = first.F, prevF = first.F, prevT = p.StartS;
+        double prevV = V(p.StartS, Apply(first, maxF).R), minV = prevV;
         for (int k = 1; ; k++)
         {
             double tk = p.StartS * Math.Exp(k * step);
-            double vk = V(tk);
+            var radii = Radii(p, tk);
+            double maxK = Math.Max(maxF, radii.F);
+            double vk = V(tk, Apply(radii, maxK).R);
             if (tk >= t)
             {
                 double frac = Math.Log(t / prevT) / Math.Log(tk / prevT);
-                double vt = !double.IsFinite(prev) || !double.IsFinite(vk) ? double.PositiveInfinity
-                    : prev > 0 && vk > 0 ? Math.Exp(Math.Log(prev) + (Math.Log(vk) - Math.Log(prev)) * frac)
-                    : prev + (vk - prev) * frac;
-                return Math.Min(min, vt);
+                double forward = Math.Max(maxF, PowerLaw(prevF, radii.F, frac));
+                var now = Apply(Radii(p, t), forward);
+                return (now.F, now.C, now.R, Math.Min(minV, PowerLaw(prevV, vk, frac)));
             }
-            min = Math.Min(min, vk);
-            prev = vk;
+            maxF = maxK;
+            minV = Math.Min(minV, vk);
+            prevF = radii.F;
+            prevV = vk;
             prevT = tk;
         }
     }
@@ -259,12 +285,12 @@ public static class ShockStructureModel
     public static ShockRadii? At(Outcome o, double sourceTimeS)
     {
         if (SetupFor(o) is not { } p || !(sourceTimeS >= p.StartS)) return null;
-        var (f, c, r) = Radii(p, sourceTimeS);
+        var (f, c, r, vm) = Drawn(p, sourceTimeS);
         if (!(f > 0)) return null;
         return new ShockRadii(f, c, r)
         {
             ConfinementWeight = ConfinementWeight(sourceTimeS, p.StartS),
-            ReverseLagrangianCmS = LagrangianSpeed(p, sourceTimeS),
+            ReverseLagrangianCmS = vm,
         };
     }
 
