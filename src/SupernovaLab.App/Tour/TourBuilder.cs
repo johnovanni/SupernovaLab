@@ -16,12 +16,12 @@ namespace SupernovaLab.App.Tour;
 /// <list type="bullet">
 /// <item>The first stop is at 1 ms (<see cref="TimeAxis.MinS"/>): "Core collapse", "Ignition" for a Type Ia, or the star's
 /// own fate when there is no explosion.</item>
-/// <item>Each event marker is a stop. A stop before the shock breakout is a cutaway with a 10°/s orbit. The breakout
+/// <item>Each event marker is a stop. A stop before the shock breakout is a cutaway whose camera sways (Task 15; the 10 in <see cref="CutawayOrbitDegPerS"/> is now only a flag). The breakout
 /// highlights X-rays/UV, the neutrino burst the neutrinos, peak light the visible light (the gravitational waves, gamma-ray
 /// burst and lines, radio peak and pulsar highlight their own panels). A peak-light marker before the breakout is left out
 /// (ruling R-P2-33, final review I10: Project 1's IIn light curve peaks before its shock reaches the surface, inconsistency #51).</item>
 /// <item>The mixing (ruling R-P2-33, final review I7): when the debris have Rayleigh–Taylor fingers, one stop after the breakout,
-/// at peak light (or 30 days when there is no peak marker), is a cutaway with the 10°/s orbit and says what the slice shows. It
+/// at peak light (or 30 days when there is no peak marker), is a cutaway with the sway and says what the slice shows. It
 /// merges like any stop (so it is usually the peak-light stop itself, now cut away).</item>
 /// <item>A preset line becomes a stop at its source time × (1 + z). Lines outside the timeline are left out.</item>
 /// <item>Merging: stops are sorted by time; a stop less than 0.05 decades after the earliest stop of its group (measured

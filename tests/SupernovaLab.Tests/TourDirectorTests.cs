@@ -165,10 +165,11 @@ public class TourDirectorTests
         Assert.True(first.OrbitDegPerS > 0);
         Assert.True(scene.IsCutaway);
 
-        double yaw = scene.Camera.YawDeg;
-        for (int i = 0; i < 60; i++) d.Tick(Frame);
-        double turned = (scene.Camera.YawDeg - yaw + 360) % 360;
-        Assert.Equal(first.OrbitDegPerS, turned, 0);   // one second of orbit
+        // Task 15: the orbit became a sway about the notch-facing yaw: 60 deg * sin(2 pi t / 12 s), so +60 deg after a quarter period.
+        double centre = scene.NotchFacingYawDeg;
+        Assert.Equal(centre, scene.Camera.YawDeg, 6);
+        for (int i = 0; i < 180; i++) d.Tick(Frame);   // ticks of 1/60 s (rounded to TimeSpan ticks) for 3 s: sin = 1
+        Assert.Equal(centre + d.CurrentSwayAmplitudeDeg, scene.Camera.YawDeg, 3);
 
         // The neutrino stop highlights the neutrino panel and its tile, and no other.
         int n = d.Stops.ToList().FindIndex(s => s.Highlight == Messenger.Neutrinos);
@@ -182,8 +183,7 @@ public class TourDirectorTests
 
     public static IEnumerable<object[]> UserInputs() => new[]
     {
-        new object[] { "scrub" }, new object[] { "marker" }, new object[] { "play" },
-        new object[] { "rotate" }, new object[] { "zoom" }, new object[] { "home" },
+        new object[] { "scrub" }, new object[] { "marker" }, new object[] { "play" }, new object[] { "explode" },
     };
 
     [Theory]
@@ -201,9 +201,7 @@ public class TourDirectorTests
             case "scrub": vm.Timeline.ObserverTimeS = 5; break;
             case "marker": vm.Timeline.JumpToMarkerCommand.Execute(vm.Timeline.Markers[0]); break;
             case "play": vm.Timeline.PlayPauseCommand.Execute(null); break;
-            case "rotate": scene.Rotate(20, 0); break;
-            case "zoom": scene.Zoom(1); break;
-            case "home": scene.Home(); break;
+            case "explode": vm.ExplodeCommand.Execute(null); break;
         }
 
         Assert.Equal(TourState.Paused, d.State);
@@ -360,12 +358,13 @@ public class TourDirectorTests
     }
 
     [Fact]
-    public void DetachingTheScene_StopsItsInputPausingTheTour()
+    public void DetachingTheScene_LeavesTheTourRunning()
     {
         var (_, scene, d) = Rig("sn1987a");
         d.Start();
         d.Scene = null;
         scene.Rotate(10, 0);
+        d.Tick(Frame);
         Assert.NotEqual(TourState.Paused, d.State);
     }
 

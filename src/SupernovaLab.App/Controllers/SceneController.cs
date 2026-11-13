@@ -85,6 +85,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         Director.Jump(_state.FrameRadiusCm);
         vm.OutcomeChanged += OnOutcomeChanged;
         vm.Timeline.PropertyChanged += OnTimelineChanged;
+        _isNotesExpanded = vm.Layout.IsNotesExpanded;   // remembered across launches (Task 15)
+        vm.Layout.PropertyChanged += OnLayoutChanged;
         UpdateOverlay();
     }
 
@@ -351,14 +353,17 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         Camera.Rotate(dxDip, dyDip);
         RequestRender();
-        UserInteracted?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
-    /// Raised when the user moves the camera (Rotate, Zoom, Home). The guided tour pauses on it. The tour's own orbit
-    /// (<see cref="Orbit"/>) does not raise it.
+    /// True while the user holds the mouse down on the view to turn it (Task 15). The guided tour's sway is suspended meanwhile and
+    /// carries on from the user's angle after the release. The window sets it with <see cref="BeginUserDrag"/> and <see cref="EndUserDrag"/>.
     /// </summary>
-    public event EventHandler? UserInteracted;
+    public bool IsUserDragging { get; private set; }
+
+    public void BeginUserDrag() => IsUserDragging = true;
+
+    public void EndUserDrag() => IsUserDragging = false;
 
     private bool _isTourOrbiting;
 
@@ -382,11 +387,57 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>Whether the view renders every frame now: a pulsar's beams, a camera ease, or the tour's orbit.</summary>
     public bool IsAnimating => !IsFailed && (_state.Marker == SceneMarker.Pulsar || (Director.IsEasing && _frozenUnitCm is null) || _isTourOrbiting);
 
-    /// <summary>The guided tour's orbit: turns the camera about the vertical axis by this many degrees (not user input).</summary>
-    public void Orbit(double yawDeg)
+    /// <summary>The guided tour's sway (Task 15): sets the camera's yaw (not user input).</summary>
+    public void SetTourYaw(double yawDeg)
     {
-        if (yawDeg == 0) return;
-        Camera.YawDeg = ((Camera.YawDeg + yawDeg) % 360 + 360) % 360;
+        double yaw = ((yawDeg % 360) + 360) % 360;
+        if (yaw == Camera.YawDeg) return;
+        Camera.YawDeg = yaw;
+        RequestRender();
+    }
+
+    /// <summary>
+    /// The largest sway amplitude (deg), at most <paramref name="wantedDeg"/>, that keeps both cut faces facing the eye over the whole
+    /// sway about this centre yaw at the camera's pitch (Task 15: "the cut faces and core are never seen from behind"). A face seen exactly
+    /// edge-on at an extreme counts as exposed. Without the cutaway, or with no wedge turn, it is <paramref name="wantedDeg"/>; the
+    /// wedge turns about the scene's y axis while the sway turns about the vertical, so with a turned wedge it can be less than 60 deg.
+    /// </summary>
+    public double SwayAmplitudeFor(double centreYawDeg, double wantedDeg)
+    {
+        if (!IsCutaway) return wantedDeg;
+        var cam = new OrbitCamera { PitchDeg = Camera.PitchDeg };
+        for (double a = wantedDeg; a > 0; a = Math.Ceiling(a) - 1)
+        {
+            bool ok = true;
+            for (double off = -a; off <= a + 1e-9 && ok; off += 1)
+            {
+                cam.YawDeg = centreYawDeg + Math.Min(off, a);
+                var e = cam.Backward;
+                var w = WedgeOrientation.ToWedge(_wedgeAngleRad, e.X, e.Y, e.Z);
+                ok = w.X >= -1e-9 && w.Z >= -1e-9;
+            }
+            if (ok) return a;
+        }
+        return 0;
+    }
+
+    /// <summary>The yaw (0 to 360 deg) that faces the cutaway's notch to the viewer for this outcome: the cutaway's default view (ruling R-P2-22).</summary>
+    public double NotchFacingYawDeg => DefaultAngles(cutaway: true).YawDeg;
+
+    /// <summary>
+    /// Hands the physical scale back to the director (Task 15: the tour's next stop after a wheel zoom froze it). The camera's
+    /// distance and the framing go back as Home does, but the angles stay as they are.
+    /// </summary>
+    public void HandBackScale()
+    {
+        if (_frozenUnitCm is null && IsAutoFraming) return;
+        _frozenUnitCm = null;
+        Camera.DistanceMpc = AutoDistance;
+        Camera.Target = default;
+        IsAutoFraming = true;
+        Director.Jump(_state.FrameRadiusCm);
+        UpdateAnimating();
+        UpdateRings();
         RequestRender();
     }
 
@@ -400,7 +451,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         UpdateAnimating();   // a zoom freezes the scale: an ease in progress no longer needs frames
         UpdateRings();
         RequestRender();
-        UserInteracted?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Home: auto-framing again.</summary>
@@ -415,7 +465,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         UpdateAnimating();
         UpdateRings();
         RequestRender();
-        UserInteracted?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -502,7 +551,16 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     [CommunityToolkit.Mvvm.Input.RelayCommand]
     private void ToggleNotes() => IsNotesExpanded = !IsNotesExpanded;
 
-    partial void OnIsNotesExpandedChanged(bool value) => UpdateNotesDisplay();
+    partial void OnIsNotesExpandedChanged(bool value)
+    {
+        _vm.Layout.IsNotesExpanded = value;
+        UpdateNotesDisplay();
+    }
+
+    private void OnLayoutChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LayoutViewModel.IsNotesExpanded)) IsNotesExpanded = _vm.Layout.IsNotesExpanded;
+    }
 
     private void UpdateNotesDisplay()
     {
@@ -816,12 +874,18 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// </summary>
     private void ResetCameraAngles()
     {
-        double phi = IsCutaway ? _wedgeAngleRad : 0, yaw = DefaultYawDeg * Math.PI / 180, pitch = DefaultPitchDeg * Math.PI / 180;
-        var d = WedgeOrientation.FromWedge(phi, Math.Cos(pitch) * Math.Cos(yaw), Math.Cos(pitch) * Math.Sin(yaw), Math.Sin(pitch));
-        _defaultYawDeg = Math.Atan2(d.Y, d.X) * 180 / Math.PI;
-        _defaultPitchDeg = Math.Asin(Math.Clamp(d.Z, -1, 1)) * 180 / Math.PI;
+        (_defaultYawDeg, _defaultPitchDeg) = DefaultAngles(IsCutaway);
         Camera.YawDeg = _defaultYawDeg < 0 ? _defaultYawDeg + 360 : _defaultYawDeg;
         Camera.PitchDeg = _defaultPitchDeg;
+    }
+
+    /// <summary>The default view's yaw (as it is stored, in -180 to 180 here, 0 to 360 for <see cref="NotchFacingYawDeg"/>) and pitch.</summary>
+    private (double YawDeg, double PitchDeg) DefaultAngles(bool cutaway)
+    {
+        double phi = cutaway ? _wedgeAngleRad : 0, yaw = DefaultYawDeg * Math.PI / 180, pitch = DefaultPitchDeg * Math.PI / 180;
+        var d = WedgeOrientation.FromWedge(phi, Math.Cos(pitch) * Math.Cos(yaw), Math.Cos(pitch) * Math.Sin(yaw), Math.Sin(pitch));
+        double y = Math.Atan2(d.Y, d.X) * 180 / Math.PI;
+        return (y < 0 ? y + 360 : y, Math.Asin(Math.Clamp(d.Z, -1, 1)) * 180 / Math.PI);
     }
 
     private CutFaceRenderer? _cutFaces;
@@ -1105,6 +1169,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _disposed = true;
         _vm.OutcomeChanged -= OnOutcomeChanged;
         _vm.Timeline.PropertyChanged -= OnTimelineChanged;
+        _vm.Layout.PropertyChanged -= OnLayoutChanged;
         _readback?.TrySetResult(null);
         _readback = null;
         if (_host is { } host)

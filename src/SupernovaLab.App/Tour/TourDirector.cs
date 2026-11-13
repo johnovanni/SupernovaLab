@@ -13,12 +13,15 @@ public enum TourState { Off, Playing, Paused, Dwelling }
 /// <item><b>Travel</b> between stops advances the time as playback steps (the camera eases) at
 /// <see cref="TimelineViewModel.DefaultDecadesPerSecond"/>, slowed to <see cref="TimelineViewModel.MinDecadesPerSecond"/> within
 /// <see cref="SlowDecades"/> decades of the next stop, and lands exactly on it.</item>
-/// <item>At a <b>stop</b> the time holds for <see cref="TourStop.DwellS"/>; the cutaway and highlight are set and the camera orbits
-/// at <see cref="TourStop.OrbitDegPerS"/> (kept while travelling on, until the next stop sets its own). <see cref="Next"/> and
+/// <item>At a <b>stop</b> the time holds for <see cref="TourStop.DwellS"/>; the cutaway and highlight are set and, at a stop with an
+/// orbit (<see cref="TourStop.OrbitDegPerS"/> not 0, now only a flag), the camera <b>sways</b> (Task 15): yaw = centre + A sin(2 pi t / P),
+/// A = <see cref="SwayAmplitudeDeg"/> (less where a turned wedge needs it, see <see cref="CurrentSwayAmplitudeDeg"/>), P = <see cref="SwayPeriodS"/>, so the core stays in sight. The centre is the notch-facing yaw on a cutaway
+/// stop, the entering yaw otherwise; after the user turns the view it is the yaw they left it at. <see cref="Next"/> and
 /// <see cref="Previous"/> are jumps.</item>
-/// <item>The user's input to the camera or the timeline <b>pauses</b> the tour (the caption then offers "Resume tour"); resuming
-/// continues from the stop the time is now at. A new outcome ends the tour with <see cref="NewExplosionNote"/> (Review Focus 4).
-/// <see cref="Exit"/> restores the user's cutaway setting and clears the highlight.</item>
+/// <item>Only the <b>timeline</b> (a scrub, a marker click, Play/Pause, Explode) <b>pauses</b> the tour (the caption then offers "Resume tour");
+/// resuming continues from the stop the time is now at. Turning, zooming or Home on the 3D view does not pause it (Task 15): a wheel
+/// zoom freezes the scale until the next stop hands it back. A new outcome ends the tour with <see cref="NewExplosionNote"/> (Review
+/// Focus 4). <see cref="Exit"/> restores the user's cutaway setting and clears the highlight.</item>
 /// </list>
 /// </summary>
 public sealed class TourDirector
@@ -28,18 +31,24 @@ public sealed class TourDirector
 
     public const string NewExplosionNote = "Tour ended: new explosion";
 
+    /// <summary>The sway's amplitude (deg) and period (s), Task 15.</summary>
+    public const double SwayAmplitudeDeg = 60, SwayPeriodS = 12;
+
     private readonly MainViewModel _vm;
     private SceneController? _scene;
     private IReadOnlyList<TourStop> _stops = Array.Empty<TourStop>();
     private TourState _resumeState = TourState.Dwelling;
     private double _dwellLeftS;
     private bool _savedCutaway;
+    private bool _swaying, _swayCutaway;
+    private double _swayCentreDeg, _swayPhaseS, _swayExpectedYawDeg, _swayAmplitudeDeg = SwayAmplitudeDeg;
+    private bool _wasDragging;
 
     public TourDirector(MainViewModel vm, SceneController? scene)
     {
         _vm = vm ?? throw new ArgumentNullException(nameof(vm));
         _vm.OutcomeChanged += OnOutcomeChanged;
-        _vm.Timeline.UserInteracted += OnUserInput;
+        _vm.Timeline.UserInteracted += OnUserInput;   // only the timeline pauses the tour (Task 15)
         Scene = scene;
     }
 
@@ -50,13 +59,9 @@ public sealed class TourDirector
         set
         {
             if (ReferenceEquals(_scene, value)) return;
-            if (_scene is not null)
-            {
-                _scene.UserInteracted -= OnUserInput;
-                _scene.IsTourOrbiting = false;
-            }
+            if (_scene is not null) _scene.IsTourOrbiting = false;
             _scene = value;
-            if (_scene is not null) _scene.UserInteracted += OnUserInput;
+            _swaying = false;
             SyncOrbit();
         }
     }
@@ -85,6 +90,7 @@ public sealed class TourDirector
         _stops = stops;
         Note = null;
         _savedCutaway = _scene?.IsCutaway ?? false;
+        _swaying = false;
         _vm.Timeline.IsPlaying = false;   // the director drives the time
         EnterStop(0, jump: true);
     }
@@ -162,7 +168,7 @@ public sealed class TourDirector
         double dt = elapsed.TotalSeconds;
         if (State is TourState.Off or TourState.Paused || !(dt > 0) || Current is not { } stop) return;
 
-        _scene?.Orbit(stop.OrbitDegPerS * dt);
+        Sway(stop, dt);
         if (State == TourState.Dwelling)
         {
             _dwellLeftS -= dt;
@@ -185,6 +191,68 @@ public sealed class TourDirector
         else timeline.DirectTo(next, playbackStep: true);
     }
 
+    /// <summary>
+    /// The sway of a stop with an orbit: while the user holds the mouse down it is suspended; a yaw other than the one it set last
+    /// (the user turned, or Home reset the view) becomes the new centre with the phase restarted, so the camera carries on from there
+    /// without a jump.
+    /// </summary>
+    private void Sway(TourStop stop, double dt)
+    {
+        if (_scene is null || stop.OrbitDegPerS == 0) return;
+        if (_scene.IsUserDragging)
+        {
+            _wasDragging = true;
+            return;
+        }
+        if (!_swaying) StartSway(stop);
+        if (_wasDragging || YawDifferenceDeg(_scene.Camera.YawDeg, _swayExpectedYawDeg) > 1e-6)
+        {
+            _wasDragging = false;
+            Recentre();
+        }
+        _swayPhaseS = (_swayPhaseS + dt) % SwayPeriodS;
+        SetSwayYaw();
+    }
+
+    /// <summary>The camera's yaw becomes the sway's centre and its phase restarts, so the sway carries on from here without a jump.</summary>
+    private void Recentre()
+    {
+        _swayCentreDeg = _scene!.Camera.YawDeg;
+        _swayAmplitudeDeg = _scene.SwayAmplitudeFor(_swayCentreDeg, SwayAmplitudeDeg);
+        _swayPhaseS = 0;
+    }
+
+    /// <summary>The sway's amplitude now (deg): 60, or less where a turned cutaway wedge would otherwise be seen from behind.</summary>
+    public double CurrentSwayAmplitudeDeg => _swayAmplitudeDeg;
+
+    private void SetSwayYaw()
+    {
+        double yaw = SwayYawDeg(_swayCentreDeg, _swayAmplitudeDeg, _swayPhaseS);
+        _scene!.SetTourYaw(yaw);
+        _swayExpectedYawDeg = _scene.Camera.YawDeg;
+    }
+
+    /// <summary>The sway's yaw (deg) at a time into its period, about a centre.</summary>
+    public static double SwayYawDeg(double centreDeg, double amplitudeDeg, double tS)
+        => centreDeg + amplitudeDeg * Math.Sin(2 * Math.PI * tS / SwayPeriodS);
+
+    private static double YawDifferenceDeg(double a, double b) => Math.Abs(((a - b) % 360 + 540) % 360 - 180);
+
+    /// <summary>
+    /// Starts a stop's sway when the tour was not swaying, or the cutaway changed: the centre is the notch-facing yaw on a cutaway
+    /// stop (the view as Home gives it) and the camera's yaw otherwise. Between stops of the same kind the sway runs on.
+    /// </summary>
+    private void StartSway(TourStop stop)
+    {
+        _swaying = true;
+        _swayCutaway = stop.Cutaway;
+        _swayCentreDeg = stop.Cutaway ? _scene!.NotchFacingYawDeg : _scene!.Camera.YawDeg;
+        _swayAmplitudeDeg = _scene.SwayAmplitudeFor(_swayCentreDeg, SwayAmplitudeDeg);
+        _swayPhaseS = 0;
+        _wasDragging = false;
+        SetSwayYaw();
+    }
+
     private void EnterStop(int index, bool jump)
     {
         ApplyStop(index, quiet: true);
@@ -199,7 +267,14 @@ public sealed class TourDirector
     {
         StopIndex = index;
         var stop = _stops[index];
-        if (_scene is not null) _scene.IsCutaway = stop.Cutaway;
+        if (_scene is not null)
+        {
+            _scene.IsCutaway = stop.Cutaway;
+            _scene.HandBackScale();   // a wheel zoom's frozen scale goes back to the director at the next stop (Task 15)
+            if (stop.OrbitDegPerS == 0) _swaying = false;
+            else if (_swaying && _swayCutaway != stop.Cutaway) _swaying = false;
+            if (stop.OrbitDegPerS != 0 && !_swaying) StartSway(stop);
+        }
         _vm.Highlight(stop.Highlight);
         if (!quiet) RaiseChanged();
     }
@@ -207,8 +282,8 @@ public sealed class TourDirector
     private void OnUserInput(object? sender, EventArgs e) => Pause();
 
     /// <summary>
-    /// Ruling R-P2-32: the 3D view animates while the camera orbits, so the orbit renders smoothly (the Task 14 bench drew 17–19 fps
-    /// with on-demand frames). On while travelling or dwelling at a stop whose orbit speed is not 0; off when paused or ended.
+    /// Ruling R-P2-32: the 3D view animates while the camera sways, so the sway renders smoothly (the Task 14 bench drew 17–19 fps
+    /// with on-demand frames). On while travelling or dwelling at a stop with an orbit; off when paused or ended.
     /// </summary>
     private void SyncOrbit()
     {
