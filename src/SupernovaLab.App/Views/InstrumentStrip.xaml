@@ -22,6 +22,11 @@
                                 <ContentPresenter/>
                             </Border>
                             <ControlTemplate.Triggers>
+                                <!-- Task 12: the tile of the instrument the guided tour points at gets a 2 px accent outline. -->
+                                <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                    <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
+                                </DataTrigger>
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="Bd" Property="Background" Value="{StaticResource ControlHoverBrush}"/>
                                 </Trigger>

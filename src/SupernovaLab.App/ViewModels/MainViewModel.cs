@@ -65,6 +65,16 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The instrument strip's tiles, one per panel (spec §5.0).</summary>
     public IReadOnlyList<InstrumentTileViewModel> Tiles { get; }
 
+    /// <summary>
+    /// The guided tour's instrument highlight (Task 12): brightens the outline of exactly the panel for <paramref name="messenger"/>
+    /// and its strip tile, and of no other; null clears them all.
+    /// </summary>
+    public void Highlight(Messenger? messenger)
+    {
+        foreach (var p in Panels) p.IsHighlighted = messenger is not null && p.Messenger == messenger;
+        foreach (var t in Tiles) t.IsHighlighted = messenger is not null && t.Messenger == messenger;
+    }
+
     public LabViewModel Lab { get; }
     public OutcomeViewModel Outcome { get; }
     public TimelineViewModel Timeline { get; }

@@ -51,6 +51,12 @@ public abstract partial class InstrumentPanelViewModel : ObservableObject
 
     public abstract Messenger Messenger { get; }
 
+    /// <summary>
+    /// Whether the guided tour is pointing at this instrument (Task 12): its outline frame is drawn 2 px in the accent
+    /// brush. <see cref="MainViewModel.Highlight"/> sets it on exactly one panel, or none.
+    /// </summary>
+    [ObservableProperty] private bool _isHighlighted;
+
     /// <summary>The panel's title, e.g. "Neutrinos".</summary>
     public abstract string Title { get; }
 

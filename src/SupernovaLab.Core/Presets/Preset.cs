@@ -34,4 +34,16 @@ public sealed record ObservedFact(Messenger Messenger, string ChannelId, double?
 /// the measurements a panel can mark (<see cref="Facts"/>).
 /// </summary>
 public sealed record Preset(string Id, string Name, string Summary, string WhatWasSeen, LabInputs Inputs,
-    ObserverSetup Observer, PresetPins? Pins, IReadOnlyList<ObservedFact> Facts, Source? ObserverSource = null);
+    ObserverSetup Observer, PresetPins? Pins, IReadOnlyList<ObservedFact> Facts, Source? ObserverSource = null)
+{
+    /// <summary>The guided tour's history lines for this supernova (Project 2, plan ruling P10), in source time; empty when none.</summary>
+    public IReadOnlyList<TourLine> TourLines { get; init; } = Array.Empty<TourLine>();
+}
+
+/// <summary>
+/// One line of a real supernova's history for the guided tour: <see cref="Text"/> happened at <see cref="SourceTimeS"/>
+/// seconds after core bounce (or ignition) in the source frame (the tour multiplies by 1 + z). <see cref="Source"/> says
+/// where the fact comes from; a fact docs/research/presets.md tags [R] (recalled, not re-opened) keeps that tag in its
+/// source text. <see cref="Highlight"/> is the instrument panel to brighten while the line is shown, or null.
+/// </summary>
+public sealed record TourLine(double SourceTimeS, string Text, Source Source, Messenger? Highlight);

@@ -30,6 +30,40 @@ public class InstrumentPanelTests
     // ---------------------------------------------------------------- the brief's tests
 
     [Fact]
+    public void Highlight_SetsOnePanelAndItsTile_OrNone()
+    {
+        var vm = NewViewModel();
+        Assert.All(vm.Panels, p => Assert.False(p.IsHighlighted));
+        Assert.All(vm.Tiles, t => Assert.False(t.IsHighlighted));
+
+        foreach (var m in vm.Panels.Select(p => p.Messenger).Concat(new[] { Messenger.Neutrinos }))
+        {
+            vm.Highlight(m);
+            Assert.Equal(m, Assert.Single(vm.Panels, p => p.IsHighlighted).Messenger);
+            Assert.Equal(m, Assert.Single(vm.Tiles, t => t.IsHighlighted).Messenger);
+        }
+
+        vm.Highlight(Messenger.Radio);
+        vm.Highlight(null);
+        Assert.All(vm.Panels, p => Assert.False(p.IsHighlighted));
+        Assert.All(vm.Tiles, t => Assert.False(t.IsHighlighted));
+    }
+
+    [Fact]
+    public void Highlight_RaisesPropertyChanged_ForTheBindings()
+    {
+        var vm = NewViewModel();
+        var panel = vm.Panels[3];
+        var tile = vm.Tiles[3];
+        var raised = new List<string?>();
+        panel.PropertyChanged += (_, e) => raised.Add("panel:" + e.PropertyName);
+        tile.PropertyChanged += (_, e) => raised.Add("tile:" + e.PropertyName);
+        vm.Highlight(panel.Messenger);
+        Assert.Contains("panel:IsHighlighted", raised);
+        Assert.Contains("tile:IsHighlighted", raised);
+    }
+
+    [Fact]
     public void Panels_AreTheSixMessengers_InSpecOrder()
     {
         var vm = NewViewModel();

@@ -11,7 +11,7 @@ namespace SupernovaLab.App.ViewModels;
 /// timeline, the time cursor and the panel's current detection as a badge. Clicking it opens the Instruments window on
 /// that panel. It reads the shared panel view model, so the two always agree.
 /// </summary>
-public sealed class InstrumentTileViewModel : ObservableObject
+public sealed partial class InstrumentTileViewModel : ObservableObject
 {
     public InstrumentTileViewModel(InstrumentPanelViewModel panel, IRelayCommand<Messenger?> showInstruments)
     {
@@ -22,6 +22,9 @@ public sealed class InstrumentTileViewModel : ObservableObject
     }
 
     public InstrumentPanelViewModel Panel { get; }
+
+    /// <summary>Whether the guided tour is pointing at this tile's instrument (Task 12): the tile's border is 2 px in the accent brush.</summary>
+    [ObservableProperty] private bool _isHighlighted;
 
     public Messenger Messenger => Panel.Messenger;
     public string Title => Panel.Title;

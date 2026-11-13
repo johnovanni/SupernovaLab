@@ -137,7 +137,14 @@ public static class PresetCatalog
             ToSource(f.Source, id, "fact"), f.IsUpperLimit ?? false, SpanEnd(f, id))).ToList();
 
         return new Preset(id, Required(d.Name, "name", id), Required(d.Summary, "summary", id),
-            Required(d.WhatWasSeen, "whatWasSeen", id), inputs, observer, pins, facts, ToSource(o.Source, id, "observer"));
+            Required(d.WhatWasSeen, "whatWasSeen", id), inputs, observer, pins, facts, ToSource(o.Source, id, "observer"))
+        {
+            TourLines = (d.TourLines ?? new List<TourLineDto>()).Select(l => new TourLine(
+                l.SourceTimeS is double t && double.IsFinite(t) && t > 0
+                    ? t
+                    : throw new InvalidDataException($"A tour line of preset '{id}' needs a positive sourceTimeS."),
+                Required(l.Text, "tour line text", id), ToSource(l.Source, id, "tour line"), l.Highlight)).ToList(),
+        };
     }
 
     private static string Required(string? value, string field, string id)
@@ -158,6 +165,15 @@ public static class PresetCatalog
         public ObserverDto? Observer { get; set; }
         public PinsDto? Pins { get; set; }
         public List<FactDto>? Facts { get; set; }
+        public List<TourLineDto>? TourLines { get; set; }
+    }
+
+    private sealed class TourLineDto
+    {
+        public double? SourceTimeS { get; set; }
+        public string? Text { get; set; }
+        public SourceDto? Source { get; set; }
+        public Messenger? Highlight { get; set; }
     }
 
     private sealed class InputsDto

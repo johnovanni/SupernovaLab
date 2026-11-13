@@ -5,7 +5,19 @@
              xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core">
     <!-- DataContext: an InstrumentPanelViewModel (spec §5.1). Shared chrome: title, sub-tabs, instrument picker, detection
          and confidence badges, the plot (with the "now" cursor overlaid) and the notes. -->
-    <Border Style="{StaticResource Panel}" Padding="8,5,8,5">
+    <Border Padding="8,5,8,5">
+        <!-- Task 12: while the guided tour points at this instrument the outline is 2 px in the accent brush, in place of the
+             normal 1 px border. -->
+        <Border.Style>
+            <Style TargetType="Border" BasedOn="{StaticResource Panel}">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        <Setter Property="BorderThickness" Value="2"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
