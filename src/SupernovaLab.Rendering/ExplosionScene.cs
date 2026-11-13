@@ -180,12 +180,16 @@ public sealed class ExplosionScene
     /// <summary>The ejecta's layers, velocity profile and mixing (null without ejecta); a failed supernova gives its envelope shell.</summary>
     public EjectaStructure? Structure { get; }
 
-    /// <summary>The particles at the default <see cref="QualityLevel"/>, sampled once per scene; null without ejecta.</summary>
+    /// <summary>The particles at the default <see cref="QualityLevel"/> (see <see cref="ParticlesFor"/>); null without ejecta.</summary>
     public ParticleSet? Particles => ParticlesFor((int)QualityLevels.Default);
 
+    /// <summary>How many sets have been sampled (a test hook: <see cref="At"/> must never sample).</summary>
+    public int ParticleBuildCount { get; private set; }
+
     /// <summary>
-    /// The particles at this count (seed 1987). The last count asked for is kept, so a set is built once per outcome and
-    /// again only when the count (the quality level) changes. Null without ejecta.
+    /// Builds (or returns) the particles at this count (seed 1987). The last count asked for is kept, so a set is built once
+    /// per outcome and again only when the count (the quality level) changes. The 3D view calls this when the outcome or
+    /// the quality changes, never per frame; <see cref="At"/> only reads the set built last. Null without ejecta.
     /// </summary>
     public ParticleSet? ParticlesFor(int count)
     {
@@ -193,7 +197,10 @@ public sealed class ExplosionScene
         lock (_particleLock)
         {
             if (_particles is null || _particles.Count != count)
+            {
                 _particles = ParticleSampler.Sample(Structure, count, ParticleSampler.DefaultSeed);
+                ParticleBuildCount++;
+            }
             return _particles;
         }
     }
@@ -206,7 +213,8 @@ public sealed class ExplosionScene
     private SceneState WithParticles(SceneState state, double t, double starRadiusCm)
     {
         if (Structure is null || t < _particleStartS) return state;
-        double since = t - _particleStartS, vmax = (_particles ?? Particles!).MaxCmS;
+        // v_max is the built set's (the one the shader scales by); before any set is built, the profile's own v_max.
+        double since = t - _particleStartS, vmax = _particles?.MaxCmS ?? Structure.MaxCmS;
         double max = ParticleKinematics.RadiusCm(vmax, since, starRadiusCm, vmax, null);
         double frame99 = double.IsFinite(Structure.Frame99CmS)
             ? ParticleKinematics.RadiusCm(Structure.Frame99CmS, since, starRadiusCm, vmax, null) : double.NaN;

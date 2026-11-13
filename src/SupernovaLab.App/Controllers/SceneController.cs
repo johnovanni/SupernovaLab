@@ -117,7 +117,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (_quality == value) return;
             _quality = value;
             _uploadParticles = true;
-            RequestRender();
+            BuildParticles();       // the set (and so v_max) for the new count, before the state is restated
+            Restate();
         }
     }
 
@@ -296,12 +297,20 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             _scene = _sceneFactory(_vm.CurrentOutcome, _vm.CurrentObserver.TimeDilation);
             _uploadParticles = true;   // a new outcome has a new particle set
             _modelError = null;
+            BuildParticles();
         }
         catch (Exception e)
         {
             _scene = null;
             _modelError = ModelErrorText(e);
         }
+    }
+
+    /// <summary>Samples the scene's particles at the current quality (once per outcome and quality; the state and the GPU upload then share this set).</summary>
+    private void BuildParticles()
+    {
+        try { _scene?.ParticlesFor((int)_quality); }
+        catch (Exception e) { _modelError = ModelErrorText(e); }
     }
 
     private void ComputeState()

@@ -2,6 +2,7 @@ using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Presets;
 using SupernovaLab.Core.Progenitors;
 using SupernovaLab.Core.Signals;
+using SupernovaLab.Core.Structure;
 using SupernovaLab.Core.Units;
 using SupernovaLab.Rendering;
 
@@ -329,5 +330,48 @@ public class ExplosionSceneTests
         Assert.True(s.ShowParticles);
         Assert.Equal(Day, s.SinceBreakoutS, 6);
         Assert.DoesNotContain(ExplosionScene.MixingNote, s.Notes);
+    }
+
+    [Fact]
+    public void At_NeverBuildsAParticleSet()
+    {
+        var scene = new ExplosionScene(Exploding());
+        foreach (double t in new[] { 1e-3, Day, Year }) scene.At(t);
+        Assert.Equal(0, scene.ParticleBuildCount);
+        scene.ParticlesFor((int)QualityLevel.Low);
+        scene.At(Day);
+        scene.At(Year);
+        Assert.Equal(1, scene.ParticleBuildCount);
+    }
+
+    [Fact]
+    public void MaxRadius_UsesTheBuiltSetsMaxSpeed_AtANonDefaultQuality()
+    {
+        var o = Exploding();
+        var scene = new ExplosionScene(o);
+        var set = scene.ParticlesFor((int)QualityLevel.Low)!;
+        var s = scene.At(30 * Day);
+        double r0 = o.Star!.RadiusCm.Value;
+        Assert.Equal(ParticleKinematics.RadiusCm(set.MaxCmS, s.SinceBreakoutS, r0, set.MaxCmS, null), s.MaxRadiusCm, 3);
+        double f99 = scene.Structure!.Frame99CmS;
+        Assert.Equal(ParticleKinematics.RadiusCm(f99, s.SinceBreakoutS, r0, set.MaxCmS, null), s.Frame99RadiusCm, 3);
+    }
+
+    [Fact]
+    public void FailedSupernova_EnvelopeShell_StartsAtItsLaunch_R_P2_19()
+    {
+        var failed = TestOutcomes.Custom(SupernovaType.None, null, null, null, 5e13,
+            TestOutcomes.BlackHole(10, 1.5), Fate.FailedSupernova);
+        var scene = new ExplosionScene(failed);
+        double launch = scene.Structure!.EnvelopeShellLaunchS!.Value;
+        Assert.True(launch > 1.5);
+        Assert.False(scene.At(launch * 0.5).ShowParticles);
+        double t = launch * 1.5;
+        var s = scene.At(t);
+        Assert.True(s.ShowParticles);
+        Assert.Equal(t - launch, s.SinceBreakoutS, 6);
+        Assert.Equal(EjectaKinematics.TemperatureFloorK, s.EjectaTemperatureK);
+        Assert.Contains(s.Notes, n => scene.Structure.Notes.Contains(n));
+        Assert.Contains(s.Notes, n => n.Contains("weak outer envelope", StringComparison.Ordinal));
     }
 }
