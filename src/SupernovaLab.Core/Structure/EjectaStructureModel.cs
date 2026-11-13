@@ -16,6 +16,12 @@ public static class EjectaStructureModel
     /// <summary>Ruling P1: particles are truncated at the speed enclosing this fraction of the mass.</summary>
     public const double TruncationFraction = 0.999;
 
+    /// <summary>
+    /// Ruling R-P2-18 (after Project 1's R28): above this fraction of c the Newtonian profile's v_max gets a scene note;
+    /// it is not clamped (inconsistency #42).
+    /// </summary>
+    public const double RelativisticNoteBeta = 0.3;
+
     /// <summary>Ruling P1: the director frames the radius enclosing this fraction of the particle mass.</summary>
     public const double FrameFraction = 0.99;
 
@@ -120,6 +126,9 @@ public static class EjectaStructureModel
         double vmax = vt * Math.Pow((3 - InnerSlope) / ((n - InnerSlope) * (1 - TruncationFraction)), 1 / (n - 3));
 
         var notes = new List<string>();
+        if (vmax > RelativisticNoteBeta * PhysicalConstants.C)
+            notes.Add(string.Format(CultureInfo.InvariantCulture,
+                "The fastest debris would move at {0:0.00}c; the lab's profile is not relativistic", vmax / PhysicalConstants.C));
         double scale;
         IReadOnlyList<LayerMass> layers = cls == EjectaClass.TypeIa
             ? TypeIaLayers(ejecta, o.NickelMass?.Value ?? 0, notes, out scale)
@@ -227,6 +236,18 @@ public static class EjectaStructureModel
         "Kifonidis et al. 2003, A&A 408, 621 (one 2D Type Ib-like model): Ni to ≈ 0.4 v_t [derived; APPROX for the class]; "
         + "K = 10 (≈ 10 cusps), f = 0.2 and F_Ni = 0.5 [APPROX]", "structure §S3");
 
+    /// <summary>
+    /// Ruling R-P2-17: no Rayleigh–Taylor fingers in a pair-instability supernova. Joggerst &amp; Whalen 2011 find none in
+    /// compact progenitors and in most extended ones; two red models mix, but never past the silicon layer
+    /// (inconsistency #41, disclosed rather than drawn).
+    /// </summary>
+    private static readonly MixingReach PairInstabilityMixing = MixingReach.None with
+    {
+        Confidence = Confidence.ModelDependent,
+        Source = new Source("Joggerst & Whalen 2011, ApJ 728, 129, arXiv:1010.4360: no mixing in compact and most extended "
+            + "pair-instability supernovae; partial mixing in two red models is not drawn", "structure §S3"),
+    };
+
     private static readonly Source Sn1987AMixing = new(
         "SN 1987A observed: a ⁵⁶Ni clump at 4,700 km/s (Utrobin, Chugai & Andronova 1995), hydrogen down to ≤ 700 km/s "
         + "(Kozma & Fransson 1998), via Utrobin et al. 2019, A&A 624, A116; K = 4 and F_Ni = 0.5 (Wongwathanarat, Müller "
@@ -235,10 +256,11 @@ public static class EjectaStructureModel
     /// <summary>
     /// §S3 App block, one row per class (ruling R-P2-13). SN 1987A-like outcomes (<see cref="Outcome.HasEquatorialRing"/>)
     /// take the observed reach. Every core-collapse row has an [APPROX] covered fraction, so its confidence is
-    /// Speculative. Pair instability takes its envelope's class row [APPROX].
+    /// Speculative. Pair instability has no fingers whatever its envelope (ruling R-P2-17: Joggerst &amp; Whalen 2011).
     /// </summary>
     private static MixingReach MixingFor(Outcome o, EjectaClass cls, double vt)
     {
+        if (o.Fate == Fate.PairInstabilitySupernova || o.Type == SupernovaType.Pisn) return PairInstabilityMixing;
         if (o.HasEquatorialRing && cls != EjectaClass.TypeIa)
             return new MixingReach(4700 * KmS, 700 * KmS, 4, 0.1, 0.5, Confidence.Speculative, Sn1987AMixing);
         return cls switch

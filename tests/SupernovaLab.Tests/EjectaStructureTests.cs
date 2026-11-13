@@ -291,6 +291,45 @@ public class EjectaStructureTests
     }
 
     [Fact]
+    public void PairInstability_HasNoMixingFingers()
+    {
+        // Ruling R-P2-17: Joggerst & Whalen 2011 find no Rayleigh–Taylor mixing in compact pair-instability supernovae
+        // (and in most extended ones), so the lab draws none whatever the envelope. The 200 M☉ / Z 0.1 PISN is a blue
+        // supergiant by §S1's class test, which would otherwise give it BSG fingers.
+        foreach (double mass in new[] { 200.0, 250.0 })
+        {
+            var o = Inputs(LabInputs.Default with { InitialMass = mass, Metallicity = 0.1 });
+            Assert.Equal(Fate.PairInstabilitySupernova, o.Fate);
+            var s = EjectaStructureModel.For(o)!;
+            Assert.Equal(EjectaClass.BlueSupergiant, s.Class);
+            Assert.False(s.Mixing.HasFingers);
+            Assert.Equal(0, s.Mixing.FingerCount);
+            Assert.Equal(0, s.Mixing.NickelFingerFraction);
+            Assert.Contains("Joggerst & Whalen 2011", s.Mixing.Source.Citation);
+            Assert.Equal(EjectaStructureModel.VelocityAtMassFraction(s, 0.999 * 0.99), s.Frame99CmS, 6);
+
+            // No particle is moved: the set equals the one drawn with mixing switched off.
+            var mixed = ParticleSampler.Sample(s, 20_000);
+            var plain = ParticleSampler.Sample(s with { Mixing = MixingReach.None }, 20_000);
+            Assert.Equal(plain.Velocity, mixed.Velocity);
+        }
+    }
+
+    [Fact]
+    public void RelativisticProfile_AddsANote()
+    {
+        // Ruling R-P2-18: 0.1 M☉ at 1e52 erg, stripped (n = 10.18): v_t = √(41.44/14.36 × 1e52 / 1.989e32) = 1.20452e10;
+        // v_max = v_t (2 / (9.18 × 0.001))^{1/7.18} = 2.54958e10 cm/s = 0.8504c → "0.85c". No clamp.
+        var s = EjectaStructureModel.For(TestOutcomes.Custom(SupernovaType.Ic, 1e52, 0.1, 0.01, 1e11))!;
+        Assert.Equal(2.54958e10, s.MaxCmS, 2.54958e10 * 1e-4);
+        Assert.Contains("The fastest debris would move at 0.85c; the lab's profile is not relativistic", s.Notes);
+
+        // SN 1998bw (0.14c) and the default star stay below 0.3c: no note.
+        Assert.DoesNotContain(EjectaStructureModel.For(Preset("sn1998bw"))!.Notes, n => n.StartsWith("The fastest debris"));
+        Assert.DoesNotContain(EjectaStructureModel.For(Default16())!.Notes, n => n.StartsWith("The fastest debris"));
+    }
+
+    [Fact]
     public void Frame99_IsTheSpeedEnclosing99PercentOfTheParticleMass()
     {
         // Without mixing (Type Ia) it is the profile's speed at 0.999 × 0.99 of the mass (ruling P1: particles sit at

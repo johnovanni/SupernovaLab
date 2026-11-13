@@ -256,6 +256,13 @@ as multiples of v_t (§S1.2, computed with the model's E and M_ej) they are [D].
   20° apart" grow at the Si/O interface (2D) [V]. Cas A: clumps up to ≈ 6,000 km/s (van den Bergh 1971; Thorstensen
   et al. 2001) [V via Kifonidis 2003].
 - **Type Ia:** stratified (§S2.2) — no fingers.
+- **Pair instability.** Joggerst & Whalen 2011 (ApJ 728, 129, arXiv:1010.4360), 2D Z = 0 pair-instability explosions
+  of 150–250 M☉ [V, read this session via ar5iv]: "we find no mixing in most 150 - 250 M⊙ pair-instability
+  supernovae". Compact (blue, z-series) progenitors form no reverse shock and show no Rayleigh–Taylor mixing at all.
+  Extended (red supergiant, u-series) progenitors all form a reverse shock, but it dies out before rapid growth in
+  u150 and u175 and stalls in the linear phase in u250. Only u200 and u225 mix vigorously: the oxygen layer is
+  disrupted and helium mixes into the hydrogen envelope, but the mixing never breaks through the silicon layer, so
+  ⁵⁶Ni stays inside.
 
 ### S3.3 Finger count and covered fraction
 
@@ -280,8 +287,13 @@ One value per class (ruling R-P2-13). NickelMax is the finger-tip speed. v_t is 
 | Stripped envelope | 0.4 v_t [D, one 2D model; APPROX for the class] | none (no hydrogen layer) | 10 [APPROX] | 0.2 [APPROX] | 0.5 [APPROX] |
 | Type Ia, Iax | no mixing | — | 0 | 0 | 0 [V, stratified] |
 | **SN 1987A-like (Outcome.HasEquatorialRing)** | **4,700 km/s** [V] | **700 km/s** [V] | 4 [V] | 0.1 [APPROX] | 0.5 [V] |
+| **Pair instability (any envelope; ruling R-P2-17)** | no mixing | — | 0 | 0 | 0 [V, Joggerst & Whalen 2011] |
 
-Rules (R-P2-13):
+Rules (R-P2-13, R-P2-17):
+
+- Pair instability takes its envelope's §S1 profile but no fingers, whatever the envelope. Joggerst & Whalen 2011
+  found partial mixing in two extended (red) models, u200 and u225. It never carried nickel out, and it is disclosed
+  (inconsistency #41) rather than drawn.
 
 - K cone axes are seeded and isotropic; each cone's half-angle θ is set so the union of the K cones covers a fraction
   f of the sphere (ruling R-P2-3).
@@ -714,7 +726,8 @@ After t_s the shell coasts: r = R* + v_s (t − t_s). The panels are unchanged (
 Barlow 2025, arXiv:2510.13629 (review). Chevalier 2005, ApJ 619, 839, arXiv:astro-ph/0409013. Chevalier & Fransson 2017
 (Handbook of Supernovae), arXiv:1612.07459. Chomiuk et al. 2016, ApJ 821, 119, arXiv:1510.07662. Crotts & Heathcote 2000,
 arXiv:astro-ph/9907367 (abstract). Fernández et al. 2018, MNRAS 476, 2366, arXiv:1710.01735. Jacobson-Galán et al.
-2023, arXiv:2306.04721 (abstract). Kasen 2010, ApJ 708, 1025, arXiv:0909.0275. Kifonidis et al. 2003, A&A 408, 621,
+2023, arXiv:2306.04721 (abstract). Joggerst & Whalen 2011, arXiv:1010.4360 (read via ar5iv in Task 5's fix round; journal
+ref ApJ 728, 129 from the reviewer [R]). Kasen 2010, ApJ 708, 1025, arXiv:0909.0275. Kifonidis et al. 2003, A&A 408, 621,
 arXiv:astro-ph/0302239. Kistler, Haxton & Yüksel 2013, ApJ 778, 81, arXiv:1211.6770. Leahy & Williams 2017, AJ 153, 239,
 arXiv:1701.05942 (checked for C9). Lovegrove & Woosley 2013, arXiv:1303.5055. Matzner & McKee 1999, ApJ 510, 379,
 arXiv:astro-ph/9807046. Mazzali et al. 2007, Science 315, 825, arXiv:astro-ph/0702351. Ono et al. 2020, ApJ 888, 111,
