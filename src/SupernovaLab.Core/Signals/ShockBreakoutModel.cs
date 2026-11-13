@@ -61,7 +61,7 @@ public sealed class ShockBreakoutModel : ISignalModel
     /// supergiant); smaller ones and every hydrogen-free star are radiative, n = 3 (§3.1). It is the geometric mean of
     /// the research's red-supergiant (500 R☉) and blue-supergiant (50 R☉) examples; the research gives no boundary.
     /// </summary>
-    private static readonly double ConvectiveMinRadiusRsun = Math.Sqrt(500 * 50);
+    public static readonly double ConvectiveMinRadiusRsun = Math.Sqrt(500 * 50);
 
     /// <summary>[APPROX] f_ρ = 1: "of order 1" (§3.3). With it, v_s* = 1.05 √(E/M) needs no β.</summary>
     private const double FRho = 1;
@@ -480,7 +480,12 @@ public sealed class ShockBreakoutModel : ISignalModel
         }
     }
 
-    private static bool IsHydrogenRich(Outcome o) => o.Type switch
+    /// <summary>
+    /// Whether the outcome's envelope counts as hydrogen-rich for the breakout (every type except Ib, Ic, Ic-BL, Ibn, Icn
+    /// and SLSN-I; pair instability and no supernova by a hydrogen envelope above 0). The outcome must have a star.
+    /// Public read-only accessor for the 3D structure's class test (structure §S1).
+    /// </summary>
+    public static bool IsHydrogenRich(Outcome o) => o.Type switch
     {
         SupernovaType.Ib or SupernovaType.Ic or SupernovaType.IcBL or SupernovaType.Ibn or SupernovaType.Icn
             or SupernovaType.SlsnI => false,
