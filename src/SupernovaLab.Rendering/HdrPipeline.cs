@@ -64,6 +64,19 @@ public sealed class HdrPipeline : IDisposable
     }
 
     /// <summary>
+    /// The inverse of <see cref="Tonemap"/> for a value in [0, 0.99]: the x that the fit maps to y (the positive root of
+    /// (2.43y − 2.51)x² + (0.59y − 0.03)x + 0.14y = 0). The cutaway uses it to draw element colours that tone-map back to
+    /// their hex.
+    /// </summary>
+    public static float InverseTonemap(float y)
+    {
+        if (!(y > 0)) return 0f;
+        y = Math.Min(y, 0.99f);
+        double a = 2.43 * y - 2.51, b = 0.59 * y - 0.03, c = 0.14 * y;
+        return (float)((-b - Math.Sqrt(b * b - 4 * a * c)) / (2 * a));
+    }
+
+    /// <summary>
     /// The bloom levels for a viewport: each half the size of the one before (the first is half the viewport), at most
     /// <see cref="MaxBloomLevels"/>, stopping before any would be smaller than <see cref="MinBloomLevelPx"/> in either direction.
     /// </summary>
@@ -103,15 +116,34 @@ public sealed class HdrPipeline : IDisposable
         _active = true;
     }
 
-    /// <summary>Ends the frame: bloom (if <paramref name="bloomStrength"/> is above 0 and the viewport is big enough), tone map and gamma into the original framebuffer.</summary>
-    public void End(float exposure, float bloomStrength)
+    /// <summary>
+    /// Ends the frame: bloom (if <paramref name="bloomStrength"/> is above 0 and the viewport is big enough), tone map and gamma into the original framebuffer.
+    /// <paramref name="afterBloom"/>, when given, draws more into the HDR target once the bloom has been built from it, so what
+    /// it draws is tone-mapped but adds nothing to the glow (the cutaway's element-coloured cut faces use this, keeping their hex
+    /// colours instead of being bloomed towards white). It runs with the target bound and the viewport set, and also runs, drawing
+    /// straight to the screen, when the pipeline is disabled.
+    /// </summary>
+    public void End(float exposure, float bloomStrength, Action? afterBloom = null)
     {
-        if (!_active) return;
+        if (!_active)
+        {
+            afterBloom?.Invoke();
+            return;
+        }
         _active = false;
         GL.Disable(EnableCap.DepthTest);
         GL.BindVertexArray(_vao);
         bool bloom = bloomStrength > 0 && _levels.Length > 0;
         if (bloom) BuildBloom();
+        if (afterBloom is not null)
+        {
+            GL.BindVertexArray(0);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, _sceneFbo);
+            GL.Viewport(0, 0, _width, _height);
+            afterBloom();
+            GL.Disable(EnableCap.Blend);
+            GL.BindVertexArray(_vao);
+        }
 
         GL.Disable(EnableCap.Blend);
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, _previousFbo);

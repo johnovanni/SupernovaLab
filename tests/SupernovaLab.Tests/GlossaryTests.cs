@@ -86,4 +86,16 @@ public class GlossaryTests
     [Fact]
     public void NeutrinoBurst_StatesThatTheMassDelayIsIgnored()
         => Assert.Contains("ignore", Glossary.Get("NeutrinoBurst"));
+
+    /// <summary>Task 7: the cutaway's terms, with the brief's wording for the fingers.</summary>
+    [Fact]
+    public void CutawayTerms_AreExplained()
+    {
+        Assert.Contains("quarter", Glossary.Get("Cutaway"));
+        Assert.Equal(
+            "Rayleigh–Taylor fingers: heavy elements from the core punch out through the lighter layers as the shock decelerates.",
+            Glossary.Get("MixingFingers"));
+        Assert.Contains("schematic", Glossary.Get("ShockInStar"));
+        Assert.True(XamlKeys().Any(k => k.Key == "Cutaway"), "the View menu's Cutaway item uses the glossary");
+    }
 }

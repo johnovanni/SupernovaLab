@@ -29,9 +29,10 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
-/// [--window main|instruments|details|presetinfo]</c>. To batch captures into one launch, <c>--preset</c>,
+/// [--window main|instruments|details|presetinfo] [--cutaway]</c>. <c>--cutaway</c> (a flag) turns on the 3D view's wedge cutaway for
+/// every capture (Task 7). To batch captures into one launch, <c>--preset</c>,
 /// <c>--size</c> and <c>--window</c> may be repeated or given comma-separated lists: every requested window is captured
-/// for each preset in turn; a preset may carry its own time as "id@seconds". Sizes apply to the main window (its outer size, as a user would set it); the other windows
+/// for each preset in turn; a preset may carry its own time as "id@seconds", and "default@seconds" is the lab as launched (list it before any preset). Sizes apply to the main window (its outer size, as a user would set it); the other windows
 /// render at their own default size, and again scrolled to the end when they scroll. <c>--bench &lt;seconds&gt;</c> then
 /// plays the whole timeline once over that many seconds with the Instruments window open, counts rendered frames and
 /// writes the frame rate to bench.log (the redraw-rate check of spec §8, measured in-app: no screen capture).
@@ -41,7 +42,7 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 /// </summary>
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
-    int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null)
+    int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false)
 {
     /// <summary>The particle quality levels asked for with <c>--quality high|medium|low</c> (comma-separated for several; the
     /// bench then runs each at every size); just the app's default when not given.</summary>
@@ -69,10 +70,12 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         double? bench = null;
         int? sweep = null;
         var qualities = new List<QualityLevel>();
+        bool cutaway = false;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
             string option = args[i];
+            if (option == "--cutaway") { cutaway = true; continue; }   // a flag: the 3D view's wedge cutaway is on
             if (i + 1 >= args.Count) throw new ArgumentException($"{option} needs a value.");
             string value = args[++i];
             switch (option)
@@ -118,19 +121,26 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway);
     }
 
-    /// <summary>A preset entry, "id" or "id@seconds" (its own time, overriding --time for that preset).</summary>
+    /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
+    public const string DefaultEntry = "default";
+
+    /// <summary>
+    /// A preset entry, "id" or "id@seconds" (its own time, overriding --time for that preset). "default" (alone or with
+    /// "@seconds") is the lab as launched, with no preset: its id is null. It does not undo an earlier preset, so list it first.
+    /// </summary>
     public static (string? Id, double? TimeS) SplitPreset(string? entry)
     {
         if (entry is null) return (null, null);
         if (WantsDenseCsm(entry)) entry = entry[..^DenseCsmFlag.Length];
         int at = entry.IndexOf('@');
-        if (at < 0) return (entry, null);
-        return double.TryParse(entry[(at + 1)..], NumberStyles.Float, CultureInfo.InvariantCulture, out double t) && t > 0
-            ? (entry[..at], t)
-            : (entry[..at], null);
+        string id = at < 0 ? entry : entry[..at];
+        double? time = null;
+        if (at >= 0 && double.TryParse(entry[(at + 1)..], NumberStyles.Float, CultureInfo.InvariantCulture, out double t) && t > 0)
+            time = t;
+        return (string.Equals(id, DefaultEntry, StringComparison.OrdinalIgnoreCase) ? null : id, time);
     }
 
     /// <summary>
@@ -140,7 +150,8 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     public static string FileSuffix(string? entry)
     {
         var (id, own) = SplitPreset(entry);
-        if (id is null) return "";
+        if (id is null && own is null) return "";
+        id ??= DefaultEntry;
         string suffix = own is double t ? $"-{id}-t{t.ToString("0.###", CultureInfo.InvariantCulture)}" : $"-{id}";
         return WantsDenseCsm(entry) ? suffix + "-densecsm" : suffix;
     }
@@ -194,7 +205,11 @@ public static class SnapshotRenderer
         {
             PlaceOffScreen(main);
             main.Show();
-            if ((main as MainWindow)?.Scene is { } quality) quality.Quality = request.Qualities[0];
+            if ((main as MainWindow)?.Scene is { } quality)
+            {
+                quality.Quality = request.Qualities[0];
+                quality.IsCutaway = request.Cutaway;
+            }
             var presets = request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
             foreach (string? entry in presets)
             {

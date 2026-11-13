@@ -24,7 +24,35 @@ public class ExplosionSceneTests
         Assert.Equal(SceneMarker.None, s.Marker);
         Assert.Equal(3e12, s.StarRadiusCm);
         Assert.Equal(3e12, s.FrameRadiusCm);
-        Assert.Contains(s.Notes, n => n.Contains("inside the star", StringComparison.Ordinal));
+        Assert.Contains(s.Notes, n => n.Contains("crossing the star", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BeforeBreakout_TheShockAndTheStarsLayersAreGiven_AndAfterBreakoutTheyAreNot()
+    {
+        var o = Exploding();
+        var scene = new ExplosionScene(o);
+        double tbo = new SupernovaLab.Core.Signals.ShockBreakoutModel().ShockAtSurfaceS(o);
+
+        var s = scene.At(0.4 * tbo);
+        Assert.Equal(SupernovaLab.Core.Structure.StarInterior.ShockRadiusCm(o, 0.4 * tbo), s.ShockInStarRadiusCm);
+        Assert.InRange(s.ShockInStarRadiusCm, 0.1 * 3e12, 0.9 * 3e12);
+        Assert.Equal(SupernovaLab.Core.Structure.StarInterior.Layers(o), s.StarLayers);
+        Assert.Equal(3e12, s.StarLayers[^1].Item2);
+        Assert.Contains(s.Notes, n => n.StartsWith("The shock is crossing the star: it reaches the surface ", StringComparison.Ordinal)
+                                       && n.EndsWith(" after core bounce", StringComparison.Ordinal));
+
+        var after = scene.At(Day);
+        Assert.True(double.IsNaN(after.ShockInStarRadiusCm));
+        Assert.Empty(after.StarLayers);
+    }
+
+    [Fact]
+    public void TypeIa_HasNoStarLayersOrShockToDraw()
+    {
+        var s = new ExplosionScene(TestOutcomes.TypeIa()).At(1.0);
+        Assert.Empty(s.StarLayers);
+        Assert.True(double.IsNaN(s.ShockInStarRadiusCm));
     }
 
     [Fact]

@@ -19,6 +19,9 @@
                 <MenuItem Header="Distance _rings" Foreground="Black" IsCheckable="True"
                           IsChecked="{Binding DataContext.ShowRings, ElementName=SceneHost, Mode=TwoWay}"
                           ToolTip="{x:Static text:Glossary.DistanceRings}"/>
+                <MenuItem Header="_Cutaway" Foreground="Black" IsCheckable="True"
+                          IsChecked="{Binding DataContext.IsCutaway, ElementName=SceneHost, Mode=TwoWay}"
+                          ToolTip="{x:Static text:Glossary.Cutaway}"/>
             </MenuItem>
         </Menu>
 
@@ -81,6 +84,29 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    <!-- The cutaway's colour key (bottom left): the element layers the cut faces show now. -->
+                    <StackPanel Margin="10,8" HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="True"
+                                Visibility="{Binding Legend, Converter={StaticResource VisibleWhen}}"
+                                ToolTip="{x:Static text:Glossary.Cutaway}">
+                        <ItemsControl ItemsSource="{Binding Legend}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="0,1">
+                                        <Border Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0" Background="{Binding ColorHex}"/>
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource Muted}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ShockInStar}"
+                                    Visibility="{Binding ShowShockKey, Converter={StaticResource VisibleWhen}}">
+                            <Border Width="12" Height="3" Margin="0,0,6,0" Background="White" VerticalAlignment="Center"/>
+                            <TextBlock Text="Shock front" Style="{StaticResource Muted}"/>
+                        </StackPanel>
+                        <TextBlock Text="Fingers: mixing from the core" Style="{StaticResource Muted}" Margin="0,1"
+                                   ToolTip="{x:Static text:Glossary.MixingFingers}"
+                                   Visibility="{Binding ShowFingerKey, Converter={StaticResource VisibleWhen}}"/>
+                    </StackPanel>
                     <StackPanel Margin="10,8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal">
                         <Button Content="Auto-frame (Home)" Click="OnAutoFrameClick" Padding="6,1" Margin="0,0,8,0"
                                 Visibility="{Binding IsAutoFraming, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>

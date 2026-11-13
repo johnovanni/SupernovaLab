@@ -57,6 +57,11 @@ public sealed record SceneState
     public double MaxRadiusCm { get; init; } = double.NaN;
     /// <summary>The radius of the particles at the 99%-of-mass speed now, cm (ruling P1's framing radius); NaN when no particles.</summary>
     public double Frame99RadiusCm { get; init; } = double.NaN;
+
+    /// <summary>The presupernova star's layers while the shock crosses it (structure §S6), centre outward with their outer radius in cm; empty otherwise.</summary>
+    public IReadOnlyList<(ElementLayer Layer, double OuterRadiusCm)> StarLayers { get; init; } = Array.Empty<(ElementLayer, double)>();
+    /// <summary>The shock's radius inside the star now, cm (structure §S5); NaN when it is not inside the star.</summary>
+    public double ShockInStarRadiusCm { get; init; } = double.NaN;
 }
 
 /// <summary>
@@ -255,9 +260,13 @@ public sealed class ExplosionScene
 
         if (!_thermonuclear && t < _breakoutS)
         {
-            notes.Insert(0, $"The shock is still inside the star: it reaches the surface {UnitFormat.Time(_breakoutS * _z1)} after core bounce");
+            notes.Insert(0, $"The shock is crossing the star: it reaches the surface {UnitFormat.Time(_breakoutS * _z1)} after core bounce");
             notes.Add(SchematicNote);
-            return WithGas(state with { ShowStar = true, Notes = notes }, notes, double.NaN);
+            return WithGas(state with
+            {
+                ShowStar = true, Notes = notes,
+                StarLayers = StarInterior.Layers(Outcome), ShockInStarRadiusCm = StarInterior.ShockRadiusCm(Outcome, t),
+            }, notes, double.NaN);
         }
 
         double r = EjectaKinematics.RadiusCm(Outcome, t);

@@ -136,6 +136,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     [ObservableProperty] private string _notesText = "";
     [ObservableProperty] private bool _showRings = true;
     [ObservableProperty] private bool _isAutoFraming = true;
+    /// <summary>The wedge cutaway (plan ruling P7): a quarter of the view removed, the cut faces coloured by element.</summary>
+    [ObservableProperty] private bool _isCutaway;
     [ObservableProperty] private bool _isFailed;
     [ObservableProperty] private string _failureMessage = "";
 
@@ -148,6 +150,42 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         UpdateRings();
         RequestRender();
+    }
+
+    /// <summary>The overlay note while the cutaway is on.</summary>
+    public const string CutawayNote = "Cutaway: colours show elements (schematic)";
+
+    partial void OnIsCutawayChanged(bool value)
+    {
+        UpdateOverlay();
+        RequestRender();
+    }
+
+    private IReadOnlyList<LegendItem> _legend = Array.Empty<LegendItem>();
+
+    /// <summary>
+    /// The cutaway's colour key: one entry for each element layer present in what the cut faces show now (the star's
+    /// layers before breakout, the ejecta's after), centre outward. Empty with the cutaway off.
+    /// </summary>
+    public IReadOnlyList<LegendItem> Legend
+    {
+        get => _legend;
+        private set => SetProperty(ref _legend, value);
+    }
+
+    /// <summary>Whether the legend also explains the shock ring (the shock is inside the star and the cutaway is on).</summary>
+    public bool ShowShockKey => IsCutaway && double.IsFinite(_state.ShockInStarRadiusCm);
+
+    /// <summary>Whether the legend also explains the Rayleigh-Taylor fingers (they are drawn and the cutaway is on).</summary>
+    public bool ShowFingerKey => IsCutaway && _state.ShowParticles && _scene?.Structure is { IsEnvelopeShell: false, Mixing.HasFingers: true };
+
+    private IReadOnlyList<LegendItem> LegendNow()
+    {
+        if (!IsCutaway) return Array.Empty<LegendItem>();
+        IEnumerable<ElementLayer> layers = _state.ShowParticles && _scene?.Structure is { } structure
+            ? structure.Layers.Select(l => l.Layer)
+            : _state.StarLayers.Select(l => l.Layer);
+        return layers.Select(l => new LegendItem(LayerColors.NameOf(l), LayerColors.HexOf(l))).ToList();
     }
 
     /// <summary>Creates the GL host and its context; on failure shows the message and leaves the rest of the app alone.</summary>
@@ -282,7 +320,10 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         RadiusText = double.IsFinite(_state.RadiusCm) && _state.RadiusCm > 0
             ? $"{_state.RadiusLabel}: {UnitFormat.Distance(_state.RadiusCm)}"
             : "";
-        NotesText = _modelError ?? string.Join(Environment.NewLine, _state.Notes);
+        NotesText = _modelError ?? string.Join(Environment.NewLine, IsCutaway ? _state.Notes.Append(CutawayNote) : _state.Notes);
+        Legend = LegendNow();
+        OnPropertyChanged(nameof(ShowShockKey));
+        OnPropertyChanged(nameof(ShowFingerKey));
         UpdateRings();
     }
 
@@ -409,21 +450,30 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (_uploadParticles) UploadParticles();
         var s = _state;
         _hdr.Begin(viewportPx);
+        Action? cutFaces = null;
         double unit = UnitCm;
         if (unit > 0 && double.IsFinite(unit) && viewportPx.Width > 0 && viewportPx.Height > 0)
         {
             double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
+            // The wedge (plan ruling P7): the star shows its layers on the cut faces; the particles' cut faces are the 3% of the framing radius around the cut planes.
+            bool starCut = IsCutaway && s.ShowStar && s.StarLayers.Count > 0 && s.StarRadiusCm > 0;
+            bool particleCut = IsCutaway && s.ShowParticles && _uploaded is not null && double.IsFinite(s.FrameRadiusCm);
+            var faceColors = starCut || particleCut ? FaceColors() : Array.Empty<(float R, float G, float B)>();
             if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
-            if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor);
+            if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor, starCut);
+            ParticleUniforms? particleUniforms = null;
             if (s.ShowParticles && _uploaded is { } set)
             {
                 // The brightness is Project 1's, spread over the particle count so the picture keeps its overall level.
                 // Positions follow ParticleKinematics.RadiusCm: the shader gets R* and v_max * (t - t_bo) in scene units.
                 float perParticle = (float)ReferenceParticleCount / _particles.Count;
                 double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
-                _particles.Render(Camera, viewportPx, pxPerDip, new ParticleUniforms((float)(starCm / unit),
-                    (float)(set.MaxCmS * s.SinceBreakoutS / unit),
-                    new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle));
+                float cutHalf = particleCut ? ParticleUniforms.CutFraction * (float)(s.FrameRadiusCm / unit) : 0;
+                var u = new ParticleUniforms((float)(starCm / unit), (float)(set.MaxCmS * s.SinceBreakoutS / unit),
+                    new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle,
+                    cutHalf);
+                particleUniforms = u;
+                _particles.Render(Camera, viewportPx, pxPerDip, u);
             }
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
@@ -431,13 +481,43 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
             _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
+            if (starCut || (particleCut && particleUniforms is not null))
+            {
+                var star = _star;
+                var particles = _particles;
+                cutFaces = () =>
+                {
+                    if (starCut)
+                    {
+                        var layers = s.StarLayers.Select(l => ((float)(l.OuterRadiusCm / s.StarRadiusCm), ToVector(faceColors[(int)l.Layer]))).ToList();
+                        float shock = double.IsFinite(s.ShockInStarRadiusCm) ? (float)(s.ShockInStarRadiusCm / s.StarRadiusCm) : float.NaN;
+                        star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, new StarCutaway(layers, shock));
+                    }
+                    if (particleCut && particleUniforms is { } pu)
+                        particles.RenderCutFaces(Camera, viewportPx, pxPerDip, pu, faceColors.SelectMany(c => new[] { c.R, c.G, c.B }).ToArray());
+                };
+            }
         }
-        _hdr.End(Exposure, BloomStrength);
+        _hdr.End(Exposure, BloomStrength, cutFaces);
         if (_readback is { } readback)
         {
             _readback = null;
             readback.TrySetResult(ReadPixels(viewportPx));
         }
+    }
+
+    private static OpenTK.Mathematics.Vector3 ToVector((float R, float G, float B) c) => new(c.R, c.G, c.B);
+
+    /// <summary>
+    /// The cut faces' colours, by layer: through the HDR path, the values that tone-map to the element's hex
+    /// (<see cref="LayerColors.FaceHdr"/>); without it, the hex itself.
+    /// </summary>
+    private (float R, float G, float B)[] FaceColors()
+    {
+        var colors = new (float R, float G, float B)[LayerColors.Count];
+        for (int i = 0; i < colors.Length; i++)
+            colors[i] = HdrEnabled ? LayerColors.FaceHdr((ElementLayer)i, Exposure) : LayerColors.For((ElementLayer)i);
+        return colors;
     }
 
     /// <summary>Project 1's point count: its brightness was tuned for 50,000 points, so it is scaled by this over the count drawn.</summary>
@@ -515,6 +595,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _star = null;
     }
 }
+
+/// <summary>One entry of the cutaway's colour key: an element layer's name and its colour as "#RRGGBB".</summary>
+public sealed record LegendItem(string Name, string ColorHex);
 
 /// <summary>A distance ring's label: its text, its position (device-independent pixels from the view's top left) and opacity.</summary>
 public sealed record RingLabel(string Text, double XDip, double YDip, double Opacity);

@@ -311,6 +311,17 @@ public static class Glossary
     public const string DistanceRings =
         "Measuring circles, not part of the supernova: when the debris reach a ring, they are that far from the centre.";
 
+    public const string Cutaway =
+        "Removes one quarter of the picture, like a wedge cut from a cake, so you can see inside. The two flat faces of the cut " +
+        "are coloured by element (schematic colours: the key lists them), and the rest of the debris keeps its heat colour. " +
+        "Before breakout the faces show the star's layers, drawn to the research's radii.";
+    public const string MixingFingers =
+        "Rayleigh–Taylor fingers: heavy elements from the core punch out through the lighter layers as the shock decelerates.";
+    public const string ShockInStar =
+        "The shock wave on its way out through the star after the core bounces, drawn as a bright ring with the gas inside it " +
+        "brighter. It takes seconds to days to reach the surface, and its position over time is a schematic estimate from the " +
+        "research's breakout calculation.";
+
     // ---------------------------------------------------------------- instrument panels' views (spec §5.1)
 
     public const string Strain =

@@ -468,4 +468,57 @@ public class SceneControllerTests
         var field = typeof(ObservableObject).GetField("PropertyChanged", BindingFlags.Instance | BindingFlags.NonPublic)!;
         return (field.GetValue(vm.Timeline) as PropertyChangedEventHandler)?.GetInvocationList().Count(d => d.Target == target) ?? 0;
     }
+
+    // ---------------------------------------------------------------- Task 7: the cutaway
+
+    private static SceneController CutawayController(string? presetId, double observerS, out MainViewModel vm)
+    {
+        vm = NewViewModel();
+        if (presetId is not null) vm.Lab.SelectedPreset = PresetCatalog.Get(presetId);
+        vm.Timeline.ObserverTimeS = observerS;
+        return new SceneController(vm, () => new FakeHost());
+    }
+
+    [Fact]
+    public void Legend_ListsOnlyTheLayersPresent()
+    {
+        // A Type Ic (a 20 M☉ star stripped of its hydrogen and helium): no hydrogen layer. The lab's Ic keeps 0.05 M☉ of helium
+        // (under the 0.14 M☉ that shows as helium lines; ~1.4% of the ejecta, about 2,900 particles), so helium is listed too.
+        var ic = CutawayController(null, 1, out var icVm);
+        icVm.Lab.InitialMass = 20;
+        icVm.Lab.Stripping = SupernovaLab.Core.Progenitors.Stripping.HydrogenAndHelium;
+        icVm.Timeline.ObserverTimeS = 20 * PhysicalConstants.Day;
+        Assert.Equal(SupernovaLab.Core.Outcomes.SupernovaType.Ic, icVm.CurrentOutcome.Type);
+        Assert.Empty(ic.Legend);   // the cutaway is off
+        ic.IsCutaway = true;
+        Assert.Equal(new[] { "Nickel/iron", "Oxygen/silicon", "Helium" }, ic.Legend.Select(l => l.Name));
+        Assert.Equal(new[] { "#EF9F27", "#639922", "#378ADD" }, ic.Legend.Select(l => l.ColorHex));
+
+        // A Type Ia (sn2011fe): nickel/iron, intermediate-mass elements, unburned carbon/oxygen.
+        var ia = CutawayController("sn2011fe", 20 * PhysicalConstants.Day, out _);
+        ia.IsCutaway = true;
+        Assert.Equal(new[] { "Nickel/iron", "Intermediate-mass elements", "Unburned carbon/oxygen" }, ia.Legend.Select(l => l.Name));
+        Assert.Equal(new[] { "#EF9F27", "#7F77DD", "#888780" }, ia.Legend.Select(l => l.ColorHex));
+
+        // A hydrogen-rich explosion (SN 1987A): all four core-collapse layers, hydrogen outermost.
+        var ii = CutawayController("sn1987a", 20 * PhysicalConstants.Day, out _);
+        ii.IsCutaway = true;
+        Assert.Equal(new[] { "Nickel/iron", "Oxygen/silicon", "Helium", "Hydrogen" }, ii.Legend.Select(l => l.Name));
+        ic.Dispose(); ia.Dispose(); ii.Dispose();
+    }
+
+    [Fact]
+    public void Legend_BeforeBreakout_ListsTheStarsLayers_AndTheNoteStatesTheCutaway()
+    {
+        var c = CutawayController("sn1987a", 100, out _);   // 100 s: well before this star's breakout
+        Assert.True(c.State.ShowStar);
+        c.IsCutaway = true;
+        Assert.Equal(new[] { "Oxygen/silicon", "Helium", "Hydrogen" }, c.Legend.Select(l => l.Name));
+        Assert.Contains("Cutaway: colours show elements (schematic)", c.NotesText);
+        Assert.Contains("The shock is crossing the star: it reaches the surface", c.NotesText);
+        c.IsCutaway = false;
+        Assert.Empty(c.Legend);
+        Assert.DoesNotContain("Cutaway", c.NotesText);
+        c.Dispose();
+    }
 }

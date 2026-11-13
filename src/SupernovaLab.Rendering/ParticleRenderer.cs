@@ -7,11 +7,20 @@ namespace SupernovaLab.Rendering;
 /// <summary>
 /// What the particle shader needs each frame, in scene units (physical cm divided by the view's unit on the CPU):
 /// <paramref name="StarRadius"/> is R* and <paramref name="Expansion"/> is v_max · (t − t_bo), so a particle at speed
-/// ratio s = v / v_max is at s · (R* + Expansion) (<c>ParticleKinematics.RadiusCm</c> with no shocks). Later tasks add the
-/// shock radii, the per-layer colours and the wedge.
+/// ratio s = v / v_max is at s · (R* + Expansion) (<c>ParticleKinematics.RadiusCm</c> with no shocks). With
+/// <paramref name="CutHalfWidth"/> above 0 the wedge cutaway is on (plan ruling P7): particles in the removed quarter
+/// (x &gt; 0 and z &gt; 0, scene coordinates) are not drawn, and those within <paramref name="CutHalfWidth"/> (3% of the framing
+/// radius, scene units) of a cut face are left to <see cref="ParticleRenderer.RenderCutFaces"/>. Later tasks add the shock radii.
 /// </summary>
-public readonly record struct ParticleUniforms(float StarRadius, float Expansion, Vector3 Color, float Brightness)
+public readonly record struct ParticleUniforms(float StarRadius, float Expansion, Vector3 Color, float Brightness,
+    float CutHalfWidth = 0)
 {
+    /// <summary>The cut-face share of the framing radius (plan ruling P7): 3%.</summary>
+    public const float CutFraction = 0.03f;
+
+    /// <summary>The cut-face dots are this many times the size of the ordinary dots, so a face reads as a surface.</summary>
+    public const float FacePointScale = 1.6f;
+
     /// <summary>The dots' size (dip) and opacity at full brightness: soft 2.5 dip dots at 35%, as Project 1.</summary>
     public const float PointDip = 2.5f, Alpha = 0.35f;
 }
@@ -98,11 +107,46 @@ public sealed class ParticleRenderer : IDisposable
         _program.Set("u_pointPx", (float)(ParticleUniforms.PointDip * pxPerDip));
         _program.Set("u_color", u.Color * u.Brightness);
         _program.Set("u_alpha", ParticleUniforms.Alpha);
+        _program.Set("u_cut", u.CutHalfWidth > 0 ? 1 : 0);
+        _program.Set("u_cutHalf", u.CutHalfWidth);
         GL.Enable(EnableCap.ProgramPointSize);
         GL.Enable(EnableCap.Blend);
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
         GL.BindVertexArray(_vao);
         GL.DrawArrays(PrimitiveType.Points, 0, _count);
+        GL.BindVertexArray(0);
+    }
+
+    /// <summary>
+    /// The cutaway's cut faces (plan ruling P7): the particles within <see cref="ParticleUniforms.CutHalfWidth"/> of either cut
+    /// plane, each in its element colour (<paramref name="layerColors"/>, six HDR colours in <c>ElementLayer</c> order) at full
+    /// opacity, opaque soft discs blended over what is there. Outer layers are drawn first and nickel last, so the nickel
+    /// fingers show on top. Draw it after the bloom is built (<see cref="HdrPipeline.End"/>'s hook). Does nothing without a wedge.
+    /// </summary>
+    public void RenderCutFaces(OrbitCamera cam, Size viewportPx, double pxPerDip, ParticleUniforms u, float[] layerColors)
+    {
+        if (_count == 0 || !(u.CutHalfWidth > 0)) return;
+        if (layerColors.Length < 3 * LayerColors.Count) throw new ArgumentException("Six layer colours are needed.", nameof(layerColors));
+        _program.Use();
+        _program.SetCamera(cam, viewportPx);
+        _program.Set("u_starRadius", u.StarRadius);
+        _program.Set("u_expansion", u.Expansion);
+        _program.Set("u_shocks", 0);
+        _program.Set("u_pointPx", (float)(ParticleUniforms.PointDip * ParticleUniforms.FacePointScale * pxPerDip));
+        _program.Set("u_color", u.Color);
+        _program.Set("u_alpha", ParticleUniforms.Alpha);
+        _program.Set("u_cut", 2);
+        _program.Set("u_cutHalf", u.CutHalfWidth);
+        GL.Uniform3(_program.Location("u_layerColor"), LayerColors.Count, layerColors);
+        GL.Enable(EnableCap.ProgramPointSize);
+        GL.Enable(EnableCap.Blend);
+        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+        GL.BindVertexArray(_vao);
+        for (int layer = LayerColors.Count - 1; layer >= 0; layer--)
+        {
+            _program.Set("u_faceLayer", layer);
+            GL.DrawArrays(PrimitiveType.Points, 0, _count);
+        }
         GL.BindVertexArray(0);
     }
 

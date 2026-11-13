@@ -149,4 +149,32 @@ public class SnapshotRequestTests
         Assert.Equal("-sn2023ixf-t0.001-densecsm", SnapshotRequest.FileSuffix(r.PresetIds[0]));
         Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1054+dense" }));
     }
+
+    [Fact]
+    public void SnapshotRequest_ParsesCutaway()
+    {
+        // Task 7: --cutaway is a flag (no value); it can sit anywhere among the options.
+        Assert.False(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.Cutaway);
+        Assert.True(SnapshotRequest.Parse(new[] { "--snapshot", "out", "--cutaway" })!.Cutaway);
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--cutaway", "--preset", "sn1987a@3e7", "--size", "1366x768" })!;
+        Assert.True(r.Cutaway);
+        Assert.Equal(new[] { "sn1987a@3e7" }, r.PresetIds);
+        Assert.Equal(new[] { new SnapshotSize(1366, 768) }, r.Sizes);
+    }
+
+    [Fact]
+    public void TheDefaultLabOutcome_CanCarryPerEntryTimes()
+    {
+        // R-P2-20: "default@seconds" takes the lab as launched (no preset) at its own time.
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "default@1000,default@2.5e3,sn1987a@8.64e6,default" })!;
+        Assert.Equal(("default", (double?)null), (r.PresetIds[3], (double?)null));
+        Assert.Equal(((string?)null, (double?)1000), SnapshotRequest.SplitPreset(r.PresetIds[0]));
+        Assert.Equal(((string?)null, (double?)2500), SnapshotRequest.SplitPreset(r.PresetIds[1]));
+        Assert.Equal(("sn1987a", (double?)8.64e6), SnapshotRequest.SplitPreset(r.PresetIds[2]));
+        Assert.Equal(((string?)null, (double?)null), SnapshotRequest.SplitPreset(r.PresetIds[3]));
+        Assert.Equal("-default-t1000", SnapshotRequest.FileSuffix(r.PresetIds[0]));
+        Assert.Equal("-default-t2500", SnapshotRequest.FileSuffix(r.PresetIds[1]));
+        Assert.Equal("", SnapshotRequest.FileSuffix("default"));
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "default@soon" }));
+    }
 }
