@@ -55,6 +55,8 @@ public class PresetCatalogTests
         Assert.Equal(2, lines.Count);
         Assert.Equal(12.4, lines[0].SourceTimeS);
         Assert.Equal(Messenger.Neutrinos, lines[0].Highlight);
+        Assert.False(lines[0].Recalled);
+        Assert.False(lines[0].FromBreakout);
         Assert.Equal("Hirata 1987 [R]", lines[0].Source.Citation);
         Assert.Null(lines[1].Highlight);
         Assert.Empty(PresetCatalog.Parse(Json(OnePreset(""))) [0].TourLines);
@@ -87,6 +89,7 @@ public class PresetCatalogTests
             Assert.False(string.IsNullOrWhiteSpace(l.Text));
             Assert.False(string.IsNullOrWhiteSpace(l.Source.Citation));
             Assert.StartsWith("presets", l.Source.ResearchRef);
+            Assert.Equal(l.Source.Citation.Contains("[R"), l.Recalled); // [R] in the source <=> shown as (recalled)
             // Every line says either that a paper was checked ([V], [SOURCE], verified, ATNF/Hamuy...) or that it was recalled [R].
             Assert.True(l.Source.Citation.Contains("[R") || l.Source.Citation.Contains("[V") || l.Source.Citation.Contains("[SOURCE")
                         || l.Source.ResearchRef.Contains("presets-verification"), $"{id}: '{l.Text}' has no confidence tag");

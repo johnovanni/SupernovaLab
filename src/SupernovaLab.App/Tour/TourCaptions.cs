@@ -21,6 +21,13 @@ public static class TourCaptions
     public static bool IsThermonuclear(Outcome o)
         => o.Type is SupernovaType.Ia or SupernovaType.Ia91T or SupernovaType.Ia91bg or SupernovaType.Iax;
 
+    /// <summary>"In the lab, the shock ...": a sentence from the lab's model, marked as such so it is not read as observed.</summary>
+    public static string InTheLab(string sentence) => "In the lab, " + char.ToLowerInvariant(sentence[0]) + sentence[1..];
+
+    /// <summary>"Observed: ... (recalled)." for a history line; a recalled ([R]) fact says so before its full stop.</summary>
+    public static string Observed(string text, bool recalled)
+        => "Observed: " + (recalled ? text.TrimEnd().TrimEnd('.') + " (recalled)." : text);
+
     private static string Clock(Outcome o) => IsThermonuclear(o) ? "ignition" : "core bounce";
 
     /// <summary>The first stop's caption: how this outcome begins ("Core collapse", "Ignition", or the star's own fate).</summary>
@@ -50,7 +57,7 @@ public static class TourCaptions
     {
         string t = UnitFormat.Time(m.ObserverTimeS);
         string clock = Clock(o);
-        return m.GlossaryKey switch
+        return InTheLab(m.GlossaryKey switch
         {
             nameof(Glossary.NeutrinoBurst)
                 => $"A burst of neutrinos streams out of the collapsed core {t} after {clock}, carrying away most of the energy the collapse released.",
@@ -63,13 +70,13 @@ public static class TourCaptions
             nameof(Glossary.PeakBrightness) => $"The supernova reaches its peak brightness {t} after {clock}{PeakMagnitude(o, obs, m.ObserverTimeS)}.",
             nameof(Glossary.PlateauEnd)
                 => $"The bright plateau ends {t} after {clock}, when the hydrogen has all recombined and the light falls to the radioactive tail.",
-            nameof(Glossary.GammaRayLines) => $"The cobalt-56 gamma-ray line at 847 keV is at its brightest {t} after {clock}.",
+            nameof(Glossary.GammaRayLines) => $"The cobalt-56 gamma-ray line at {GammaLineModel.Co56MainLineKeV:0} keV is at its brightest {t} after {clock}.",
             nameof(Glossary.RadioPeak) => $"Radio emission from the shock running into the star's old wind peaks {t} after {clock}.",
             nameof(Glossary.PulsarEmerges) => $"A young pulsar's radio pulses can now get out of the thinning ejecta, {t} after {clock}.",
             nameof(Glossary.RemnantResolvable)
-                => $"The expanding remnant is now at least 0.5 arcseconds across from here, so Chandra could resolve it, {t} after {clock}.",
+                => $"The expanding remnant is now at least {RemnantEvolutionModel.ResolvableArcsec.ToString(CultureInfo.InvariantCulture)} arcseconds across from here, so Chandra could resolve it, {t} after {clock}.",
             _ => m.Caption,
-        };
+        });
     }
 
     /// <summary>", at about V = 12.3 as seen from here" from the light-curve model, or "" when the model gives no finite value.</summary>

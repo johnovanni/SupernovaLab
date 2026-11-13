@@ -4,6 +4,7 @@ using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Presets;
 using SupernovaLab.Core.Signals;
 using SupernovaLab.Core.Timeline;
+using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.App.Tour;
 
@@ -18,7 +19,7 @@ namespace SupernovaLab.App.Tour;
 /// burst and lines, radio peak and pulsar highlight their own panels).</item>
 /// <item>A preset line becomes a stop at its source time × (1 + z). Lines outside the timeline are left out.</item>
 /// <item>Merging: stops are sorted by time; a stop less than 0.05 decades after the earliest stop of its group (measured
-/// from that stop, so a chain cannot drift) joins the group. The group keeps the earliest time and that stop's cutaway
+/// from that stop, so a chain cannot drift) joins the group. (Each stop's Notes carry the source and confidence of every caption sentence; history sentences are prefixed "Observed:" and model sentences "In the lab,".) The group keeps the earliest time and that stop's cutaway
 /// flag, the first non-null highlight, and its captions joined with a space in time order.</item>
 /// </list>
 /// Every stop dwells for <see cref="DwellS"/> seconds.
@@ -31,7 +32,7 @@ public static class TourBuilder
     /// <summary>Two stops closer than this many decades (log10 of the time ratio) are one stop.</summary>
     public const double MergeDecades = 0.05;
 
-    private sealed record Candidate(double TimeS, string Caption, Messenger? Highlight);
+    private sealed record Candidate(double TimeS, string Caption, Messenger? Highlight, TourSourceNote? Note = null);
 
     public static IReadOnlyList<TourStop> For(Outcome o, ObserverSetup obs, Preset? preset)
     {
@@ -40,15 +41,20 @@ public static class TourBuilder
         var all = new List<Candidate> { new(TimeAxis.MinS, TourCaptions.Begin(o), null) };
 
         foreach (var m in EventMarkers.Guarded(() => EventMarkers.For(o, obs)))
-            all.Add(new Candidate(m.ObserverTimeS, TourCaptions.ForMarker(m, o, obs), TourCaptions.HighlightFor(m.GlossaryKey)));
+            all.Add(new Candidate(m.ObserverTimeS, TourCaptions.ForMarker(m, o, obs), TourCaptions.HighlightFor(m.GlossaryKey),
+                new TourSourceNote(TourSourceKind.LabModel, new Source(m.Basis, m.Label))));
 
         if (preset is not null)
         {
+            double breakoutSource = EjectaKinematics.BreakoutTimeS(o);
             foreach (var line in preset.TourLines)
             {
-                double t = line.SourceTimeS * obs.TimeDilation;
+                // A line given as a delay after first light is placed at the lab's own breakout plus that delay (R-P2-31).
+                double source = line.SourceTimeS + (line.FromBreakout && double.IsFinite(breakoutSource) && breakoutSource > 0 ? breakoutSource : 0);
+                double t = source * obs.TimeDilation;
                 if (double.IsFinite(t) && t > TimeAxis.MinS && t <= TimeAxis.MaxS)
-                    all.Add(new Candidate(t, line.Text, line.Highlight));
+                    all.Add(new Candidate(t, TourCaptions.Observed(line.Text, line.Recalled), line.Highlight,
+                        new TourSourceNote(line.Recalled ? TourSourceKind.ObservedRecalled : TourSourceKind.ObservedChecked, line.Source)));
             }
         }
 
@@ -68,7 +74,10 @@ public static class TourBuilder
 
             bool cutaway = anchor.TimeS >= TimeAxis.MinS && double.IsFinite(breakout) && breakout > 0 && anchor.TimeS < breakout;
             stops.Add(new TourStop(anchor.TimeS, string.Join(" ", group.Select(g => g.Caption)), cutaway, DwellS,
-                cutaway ? CutawayOrbitDegPerS : 0, group.Select(g => g.Highlight).FirstOrDefault(h => h is not null)));
+                cutaway ? CutawayOrbitDegPerS : 0, group.Select(g => g.Highlight).FirstOrDefault(h => h is not null))
+            {
+                Notes = group.Where(g => g.Note is not null).Select(g => g.Note!).ToList(),
+            });
         }
         return stops;
     }

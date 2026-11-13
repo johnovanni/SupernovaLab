@@ -72,7 +72,7 @@ Units: E in foe (1 foe = 1e51 erg). Positions J2000.
 
 **Position / distance.** Taurus. Crab pulsar RA 05h34m31.97s, Dec +22d00m52.1s [R]. Distance 2.0 +/- 0.5 kpc (Trimble 1968, ApJ 73, 535; Kaplan et al. 2008, ApJ 677, 1201) [R].
 
-**Dates / records.** First recorded as a "guest star" in Chinese records on 1054 Jul 4 (Chinese astronomers of the Song dynasty); visible in daylight for 23 days and at night for 653 days until 1056 Apr 6 (Clark & Stephenson 1977, The Historical Supernovae; Stephenson & Green 2002) [R]. Possible Japanese and Arabic records; no secure European record.
+**Dates / records.** First recorded as a "guest star" in Chinese records on 1054 Jul 4 (Chinese astronomers of the Song dynasty); visible in daylight for 23 days and at night until 1056 Apr 6, **642 days** after 1054 Jul 4 (Julian calendar, 1056 a leap year) [D] (Clark & Stephenson 1977, The Historical Supernovae; Stephenson & Green 2002) [R]. *Correction (Task 12 fix round 1): this file first said "653 days", which does not match its own two dates; the authors' 653 days may count in the Chinese calendar or from a different start, so the Tour does not use either number. See scientific-inconsistencies.md #50.* Possible Japanese and Arabic records; no secure European record.
 
 **Peak brightness.** Reinterpretation of the records gives peak apparent magnitude roughly -4 to -7 (brighter than Venus), uncertain (Collins, Claspy & Martin 1999, PASP 111, 871) [R]. Treat the number as +/-1.5 mag.
 

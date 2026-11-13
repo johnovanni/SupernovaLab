@@ -38,6 +38,9 @@ public sealed class GammaLineModel : ISignalModel
     /// </summary>
     public const double StartS = Day;
 
+    /// <summary>The ⁵⁶Co line the lab calls "the 847 keV line" (<c>line847</c>), keV (signals §5.1).</summary>
+    public const double Co56MainLineKeV = 846.77;
+
     /// <summary>The end of the timeline, 1,000 years (§11: ⁴⁴Ti over 1–1,000 yr).</summary>
     public const double EndS = 1000 * Year;
 
@@ -57,7 +60,7 @@ public sealed class GammaLineModel : ISignalModel
     {
         new("line158", 158.38, 0.988, Isotope.Ni56),
         new("line812", 811.85, 0.860, Isotope.Ni56),
-        new("line847", 846.77, 1.00, Isotope.Co56),
+        new("line847", Co56MainLineKeV, 1.00, Isotope.Co56),
         new("line1238", 1238.3, 0.66, Isotope.Co56),
         new("ti44_68", 67.87, 0.930, Isotope.Ti44),
         new("ti44_78", 78.32, 0.968, Isotope.Ti44),

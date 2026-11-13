@@ -44,6 +44,10 @@ public sealed record Preset(string Id, string Name, string Summary, string WhatW
 /// One line of a real supernova's history for the guided tour: <see cref="Text"/> happened at <see cref="SourceTimeS"/>
 /// seconds after core bounce (or ignition) in the source frame (the tour multiplies by 1 + z). <see cref="Source"/> says
 /// where the fact comes from; a fact docs/research/presets.md tags [R] (recalled, not re-opened) keeps that tag in its
-/// source text. <see cref="Highlight"/> is the instrument panel to brighten while the line is shown, or null.
+/// source text and sets <see cref="Recalled"/>, which the tour shows as "(recalled)". <see cref="Highlight"/> is the
+/// instrument panel to brighten while the line is shown, or null. When <see cref="FromBreakout"/> is set, the time is a delay
+/// after first light, which the tour places at the lab's own shock breakout (ruling R-P2-31); otherwise it is the time after
+/// core bounce.
 /// </summary>
-public sealed record TourLine(double SourceTimeS, string Text, Source Source, Messenger? Highlight);
+public sealed record TourLine(double SourceTimeS, string Text, Source Source, Messenger? Highlight, bool Recalled = false,
+    bool FromBreakout = false);

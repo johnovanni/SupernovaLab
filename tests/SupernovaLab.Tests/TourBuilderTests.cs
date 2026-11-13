@@ -217,6 +217,80 @@ public class TourBuilderTests
         }
     }
 
+    // ---------------------------------------------------------------- fix round 1 (sources, wording, ruling R-P2-31)
+
+    [Fact]
+    public void AMergedStop_SaysWhichSentenceIsObserved_AndWhichIsTheLabs_InOrder()
+    {
+        var p = PresetCatalog.Get("sn1987a");
+        var o = ForPreset(p);
+        var tour = TourBuilder.For(o, p.Observer, p);
+        var peak = Assert.Single(tour, s => s.Caption.Contains("V = 2.975"));
+        int observed = peak.Caption.IndexOf("Observed:", StringComparison.Ordinal);
+        int lab = peak.Caption.IndexOf("In the lab,", StringComparison.Ordinal);
+        Assert.True(observed >= 0 && lab > observed, peak.Caption);
+
+        // The model's peak magnitude is pinned to the light-curve model at the stop's own time.
+        double v = new LightCurveModel().Sample(o, p.Observer, peak.ObserverTimeS / p.Observer.TimeDilation, "appV");
+        Assert.Equal(2, peak.Notes.Count);
+        Assert.Equal(TourSourceKind.ObservedChecked, peak.Notes[0].Kind);
+        Assert.Equal(TourSourceKind.LabModel, peak.Notes[1].Kind);
+        var model = TourBuilder.For(o, p.Observer, null).First(s => s.Highlight == Messenger.VisibleLight);
+        double vModel = new LightCurveModel().Sample(o, p.Observer, model.ObserverTimeS / p.Observer.TimeDilation, "appV");
+        Assert.Contains($"at about V = {vModel.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} as seen from here", peak.Caption);
+        Assert.True(double.IsFinite(v));
+    }
+
+    [Fact]
+    public void EveryStop_ListsTheSourceAndConfidenceOfItsSentences()
+    {
+        var p = PresetCatalog.Get("sn1987a");
+        var tour = TourBuilder.For(ForPreset(p), p.Observer, p);
+        Assert.Empty(tour[0].Notes); // "Core collapse" has no number
+        Assert.All(tour.Skip(1), s =>
+        {
+            Assert.NotEmpty(s.Notes);
+            Assert.Equal(s.Notes.Count, s.Sources.Count);
+            Assert.All(s.Notes, n => Assert.Contains(n.Source.Citation, s.SourceText));
+            Assert.Equal(s.Notes.Count, s.Caption.Split(new[] { "Observed:", "In the lab," }, StringSplitOptions.None).Length - 1);
+        });
+        var photos = Assert.Single(tour, s => s.Caption.Contains("first photographs"));
+        Assert.Contains("(recalled)", photos.Caption);
+        Assert.Equal(TourSourceKind.ObservedRecalled, Assert.Single(photos.Notes).Kind);
+        Assert.Contains("Observed (recalled, not re-checked)", photos.SourceText);
+        var neutrinos = Assert.Single(tour, s => s.Caption.Contains("24 neutrinos"));
+        Assert.DoesNotContain("(recalled)", neutrinos.Caption);
+        Assert.Contains("checked against the paper", neutrinos.SourceText);
+        // Model sentences say they are the lab's.
+        Assert.StartsWith("In the lab,", Assert.Single(tour, s => s.Caption.Contains("breaks out")).Caption);
+    }
+
+    [Fact]
+    public void ModelCaptions_UseTheModelsOwnConstants()
+    {
+        var o = TestOutcomes.Engine.Compute(LabInputs.Default);
+        var tour = TourBuilder.For(o, ObserverSetup.Default, null);
+        Assert.Contains($"line at {GammaLineModel.Co56MainLineKeV:0} keV", Assert.Single(tour, s => s.Caption.Contains("gamma-ray line")).Caption);
+        Assert.Contains("at least 0.5 arcseconds", Assert.Single(tour, s => s.Caption.Contains("arcseconds")).Caption);
+        Assert.Equal(0.5, RemnantEvolutionModel.ResolvableArcsec);
+    }
+
+    [Fact]
+    public void SN2023ixfDelays_AreMeasuredFromTheLabsBreakout_NotFromBounce()
+    {
+        var p = PresetCatalog.Get("sn2023ixf");
+        var o = ForPreset(p);
+        double breakout = EjectaKinematics.BreakoutTimeS(o) * p.Observer.TimeDilation;
+        var tour = TourBuilder.For(o, p.Observer, p);
+        foreach (var line in p.TourLines.Where(l => l.FromBreakout))
+        {
+            double expected = (EjectaKinematics.BreakoutTimeS(o) + line.SourceTimeS) * p.Observer.TimeDilation;
+            Assert.Contains(tour, s => s.Caption.Contains(line.Text.TrimEnd('.').Split(" (")[0]) && Math.Abs(s.ObserverTimeS / expected - 1) < 1e-9);
+            Assert.True(expected > breakout);
+        }
+        Assert.Equal(2, p.TourLines.Count(l => l.FromBreakout));
+    }
+
     /// <summary>The distance whose redshift is z, by bisection on the observer model.</summary>
     private static double DistanceForRedshift(double z)
     {

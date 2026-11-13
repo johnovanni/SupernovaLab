@@ -143,7 +143,8 @@ public static class PresetCatalog
                 l.SourceTimeS is double t && double.IsFinite(t) && t > 0
                     ? t
                     : throw new InvalidDataException($"A tour line of preset '{id}' needs a positive sourceTimeS."),
-                Required(l.Text, "tour line text", id), ToSource(l.Source, id, "tour line"), l.Highlight)).ToList(),
+                Required(l.Text, "tour line text", id), ToSource(l.Source, id, "tour line"), l.Highlight,
+                l.Recalled ?? false, l.FromBreakout ?? false)).ToList(),
         };
     }
 
@@ -174,6 +175,8 @@ public static class PresetCatalog
         public string? Text { get; set; }
         public SourceDto? Source { get; set; }
         public Messenger? Highlight { get; set; }
+        public bool? Recalled { get; set; }
+        public bool? FromBreakout { get; set; }
     }
 
     private sealed class InputsDto
