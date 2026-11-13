@@ -9,7 +9,7 @@ namespace SupernovaLab.Rendering;
 /// What <see cref="CutFaceRenderer"/> needs, in scene units (cm divided by the view's unit on the CPU): the layers' outer
 /// radii with their HDR colours (centre outward), the finger tips' radii (NaN or 0 for none), and the finger cones.
 /// </summary>
-public sealed record CutFaceUniforms(IReadOnlyList<(float OuterRadius, Vector3 Color)> Layers, float NickelMaxRadius, float HydrogenMinRadius,
+public sealed record CutFaceUniforms(IReadOnlyList<(float OuterRadius, Vector3 Color)> Layers, float NickelInnerRadius, float NickelMaxRadius, float HydrogenMinRadius, float HydrogenInnerRadius,
     Vector3 NickelColor, Vector3 HydrogenColor, IReadOnlyList<Vector3> ConeAxes, float ConeCos, float TransitionRadius, float DensityIndex);
 
 /// <summary>
@@ -74,6 +74,8 @@ public sealed class CutFaceRenderer : IDisposable
         _program.Set("u_nickelColor", u.NickelColor);
         _program.Set("u_hydrogenColor", u.HydrogenColor);
         _program.Set("u_nickelMax", float.IsFinite(u.NickelMaxRadius) ? u.NickelMaxRadius : -1f);
+        _program.Set("u_nickelInner", u.NickelInnerRadius);
+        _program.Set("u_hydrogenInner", float.IsFinite(u.HydrogenInnerRadius) ? u.HydrogenInnerRadius : -1f);
         _program.Set("u_hydrogenMin", float.IsFinite(u.HydrogenMinRadius) ? u.HydrogenMinRadius : -1f);
         _program.Set("u_coneCount", cones);
         GL.Uniform3(_program.Location("u_coneAxis"), MaxCones, axes);
@@ -83,7 +85,6 @@ public sealed class CutFaceRenderer : IDisposable
         WedgeUniforms.Set(_program, WedgeAngleRad);
 
         // Over what is drawn (alpha = the density profile's opacity); the alpha channel accumulates as the bloom mask.
-        GL.Disable(EnableCap.DepthTest);
         GL.Enable(EnableCap.Blend);
         GL.BlendFuncSeparate(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha, BlendingFactorSrc.One, BlendingFactorDest.OneMinusSrcAlpha);
         GL.BindVertexArray(_vao);

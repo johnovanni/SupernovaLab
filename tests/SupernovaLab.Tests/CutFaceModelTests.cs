@@ -53,22 +53,75 @@ public class CutFaceModelTests
     }
 
     [Fact]
-    public void Fingers_AreTheConesCutByThePlane_NickelOutToItsTipsAndHydrogenInward()
+    public void Fingers_AreSegmentsOfTheCones_NickelOutwardAndHydrogenInward()
     {
         var (faces, cones, s, _) = Faces(Bsg());
         Assert.True(faces.Cones.Axes.Count > 0);
-        Assert.True(faces.NickelMaxRadiusCm > faces.Layers[0].OuterRadiusCm, "nickel tips reach beyond the unmixed nickel layer");
-        var axis = cones.Axes[0];
+        double niIn = faces.NickelInnerRadiusCm, niMax = faces.NickelMaxRadiusCm, hMin = faces.HydrogenMinRadiusCm, hIn = faces.HydrogenInnerRadiusCm;
+        Assert.True(niMax > niIn, "nickel tips reach beyond the unmixed nickel layer");
+        Assert.True(hIn > hMin, "the hydrogen layer's inner boundary lies beyond where the hydrogen fingers reach");
+        var a = cones.Axes[0];
 
-        // On a cone's axis, beyond the nickel layer but inside the tips: nickel (the finger).
-        double inTip = 0.5 * (faces.Layers[0].OuterRadiusCm + faces.NickelMaxRadiusCm);
-        Assert.Equal(ElementLayer.NickelIron, faces.LayerAt(inTip, axis.X, axis.Y, axis.Z));
-        // Just past the tips on the axis: not nickel any more (the layer there, or hydrogen pulled in).
-        Assert.NotEqual(ElementLayer.NickelIron, faces.LayerAt(faces.NickelMaxRadiusCm * 1.001, axis.X, axis.Y, axis.Z));
-        // Hydrogen fingers: on the axis at HydrogenMin's radius, past the nickel tips, hydrogen.
-        if (faces.HydrogenMinRadiusCm > faces.NickelMaxRadiusCm)
-            Assert.Equal(ElementLayer.Hydrogen, faces.LayerAt(faces.HydrogenMinRadiusCm * 1.001, axis.X, axis.Y, axis.Z));
+        // Nickel segment: nickel layer's boundary to the tips: opaque nickel.
+        double inNi = 0.5 * (niIn + niMax);
+        Assert.Equal(ElementLayer.NickelIron, faces.LayerAt(inNi, a.X, a.Y, a.Z));
+        Assert.Equal(ElementLayer.NickelIron, faces.FingerAt(inNi, a.X, a.Y, a.Z));
+        Assert.Equal(1, faces.Opacity(inNi, faces.InFinger(inNi, a.X, a.Y, a.Z)));
+
+        // Hydrogen segment (beyond the nickel tips, where they do not overlap): opaque hydrogen.
+        double inH = 0.5 * (Math.Max(hMin, niMax) + hIn);
+        if (hIn > Math.Max(hMin, niMax))
+        {
+            Assert.Equal(ElementLayer.Hydrogen, faces.FingerAt(inH, a.X, a.Y, a.Z));
+            Assert.Equal(ElementLayer.Hydrogen, faces.LayerAt(inH, a.X, a.Y, a.Z));
+        }
         Assert.True(s.Mixing.HasFingers);
+    }
+
+    [Fact]
+    public void BeyondBothSegments_AConePixelIsTheOrdinaryLayer_FadingWithTheDensity()
+    {
+        var (faces, cones, _, _) = Faces(Bsg());
+        var a = cones.Axes[0];
+        // A radius beyond the nickel tips, beyond the hydrogen layer's inner boundary and beyond v_t, inside the debris.
+        double r = Math.Max(Math.Max(faces.NickelMaxRadiusCm, faces.HydrogenInnerRadiusCm), 1.5 * faces.TransitionRadiusCm);
+        r = Math.Min(r * 1.05, 0.99 * faces.OuterRadiusCm);
+        Assert.True(r > faces.TransitionRadiusCm * 1.2 && r > faces.NickelMaxRadiusCm && r > faces.HydrogenInnerRadiusCm);
+        Assert.False(faces.InFinger(r, a.X, a.Y, a.Z));
+        Assert.Equal(faces.Layers[^1].Layer, faces.LayerAt(r, a.X, a.Y, a.Z));
+        double alpha = faces.Opacity(r, faces.InFinger(r, a.X, a.Y, a.Z));
+        Assert.True(alpha < 1);
+        Assert.Equal(Math.Pow(r / faces.TransitionRadiusCm, -faces.OuterIndex), alpha, 12);
+    }
+
+    [Fact]
+    public void HydrogenSegment_IsOpaqueHydrogen_OnlyBetweenItsInwardReachAndTheLayersInnerBoundary()
+    {
+        // A hand-built face (units arbitrary): Ni to 1, He to 2, H to 10; nickel tips at 1.5, hydrogen fingers reach in to 1.8;
+        // v_t at 3 with n = 10. One cone about +z.
+        var cones = new FingerCones(new[] { (0.0, 0.0, 1.0) }, 0.3);
+        var faces = new CutFaceModel(new[] { (ElementLayer.NickelIron, 1.0), (ElementLayer.Helium, 2.0), (ElementLayer.Hydrogen, 10.0) },
+            1.5, 1.8, cones, 3.0, 10.0);
+        Assert.Equal(2.0, faces.HydrogenInnerRadiusCm);
+        Assert.Equal(1.0, faces.NickelInnerRadiusCm);
+
+        // In the hydrogen segment (1.8 to 2): opaque hydrogen, though the unmixed layer there is helium.
+        Assert.Equal(ElementLayer.Hydrogen, faces.LayerAt(1.9, 0, 0, 1));
+        Assert.Equal(1, faces.Opacity(1.9, faces.InFinger(1.9, 0, 0, 1)));
+        // Below it (1.6, helium) and beyond the layer's inner boundary: the ordinary layers, no finger.
+        Assert.Equal(ElementLayer.Helium, faces.LayerAt(1.6, 0, 0, 1));
+        Assert.False(faces.InFinger(2.5, 0, 0, 1));
+        // Nickel segment: opaque nickel.
+        Assert.Equal(ElementLayer.NickelIron, faces.LayerAt(1.2, 0, 0, 1));
+        Assert.True(faces.InFinger(1.2, 0, 0, 1));
+        // Far outside in the cone, beyond v_t: the hydrogen layer, faded by the density, not opaque.
+        Assert.Equal(ElementLayer.Hydrogen, faces.LayerAt(6, 0, 0, 1));
+        Assert.Equal(Math.Pow(2, -10), faces.Opacity(6, faces.InFinger(6, 0, 0, 1)), 12);
+        // Off the cone: never a finger.
+        Assert.Equal(ElementLayer.Helium, faces.LayerAt(1.9, 1, 0, 0));
+        // Where the segments overlap, nickel wins.
+        var overlap = new CutFaceModel(faces.Layers, 1.9, 1.8, cones, 3.0, 10.0);
+        Assert.Equal(ElementLayer.NickelIron, overlap.LayerAt(1.85, 0, 0, 1));
     }
 
     [Fact]
@@ -110,7 +163,8 @@ public class CutFaceModelTests
         double r0 = ParticleKinematics.RadiusCm(s.TransitionCmS, 30 * Day, 0, 1e9, null);
         Assert.Equal(1.2, r1 / r0, 12);
         var axis = cones.Axes[0];
-        Assert.True(faces.InFinger(0.5 * faces.NickelMaxRadiusCm, axis.X, axis.Y, axis.Z));
+        double midTip = 0.5 * (faces.NickelInnerRadiusCm + faces.NickelMaxRadiusCm);
+        Assert.True(faces.InFinger(midTip, axis.X, axis.Y, axis.Z));
     }
 
     /// <summary>A direction uniform on the sphere (the test's own, so MixingModel's internal helper stays internal).</summary>

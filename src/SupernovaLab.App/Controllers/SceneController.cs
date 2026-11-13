@@ -566,7 +566,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (model is null) return;
         var layers = model.Layers.Select(l => ((float)(l.OuterRadiusCm / unit), ToVector(colors[(int)l.Layer]))).ToList();
         var axes = model.Cones.Axes.Select(a => new OpenTK.Mathematics.Vector3((float)a.X, (float)a.Y, (float)a.Z)).ToList();
-        var uniforms = new CutFaceUniforms(layers, (float)(model.NickelMaxRadiusCm / unit), (float)(model.HydrogenMinRadiusCm / unit),
+        var uniforms = new CutFaceUniforms(layers, (float)(model.NickelInnerRadiusCm / unit), (float)(model.NickelMaxRadiusCm / unit),
+            (float)(model.HydrogenMinRadiusCm / unit), (float)(model.HydrogenInnerRadiusCm / unit),
             ToVector(colors[(int)ElementLayer.NickelIron]), ToVector(colors[(int)ElementLayer.Hydrogen]), axes,
             (float)(Math.Cos(model.Cones.HalfAngleRad) - FingerCones.RimToleranceCos),
             (float)(model.TransitionRadiusCm / unit), (float)model.OuterIndex);

@@ -50,15 +50,43 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
         return new CutFaceModel(layers, ni, h, fingers ? cones : FingerCones.Empty, Radius(s.TransitionCmS), s.N);
     }
 
-    /// <summary>Whether this face point is inside a finger (a cone, between the radii the nickel or hydrogen reaches).</summary>
-    public bool InFinger(double radiusCm, double dx, double dy, double dz)
-        => Cones.Axes.Count > 0 && Cones.Contains(dx, dy, dz) && (radiusCm <= NickelMaxRadiusCm || radiusCm >= HydrogenMinRadiusCm);
+    /// <summary>Outer boundary of the unmixed nickel layer, cm (0 when there is none): a nickel finger starts here.</summary>
+    public double NickelInnerRadiusCm
+        => Layers.Where(l => l.Layer == ElementLayer.NickelIron).Select(l => l.OuterRadiusCm).DefaultIfEmpty(0).Max();
+
+    /// <summary>Inner boundary of the unmixed hydrogen layer, cm (NaN when there is no hydrogen layer outside another): a hydrogen finger ends here.</summary>
+    public double HydrogenInnerRadiusCm
+    {
+        get
+        {
+            for (int k = 1; k < Layers.Count; k++)
+                if (Layers[k].Layer == ElementLayer.Hydrogen) return Layers[k - 1].OuterRadiusCm;
+            return double.NaN;
+        }
+    }
+
+    /// <summary>
+    /// The finger material at a face point, or null (ruling R-P2-23's reading): inside a cone, nickel mixed OUTWARD, the segment
+    /// from the nickel layer's outer boundary up to the tips (<see cref="NickelMaxRadiusCm"/>); or hydrogen mixed INWARD, the
+    /// segment from <see cref="HydrogenMinRadiusCm"/> up to the hydrogen layer's unmixed inner boundary. Nickel wins where they overlap.
+    /// Anywhere else in the cone the pixel is the ordinary layer at that radius.
+    /// </summary>
+    public ElementLayer? FingerAt(double radiusCm, double dx, double dy, double dz)
+    {
+        if (Cones.Axes.Count == 0 || !Cones.Contains(dx, dy, dz)) return null;
+        if (radiusCm > NickelInnerRadiusCm && radiusCm <= NickelMaxRadiusCm) return ElementLayer.NickelIron;
+        if (radiusCm >= HydrogenMinRadiusCm && radiusCm <= HydrogenInnerRadiusCm) return ElementLayer.Hydrogen;
+        return null;
+    }
+
+    /// <summary>Whether this face point is inside a finger segment (see <see cref="FingerAt"/>).</summary>
+    public bool InFinger(double radiusCm, double dx, double dy, double dz) => FingerAt(radiusCm, dx, dy, dz) is not null;
 
     /// <summary>
     /// The face's opacity at this radius (ruling R-P2-23): the density profile of structure section S1 relative to its value at
     /// v_t, rho(v) / rho(v_t) = 1 inside v_t and (v / v_t)^-n outside, where v is the speed whose radius is this one (radius
     /// is proportional to speed in <see cref="ParticleKinematics"/>'s rule, so v / v_t = radius / <see cref="TransitionRadiusCm"/>).
-    /// A finger is opaque. So the faces fade out with the cloud, a glowing ball with a slice removed.
+    /// A finger segment (see <see cref="FingerAt"/>) is opaque; the rest of a cone fades like any other pixel. So the faces fade out with the cloud, a glowing ball with a slice removed.
     /// </summary>
     public double Opacity(double radiusCm, bool inFinger)
     {
@@ -78,8 +106,6 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
         foreach (var (l, outer) in Layers)
             if (radiusCm <= outer) { layer = l; break; }
 
-        if (InFinger(radiusCm, dx, dy, dz))
-            return radiusCm <= NickelMaxRadiusCm ? ElementLayer.NickelIron : ElementLayer.Hydrogen;
-        return layer;
+        return FingerAt(radiusCm, dx, dy, dz) ?? layer;
     }
 }

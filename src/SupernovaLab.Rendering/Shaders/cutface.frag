@@ -1,7 +1,7 @@
 #version 410 core
 // The cut faces' colour (ruling R-P2-21), per pixel: the radius on the face selects the element layer (the particle set's
-// layer boundaries), then the finger cones: hydrogen fingers from u_hydrogenMin outward, nickel fingers out to u_nickelMax
-// (nickel wins). Mirrors CutFaceModel.LayerAt (C#): change one, change the other. Schematic.
+// layer boundaries), then the finger cones: hydrogen mixed inward (u_hydrogenMin up to the hydrogen layer's inner boundary), nickel mixed
+// outward (the nickel layer's boundary up to u_nickelMax; nickel wins). Mirrors CutFaceModel.LayerAt (C#): change one, change the other. Schematic.
 
 in vec3 v_world;
 
@@ -12,6 +12,8 @@ uniform vec3 u_layerColor[6];    // HDR colours, in the same order
 uniform vec3 u_nickelColor;
 uniform vec3 u_hydrogenColor;
 uniform float u_nickelMax;       // radius of the nickel finger tips; negative: no nickel fingers
+uniform float u_nickelInner;     // outer boundary of the nickel layer: a nickel finger starts here
+uniform float u_hydrogenInner;   // inner boundary of the hydrogen layer: a hydrogen finger ends here (negative: none)
 uniform float u_hydrogenMin;     // radius the hydrogen fingers reach inward to; negative: none
 uniform int u_coneCount;
 uniform vec3 u_coneAxis[10];
@@ -40,8 +42,8 @@ void main()
             if (dot(d, u_coneAxis[k]) >= u_coneCos) inCone = true;
         if (inCone)
         {
-            if (u_nickelMax > 0.0 && rho <= u_nickelMax) { c = u_nickelColor; finger = true; }
-            else if (u_hydrogenMin > 0.0 && rho >= u_hydrogenMin) { c = u_hydrogenColor; finger = true; }
+            if (u_nickelMax > 0.0 && rho > u_nickelInner && rho <= u_nickelMax) { c = u_nickelColor; finger = true; }
+            else if (u_hydrogenMin > 0.0 && rho >= u_hydrogenMin && rho <= u_hydrogenInner) { c = u_hydrogenColor; finger = true; }
         }
     }
     // Ruling R-P2-23: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (radius ~ speed); fingers are opaque.
