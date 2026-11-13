@@ -200,13 +200,16 @@
       "id": "sn2023ixf",
       "name": "SN 2023ixf",
       "summary": "A Type II supernova in the Pinwheel Galaxy (M101), the closest of its kind in a decade. Its star was a large, dusty red supergiant of about 17 M☉ that was pulsating and shedding gas in its last years.",
-      "whatWasSeen": "Caught within a day, its early spectra showed narrow lines from dense gas close around the star, lit by the blast and fading within a week. The lab does not model that dense gas for this preset, so it is shown as a plain Type II.",
+      "whatWasSeen": "Caught within a day, its early spectra showed narrow lines from dense gas close around the star, lit by the blast and fading within a week. The lab's instruments do not model that dense gas, so they show a plain Type II; the 3D view draws the confined gas as observed geometry only, out to about 10¹⁵ cm, with a schematic flare.",
       "inputs": { "kind": "MassiveStar", "initialMass": 17 },
       "observer": {
         "distancePc": 6.85e6, "av": 0.12,
         "source": { "citation": "Distance 6.85 ± 0.15 Mpc (Riess et al. 2022, ApJL 934, L7, Cepheids); A_V = 3.1 × E(B−V) 0.039 (Galactic 0.008 + host 0.031; as adopted in arXiv:2306.10284) [DERIVED]", "researchRef": "presets §9; presets-verification" }
       },
-      "pins": null,
+      "pins": {
+        "confinedCsmOuterCm": 1e15,
+        "source": { "citation": "Jacobson-Galán et al. 2023, ApJL 954, L42: the confined circumstellar gas extends to about (0.5–1) × 10¹⁵ cm (the upper end drawn). Geometry for the 3D view only; no signal model uses it", "researchRef": "structure §S7; presets §9" }
+      },
       "facts": []
     },
     {

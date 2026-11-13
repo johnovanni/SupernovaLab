@@ -710,7 +710,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         {
             double inner = Math.Max(shellInnerCm, forwardCm) / unit, outer = shellOuterCm / unit;
             if (inner < outer)
-                _shells!.Render(Camera, viewportPx, ShellKind.Shell, inner, outer, DenseShellColor, DenseShellIntensity * (1 + DenseShellFlare * glow));
+                _shells!.Render(Camera, viewportPx, ShellKind.Shell, inner, outer, DenseShellColor, DenseShellIntensity * (1 + DenseShellFlare * s.ShellFlare));
         }
         if (s.Shocks is { } shocks && glow > 0 && shocks.ForwardCm > 0)
         {

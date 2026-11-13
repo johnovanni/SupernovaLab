@@ -616,14 +616,19 @@ only, and the inner layers become visible after expansion, in velocity space (§
   - `o.Type == SupernovaType.IIn`: **3 × 10¹⁶ cm** [D]. The lab's IIn is the class whose CSM is not modeled and whose
     radio is the brightest (signals §6.1: IIn mean 3 × 10²⁶ erg/s/Hz). That matches the long-lasting, SN 2010jl-like
     class (CF17 §6.4).
-  - every other HasDenseCsm outcome: **10¹⁵ cm**. This is [V] for confined CSM around II-P stars (SN 2023ixf; the
-    SN 2023ixf preset) and for 1998S-like IIn. It is [APPROX] for Ibn, Icn and pulsational-pair-instability shells,
-    which were not researched.
+  - every other HasDenseCsm outcome: **10¹⁵ cm** [APPROX] (Ibn, Icn, pulsational pair instability and any other dense-gas
+    case; not researched), marked `Confidence.Speculative`; 1998S-like IIn is [V] at this extent but the lab's IIn takes the
+    3 × 10¹⁶ cm case above.
   - Labelled with its source.
-  - In code (`CircumstellarStructureModel`): a hydrogen-rich II-P/II-L dense-gas outcome that is not a pulsational pair
-    instability takes the Jacobson-Galán 10¹⁵ cm [V]; Ibn, Icn, pulsational pair instability and any other get the 10¹⁵ cm
-    fallback marked `Confidence.Speculative`. The engine turns the lab's dense-gas input into a Type IIn, so the lab reaches the
-    3 × 10¹⁶ cm case, not the II-P one. The dense shell is drawn uniform from R* to its outer radius.
+  - **SN 2023ixf's confined gas (ruling R-P2-27) is pinned observed geometry, not an engine outcome.** The preset carries
+    `ConfinedCsmOuterCm = 10¹⁵ cm` (Jacobson-Galán et al. 2023: (0.5–1) × 10¹⁵ cm [V], the upper end drawn) in its pins, like SN
+    1987A's rings (`HasEquatorialRing`): `Outcome.ConfinedCsmOuterCm`, read only by `CircumstellarStructureModel` and the 3D
+    view, by no signal model, so the outcome stays a Type II-P and every panel value is unchanged. (The engine turns the lab's
+    dense-gas input into a Type IIn, so no engine outcome reaches the II-P 10¹⁵ cm case.) The shell is drawn uniform from R* to
+    10¹⁵ cm; its flare is schematic: on while the debris' 99%-of-mass radius sweeps through it, then fading over one decade
+    of time. Editing any lab input drops the pins, and with them this shell.
+  - In code (`CircumstellarStructureModel`): the pin, then IIn (3 × 10¹⁶ cm), then a dense-gas II-P/II-L (10¹⁵ cm, [V]), then
+    the Speculative 10¹⁵ cm fallback. The shell is drawn uniform from R* to its outer radius.
 - Drawn (Task 9): haze and shell only outside the forward shock; the haze never drives the framing, a dense shell does while
   the debris are inside it. The shock's glow is `CsmInteractionModel.ThermalXrayLuminosity` (∝ 1/t, so independent of A_*)
   mapped logarithmically over 4 decades below its value at the model's start (0 before it; ≈ 0 after 10⁴ times that). Brightness

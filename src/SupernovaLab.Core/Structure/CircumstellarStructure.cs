@@ -59,14 +59,22 @@ public static class CircumstellarStructureModel
         double windOuter = wind ? Math.Max(outer, inner) : inner;
 
         const string windSource = "Chevalier 2005, ApJ 619, 839 (wind, p/k = 1e4 [APPROX])";
-        if (!CsmInteractionModel.HasDenseCsm(o))
+        bool pinned = o.ConfinedCsmOuterCm is > 0;
+        if (!CsmInteractionModel.HasDenseCsm(o) && !pinned)
             return new CircumstellarStructure(wind ? aStar : double.NaN, inner, windOuter, null, null, Confidence.ModelDependent,
                 new Source(windSource, "structure §S7"));
 
         double shellOuter;
         Confidence confidence;
         string shellSource;
-        if (o.Type == SupernovaType.IIn)
+        if (pinned)
+        {
+            // Ruling R-P2-27: a preset's observed confined gas (SN 2023ixf), geometry only; from R* to the pinned radius.
+            shellOuter = o.ConfinedCsmOuterCm!.Value;
+            confidence = Confidence.ModelDependent;
+            shellSource = "Jacobson-Galán et al. 2023, ApJL 954, L42 (SN 2023ixf)";
+        }
+        else if (o.Type == SupernovaType.IIn)
         {
             shellOuter = IInShellOuterCm;
             confidence = Confidence.ModelDependent;

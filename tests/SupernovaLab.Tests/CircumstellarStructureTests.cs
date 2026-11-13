@@ -144,4 +144,81 @@ public class CircumstellarStructureTests
         Assert.True(SceneController.HazeIntensityAtTenAStar * SceneController.HazeMaxScale
                     < SceneController.ForwardShellIntensity / 4);
     }
+
+    // ---------------------------------------------------------------- ruling R-P2-27: SN 2023ixf's pinned confined gas
+
+    private static Outcome Ixf(PresetPins? pins = null)
+    {
+        var p = PresetCatalog.Get("sn2023ixf");
+        return TestOutcomes.Engine.Compute(p.Inputs, pins ?? p.Pins);
+    }
+
+    [Fact]
+    public void Sn2023ixf_CarriesTheConfinedGasPin_AndStaysATypeII_WithEveryValueUnchanged()
+    {
+        var p = PresetCatalog.Get("sn2023ixf");
+        Assert.Equal(1e15, p.Pins!.ConfinedCsmOuterCm);
+        var with = Ixf();
+        var without = TestOutcomes.Engine.Compute(p.Inputs);
+        Assert.Equal(1e15, with.ConfinedCsmOuterCm);
+        Assert.Null(without.ConfinedCsmOuterCm);
+        Assert.Equal(SupernovaType.IIP, with.Type);
+        Assert.Equal(without.Type, with.Type);
+        Assert.False(CsmInteractionModel.HasDenseCsm(with));
+        Assert.Equal(without.ExplosionEnergyErg, with.ExplosionEnergyErg);
+        Assert.Equal(without.EjectaMass, with.EjectaMass);
+        Assert.Equal(without.NickelMass, with.NickelMass);
+        Assert.Equal(without.Star, with.Star);
+        // No signal model reads the pin: samples agree with and without it.
+        var obs = Core.Observer.ObserverSetup.Default;
+        foreach (var (model, channel) in new (ISignalModel, string)[]
+                 { (new CsmInteractionModel(), "radio5"), (new CsmInteractionModel(), "lx"), (new LightCurveModel(), "lbol") })
+            foreach (double t in new[] { 3 * Day, 30 * Day, Year })
+                Assert.Equal(model.Sample(without, obs, t, channel), model.Sample(with, obs, t, channel));
+    }
+
+    [Fact]
+    public void Sn2023ixf_ShellIsDrawnAt1e15Cm_AndAFlareFollowsTheSweep()
+    {
+        var o = Ixf();
+        var c = CircumstellarStructureModel.For(o)!;
+        Assert.Equal(1e15, c.ShellOuterCm);
+        Assert.Equal(o.Star!.RadiusCm.Value, c.ShellInnerCm);
+        Assert.Contains("Jacobson-Galán", c.Source.Citation, StringComparison.Ordinal);
+        var scene = new ExplosionScene(o);
+        var early = scene.At(5 * Day);
+        Assert.Equal(1e15, early.Surroundings!.ShellOuterCm);
+        Assert.True(early.Frame99RadiusCm < 1e15);
+        Assert.Equal(1f, early.ShellFlare);                       // on while the debris sweep through the shell
+        Assert.Contains(ExplosionScene.ConfinedGasNote, early.Notes);
+        Assert.Contains("flare is schematic", ExplosionScene.ConfinedGasNote, StringComparison.Ordinal);
+        Assert.Equal(0f, scene.At(0.5 * Day).ShellFlare);          // before the debris are launched
+        // Fading over one decade of time after the debris pass the shell, then off.
+        double exit = 0;
+        for (double t = Day; t < 1e8; t *= 1.02)
+            if (scene.At(t).Frame99RadiusCm >= 1e15) { exit = t; break; }
+        Assert.True(exit > 5 * Day);
+        var later = scene.At(exit * 3);
+        Assert.InRange(later.ShellFlare, 0.01f, 0.99f);
+        Assert.Equal(0f, scene.At(exit * 20).ShellFlare);
+        Assert.True(scene.At(exit * 3).ShellFlare > scene.At(exit * 6).ShellFlare);
+    }
+
+    [Fact]
+    public void LabOutcomeWithoutThePin_HasNoConfinedShell_AndKeepsTheHazeNoteRule()
+    {
+        var o = Default();
+        Assert.Null(o.ConfinedCsmOuterCm);
+        Assert.Null(CircumstellarStructureModel.For(o)!.ShellOuterCm);
+        var scene = new ExplosionScene(o);
+        Assert.DoesNotContain(ExplosionScene.ConfinedGasNote, scene.At(5 * Day).Notes);
+        // The haze note only while the view is at most 100 R* wide; a dense-shell note whenever a shell is drawn (M1).
+        double r0 = o.Star!.RadiusCm.Value;
+        Assert.Contains(scene.At(1e-3).Notes, n => n.StartsWith("Gas around the star", StringComparison.Ordinal));
+        var wide = scene.At(Year);
+        Assert.True(wide.FrameRadiusCm > 100 * r0);
+        Assert.DoesNotContain(wide.Notes, n => n.StartsWith("Gas around the star", StringComparison.Ordinal));
+        var iin = new ExplosionScene(TestOutcomes.Custom(SupernovaType.IIn, 1e51, 10, 0.07, 3e13)).At(1e-3);
+        Assert.Contains(iin.Notes, n => n.StartsWith("Gas around the star", StringComparison.Ordinal));
+    }
 }

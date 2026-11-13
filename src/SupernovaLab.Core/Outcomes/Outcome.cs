@@ -35,10 +35,12 @@ public enum Fate
 /// to apply them to; the radius pin always applies. The ⁵⁶Ni ≤ 0.5 M_ej cap is not applied to pinned values, but a pin
 /// set that breaks it gets a note.</para>
 /// </summary>
+/// <para>Ruling R-P2-27: <see cref="ConfinedCsmOuterCm"/> is observed geometry only (SN 2023ixf's confined gas, structure §S7), drawn by
+/// the 3D view and read by no signal model; it does not change the outcome's type or any value.</para>
 public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
     double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null,
     double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null,
-    double? NsGravitationalMass = null, double? RemnantMass = null);
+    double? NsGravitationalMass = null, double? RemnantMass = null, double? ConfinedCsmOuterCm = null);
 
 /// <summary>
 /// The lab's result (spec §3). <see cref="Inputs"/> are the inputs as used, held inside their slider ranges.
@@ -54,7 +56,8 @@ public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, 
 /// means the classical burst of <c>GrbModel</c>.
 /// <see cref="PulsarRadioLuminosityMjyKpc2"/> is a preset's measured 1.4 GHz pulsar luminosity (mJy kpc²; ruling R41),
 /// null for the population median <c>PulsarModel</c> uses. <see cref="HasEquatorialRing"/> is true when a preset gives the
-/// supernova SN 1987A's equatorial ring (ruling R41).
+/// supernova SN 1987A's equatorial ring (ruling R41). <see cref="ConfinedCsmOuterCm"/> (ruling R-P2-27) is a preset's observed outer
+/// radius (cm) of confined circumstellar gas (SN 2023ixf), for the 3D view only: no signal model reads it.
 /// </summary>
 public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bool HasGrb, Remnant Remnant,
     PresupernovaStar? Star, Quantity? ExplosionEnergyErg, Quantity? EjectaMass, Quantity? NickelMass,
@@ -62,4 +65,4 @@ public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bo
     IReadOnlyList<string> Notes, bool UsesPublishedValues,
     Quantity? PeakAbsoluteMagB = null, Quantity? Ti44Mass = null,
     Quantity? GrbIsotropicEnergyErg = null, Quantity? GrbPeakEnergyKeV = null, Quantity? GrbT90S = null,
-    Quantity? PulsarRadioLuminosityMjyKpc2 = null, bool HasEquatorialRing = false);
+    Quantity? PulsarRadioLuminosityMjyKpc2 = null, bool HasEquatorialRing = false, double? ConfinedCsmOuterCm = null);

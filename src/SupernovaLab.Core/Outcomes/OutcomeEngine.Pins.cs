@@ -17,7 +17,7 @@ public sealed partial class OutcomeEngine
     /// </summary>
     private sealed record Pinned(PresupernovaStar Star, SupernovaType Type, Quantity? Energy, Quantity? Ejecta,
         Quantity? Nickel, Remnant Remnant, Quantity? Ti44, Quantity? GrbEnergy, Quantity? GrbPeak, Quantity? GrbT90,
-        Quantity? PulsarRadio, bool Ring, bool Published);
+        Quantity? PulsarRadio, bool Ring, bool Published, double? ConfinedCsmOuterCm = null);
 
     /// <summary>Ruling R53 (I2): a pinned ejecta and remnant may exceed the star's final mass by this much (M☉) unremarked.</summary>
     private const double MassBudgetTolerance = 0.01;
@@ -43,8 +43,16 @@ public sealed partial class OutcomeEngine
         bool coreCollapse = x.Kind == StarKind.MassiveStar && d.Fate == Fate.Supernova;
         Quantity? ti44 = null, grbEnergy = null, grbPeak = null, grbT90 = null, pulsarRadio = null;
         bool ring = false;
+        double? confinedCsm = null;
         if (pins is not null)
         {
+            // Ruling R-P2-27: observed geometry for the 3D view only (a Type Ia has no surroundings); no model reads it.
+            if (pins.ConfinedCsmOuterCm is > 0 and double confined && d.Type is not (SupernovaType.Ia or SupernovaType.Ia91T or
+                    SupernovaType.Ia91bg or SupernovaType.Iax))
+            {
+                confinedCsm = confined;
+                published = true;
+            }
             if (pins.RadiusCm is double r) star = star with { RadiusCm = Pin(r, "cm") };
             if (!explosion)
             {
@@ -129,7 +137,7 @@ public sealed partial class OutcomeEngine
             type = RejudgeMagnetar(x, candidate, type, star, mep.Value, mtp.Value, energy.Value, ejecta.Value, notes);
 
         return new Pinned(star, type, energy, ejecta, nickel, remnant, ti44, grbEnergy, grbPeak, grbT90, pulsarRadio, ring,
-            published);
+            published, confinedCsm);
     }
 
     /// <summary>

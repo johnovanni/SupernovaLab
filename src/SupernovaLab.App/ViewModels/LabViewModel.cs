@@ -278,6 +278,7 @@ public sealed partial class LabViewModel : ObservableObject
         Add("Neutron star mass (gravitational)", p.NsGravitationalMass, "M☉");
         if (p.EquatorialRing == true)
             rows.Add(new InfoRow("Equatorial ring", "included", p.Source.Citation, p.Source.ResearchRef));
+        Add("Confined circumstellar gas, outer radius (3D view only)", p.ConfinedCsmOuterCm, "cm");
         return rows;
     }
 
