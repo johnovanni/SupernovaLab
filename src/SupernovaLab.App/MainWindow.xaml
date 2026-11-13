@@ -66,15 +66,15 @@
                     <Image x:Name="SnapshotImage" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False"/>
 
                     <!-- Task 11: a translucent dark backdrop keeps the readout and notes legible over bright shells. -->
-                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#96020308" HorizontalAlignment="Left"
+                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
                             VerticalAlignment="Top" IsHitTestVisible="False">
                         <StackPanel>
                             <TextBlock Text="{Binding TimeText}" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding RadiusText}" Margin="0,2,0,0" MaxWidth="340" TextWrapping="Wrap" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
-                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#96020308" HorizontalAlignment="Right"
-                            VerticalAlignment="Top" IsHitTestVisible="False">
+                    <Border Margin="6,4" Padding="6,4" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right"
+                            VerticalAlignment="Top">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Style.Triggers>
@@ -84,8 +84,25 @@
                                 </Style.Triggers>
                             </Style>
                         </Border.Style>
-                        <TextBlock Text="{Binding NotesText}" Style="{StaticResource Muted}" MaxWidth="320"
-                                   TextAlignment="Right" TextWrapping="Wrap"/>
+                        <StackPanel>
+                            <TextBlock Text="{Binding NotesDisplayText}" Style="{StaticResource Muted}" Foreground="{StaticResource TextBrush}"
+                                       MaxWidth="320" TextAlignment="Right" TextWrapping="Wrap" IsHitTestVisible="False"/>
+                            <TextBlock Text="{Binding NotesToggleText}" Foreground="{StaticResource AccentBrush}" FontSize="11.5" Cursor="Hand"
+                                       TextAlignment="Right" Margin="0,3,0,0" ToolTip="Show or hide the other notes">
+                                <TextBlock.InputBindings>
+                                    <MouseBinding Gesture="LeftClick" Command="{Binding ToggleNotesCommand}"/>
+                                </TextBlock.InputBindings>
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding NotesToggleText}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
                     </Border>
 
                     <!-- The distance rings' labels (plan ruling P6): WPF text placed from the GL projection, at each ring's top. -->
@@ -109,7 +126,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <!-- The key (bottom left): the element layers the cut faces show now, and the shock shells while they are drawn. -->
-                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#96020308" HorizontalAlignment="Left"
+                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
                             VerticalAlignment="Bottom" IsHitTestVisible="True"
                             Visibility="{Binding ShowKey, Converter={StaticResource VisibleWhen}}">
                     <StackPanel>

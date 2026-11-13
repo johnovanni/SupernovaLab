@@ -15,7 +15,11 @@ namespace SupernovaLab.Rendering;
 /// </summary>
 public static class FlashLayer
 {
-    /// <summary>[APPROX, schematic] HDR light per unit of flash intensity at the view's centre, and everywhere (the veil).</summary>
+    /// <summary>
+    /// [APPROX, schematic] HDR light per unit of flash intensity at the view's centre, and everywhere (the veil). Tuned on the default preset's
+    /// breakout frames (flash intensity 3.5 at 110,990 s, 1.5 at 160,000 s, just after at 221,300 s) and SN 1998bw's breakout (110.2 s): 5 / 0.5 and
+    /// 2.5 / 0.25 whited out the whole view even at 1.5.
+    /// </summary>
     public const float CorePerIntensity = 1.2f, VeilPerIntensity = 0.12f;
 
     /// <summary>The additive quad's alpha without the HDR target: min(1, intensity / 8) (0 for no flash).</summary>

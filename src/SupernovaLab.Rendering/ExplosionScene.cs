@@ -159,7 +159,7 @@ public sealed class ExplosionScene
 
     /// <summary>
     /// [APPROX, presentation] The tone-map exposure at the light curve's peak (and with nothing bright drawn), and the fraction of it kept
-    /// at <see cref="MinBrightness"/>: the exposure follows Project 1's brightness so the dim remnant era does not accumulate to white.
+    /// at <see cref="MinBrightness"/> (tuned on the Task 11 snapshots: default at 2.6 d, 23 d, 1 yr (cutaway) and 30 yr; SN 1987A at 8,000 and 12,000 d; SN 2023ixf at 5 d): the exposure follows Project 1's brightness so the dim remnant era does not accumulate to white.
     /// </summary>
     public const float BaseExposure = 0.2f, DimExposureFraction = 0.75f;
 
@@ -255,7 +255,7 @@ public sealed class ExplosionScene
     private readonly object _particleLock = new();
     private ParticleSet? _particles;
     private readonly double _particleStartS;
-    private readonly double _flashFromS = double.NaN, _flashToS = double.NaN, _lightCurvePeak, _flashTemperatureK = double.NaN;
+    private readonly double _flashFromS = double.NaN, _flashToS = double.NaN, _flashTemperatureK = double.NaN;
     private readonly double _breakoutS, _peakLuminosity, _lightCurveEndS, _whiteDwarfS, _pulsarS, _jetsFromS, _jetsToS;
 
     /// <summary>The scene for this outcome; <paramref name="timeDilation"/> (1 + z) puts the notes' times in observer time.</summary>
@@ -292,19 +292,15 @@ public sealed class ExplosionScene
                 if (l > _peakLuminosity) _peakLuminosity = l;
             }
 
-        // The breakout flash (Task 11): the model's window from breakout to the start of shock cooling, against the light curve's own peak.
+        // The breakout flash (Task 11): the model's window from breakout to the start of shock cooling, against the light curve's peak. That is
+        // _peakLuminosity: inside the light curve's range Luminosity() is its lbol (the breakout fallback is used only outside it), so the
+        // brightness mapping and the flash share one peak value (0 without a light curve, which gives no flash).
         double flashFrom = Breakout.BreakoutTimeS(outcome);
         if (double.IsFinite(flashFrom))
         {
             _flashFromS = flashFrom;
             _flashToS = Breakout.Cooling(outcome)?.StartS ?? Breakout.ValidRange(outcome).EndS;
             _flashTemperatureK = Breakout.FlashTemperatureK(outcome);
-            if (end > start && start > 0)
-                for (int i = 0; i <= 200; i++)
-                {
-                    double l = LightCurve.Sample(outcome, ObserverSetup.Default, start * Math.Pow(end / start, i / 200.0), "lbol");
-                    if (l > _lightCurvePeak) _lightCurvePeak = l;
-                }
         }
 
         // A Type Ia's white dwarf is drawn while the debris are within about its own radius of it.
@@ -401,10 +397,10 @@ public sealed class ExplosionScene
     /// </summary>
     private float FlashAt(double t)
     {
-        if (!(t >= _flashFromS && t < _flashToS) || !(_lightCurvePeak > 0)) return 0f;
+        if (!(t >= _flashFromS && t < _flashToS) || !(_peakLuminosity > 0)) return 0f;
         double lbo = Breakout.Sample(Outcome, ObserverSetup.Default, t, "lum");
         if (!(lbo > 0)) return 0f;
-        return (float)Math.Clamp(1 + Math.Log10(lbo / _lightCurvePeak), 0, MaxFlashIntensity);
+        return (float)Math.Clamp(1 + Math.Log10(lbo / _peakLuminosity), 0, MaxFlashIntensity);
     }
 
     private SceneState AtCore(double sourceTimeS)

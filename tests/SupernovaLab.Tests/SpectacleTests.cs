@@ -215,95 +215,103 @@ public class SpectacleTests
         return reader.ReadToEnd();
     }
 
-    // ---------------------------------------------------------------- the quality governor
+    // ---------------------------------------------------------------- the quality governor (ruling R-P2-30: GPU render time)
 
-    private static bool Feed(QualityGovernor g, double seconds, double frameS)
+    /// <summary>Feeds frames of this render time at this wall interval for this many seconds; true if the level changed.</summary>
+    private static bool Feed(QualityGovernor g, double seconds, double renderS, double intervalS)
     {
         bool changed = false;
-        for (double t = 0; t < seconds - 1e-9; t += frameS) changed |= g.Update(frameS);
+        for (double t = 0; t < seconds - 1e-9; t += intervalS) changed |= g.Update(renderS, intervalS);
         return changed;
     }
 
     [Fact]
-    public void Governor_StepsDownAfterThreeSlowSeconds_NotOnASpike()
+    public void Governor_ThirtyHertzIntervals_WithSmallRenderTimes_NeverStepsDown()
     {
-        // A spike (one 0.3 s frame in three seconds of 60 fps) leaves the mean above 50 fps: no change.
+        // A 30 Hz host (or an event-bound on-demand rate) with a fast GPU: the interval is 33 ms, the render time 4 ms.
+        var g = new QualityGovernor(QualityLevel.High);
+        Assert.False(Feed(g, 60, 0.004, 1.0 / 30));
+        Assert.Equal(QualityLevel.High, g.Level);
+    }
+
+    [Fact]
+    public void Governor_RenderTimesAbove20ms_ForThreeSeconds_StepsDownOnce_NotOnASpike()
+    {
+        // One 0.3 s render spike among 4 ms frames leaves the mean under 20 ms: no change.
         var spiky = new QualityGovernor(QualityLevel.High);
-        Assert.False(Feed(spiky, 1.4, 1.0 / 60));
-        Assert.False(spiky.Update(0.3));
-        Assert.False(Feed(spiky, 3.0, 1.0 / 60));
+        Assert.False(Feed(spiky, 1.4, 0.004, 1.0 / 60));
+        Assert.False(spiky.Update(0.3, 0.3));
+        Assert.False(Feed(spiky, 3.0, 0.004, 1.0 / 60));
         Assert.Equal(QualityLevel.High, spiky.Level);
 
-        // Slow all the time (40 fps): nothing before three seconds, a step down at three.
         var slow = new QualityGovernor(QualityLevel.High);
-        Assert.False(Feed(slow, 2.9, 0.025));
+        Assert.False(Feed(slow, 2.9, 0.025, 0.025));
         Assert.Equal(QualityLevel.High, slow.Level);
-        Assert.True(Feed(slow, 0.3, 0.025));
+        Assert.True(Feed(slow, 0.3, 0.025, 0.025));      // three seconds: one step
         Assert.Equal(QualityLevel.Medium, slow.Level);
-
-        // The window starts again after a change: another three slow seconds for the next step.
-        Assert.False(Feed(slow, 2.5, 0.025));
-        Assert.Equal(QualityLevel.Medium, slow.Level);
-        Assert.True(Feed(slow, 0.8, 0.025));
+        Assert.False(Feed(slow, 2.5, 0.025, 0.025));     // the window starts again
+        Assert.True(Feed(slow, 0.8, 0.025, 0.025));
         Assert.Equal(QualityLevel.Low, slow.Level);
+
+        // Just under the limit (20 ms) is fine.
+        Assert.False(Feed(new QualityGovernor(QualityLevel.High), 9, 0.0199, 0.02));
     }
 
     [Fact]
     public void Governor_NeverBelowLow_AndNeverStepsUp()
     {
         var g = new QualityGovernor(QualityLevel.Low);
-        Assert.False(Feed(g, 30, 0.1));
+        Assert.False(Feed(g, 30, 0.1, 0.1));
         Assert.Equal(QualityLevel.Low, g.Level);
 
         var h = new QualityGovernor(QualityLevel.High);
-        Feed(h, 3.1, 0.025);
+        Feed(h, 3.1, 0.025, 0.025);
         Assert.Equal(QualityLevel.Medium, h.Level);
-        Assert.False(Feed(h, 60, 1.0 / 144));   // fast for a minute: it stays down
+        Assert.False(Feed(h, 60, 0.002, 1.0 / 144));
         Assert.Equal(QualityLevel.Medium, h.Level);
     }
 
     [Fact]
-    public void Governor_IgnoresIdleGaps_AndAManualChoiceResetsIt()
+    public void Governor_IgnoresBadTimes_AndAManualChoiceResetsIt()
     {
         var g = new QualityGovernor(QualityLevel.High);
-        Assert.False(g.Update(double.NaN));
-        Assert.False(g.Update(-1));
-        Feed(g, 2.0, 0.025);
+        Assert.False(g.Update(double.NaN, 0.02));
+        Assert.False(g.Update(0.02, -1));
+        Assert.False(g.Update(-0.01, 0.02));
+        Feed(g, 2.0, 0.025, 0.025);
         g.Reset(QualityLevel.Medium);
         Assert.Equal(QualityLevel.Medium, g.Level);
-        Assert.False(Feed(g, 2.0, 0.025));          // the two slow seconds before the reset do not count
-        Assert.True(Feed(g, 1.2, 0.025));
+        Assert.False(Feed(g, 2.0, 0.025, 0.025));          // the two slow seconds before the reset do not count
+        Assert.True(Feed(g, 1.2, 0.025, 0.025));
         Assert.Equal(QualityLevel.Low, g.Level);
     }
 
     [Fact]
-    public void Controller_StepsDownOnSlowFrames_AndAManualChoiceResetsTheGovernor()
+    public void Controller_FedSlowRenderTimes_StepsDown_AndAManualChoiceResetsTheGovernor()
     {
         var vm = new MainViewModel(TestOutcomes.Engine, new FakeWindowService());
-        var host = new SlowHost();
-        var scene = new SceneController(vm, () => host);
-        scene.Start();
+        var scene = new SceneController(vm, () => new SlowHost());
+        Assert.False(scene.GpuTimingAvailable);   // no GL context here: nothing measures the GPU, so nothing steps down by itself
         Assert.Equal(QualityLevel.High, scene.Quality);
-        for (int i = 0; i < 130; i++) host.RaiseDraw(new Size(800, 600), 0.025);   // 3.25 s at 40 fps
+        for (int i = 0; i < 130; i++) scene.FeedRenderTime(0.025, 0.025);
         Assert.Equal(QualityLevel.Medium, scene.Quality);
         Assert.Contains(SceneController.QualityStepDownNote(QualityLevel.Medium), scene.NotesText);
         Assert.True(scene.IsQualityMedium);
 
-        // The user picks High: the note goes and the governor starts over (no immediate step on the next slow frame).
         scene.IsQualityHigh = true;
         Assert.Equal(QualityLevel.High, scene.Quality);
         Assert.DoesNotContain("lowered", scene.NotesText);
-        host.RaiseDraw(new Size(800, 600), 0.025);
+        scene.FeedRenderTime(0.025, 0.025);
         Assert.Equal(QualityLevel.High, scene.Quality);
 
-        // Automatic changes can be switched off (the --bench and --snapshot runs).
         scene.AutoQuality = false;
-        for (int i = 0; i < 400; i++) host.RaiseDraw(new Size(800, 600), 0.025);
+        for (int i = 0; i < 400; i++) scene.FeedRenderTime(0.025, 0.025);
         Assert.Equal(QualityLevel.High, scene.Quality);
 
-        // Idle time between on-demand frames is not slowness.
+        // Fast frames at a 30 Hz cadence, and idle gaps, never step down.
         scene.AutoQuality = true;
-        for (int i = 0; i < 20; i++) host.RaiseDraw(new Size(800, 600), 5.0);
+        for (int i = 0; i < 600; i++) scene.FeedRenderTime(0.004, 1.0 / 30);
+        for (int i = 0; i < 20; i++) scene.FeedRenderTime(5.0, 5.0);
         Assert.Equal(QualityLevel.High, scene.Quality);
     }
 
@@ -311,11 +319,39 @@ public class SpectacleTests
     {
         public bool Animating { get; set; }
         public event Action<string>? ContextReady { add { } remove { } }
-        public event Action<TimeSpan, Size>? Draw;
+        public event Action<TimeSpan, Size>? Draw { add { } remove { } }
         public event Action<Exception>? FrameFailed { add { } remove { } }
-        public void RaiseDraw(Size px, double deltaS) => Draw?.Invoke(TimeSpan.FromSeconds(deltaS), px);
         public void Start() { }
         public void RequestRender() { }
         public bool Shutdown(Action release) => false;
+    }
+
+    // ---------------------------------------------------------------- the collapsible notes overlay (ruling R-P2-30)
+
+    [Fact]
+    public void Notes_AreCollapsedByDefault_WithTheCount_AndExpandingShowsAll()
+    {
+        var vm = new MainViewModel(TestOutcomes.Engine, new FakeWindowService());
+        vm.Timeline.ObserverTimeS = 1e-3;
+        var scene = new SceneController(vm, () => new SlowHost());
+        var all = scene.NotesText.Split(Environment.NewLine);
+        Assert.True(all.Length > 1);
+        Assert.False(scene.IsNotesExpanded);
+        Assert.Equal(all[0], scene.NotesDisplayText);
+        Assert.Equal(SceneController.MoreNotesText(all.Length - 1), scene.NotesToggleText);
+        Assert.Contains($"{all.Length - 1} more notes", scene.NotesToggleText);
+
+        scene.ToggleNotesCommand.Execute(null);
+        Assert.True(scene.IsNotesExpanded);
+        Assert.Equal(scene.NotesText, scene.NotesDisplayText);
+        Assert.Equal(SceneController.HideNotesText, scene.NotesToggleText);
+
+        // The state is kept when the notes change (a new time).
+        vm.Timeline.ObserverTimeS = 1e6;
+        Assert.True(scene.IsNotesExpanded);
+        Assert.Equal(scene.NotesText, scene.NotesDisplayText);
+        scene.ToggleNotesCommand.Execute(null);
+        Assert.Equal(scene.NotesText.Split(Environment.NewLine)[0], scene.NotesDisplayText);
+        Assert.Equal("1 more note ▾", SceneController.MoreNotesText(1));
     }
 }

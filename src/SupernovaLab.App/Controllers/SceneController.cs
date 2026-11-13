@@ -59,6 +59,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private readonly QualityGovernor _governor = new(QualityLevels.Default);
     private string? _qualityNote;
     private FlashRenderer? _flash;
+    private GpuTimer? _gpuTimer;
     private JetRenderer? _jets;
     private RemnantRenderer? _remnant;
     private RingRenderer? _rings;
@@ -158,24 +159,33 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Whether the <see cref="QualityGovernor"/> may lower the quality when the view runs below 50 fps. On by default; the --snapshot and
+    /// Whether the <see cref="QualityGovernor"/> may lower the quality when the GPU needs more than 20 ms a frame (needs <see cref="GpuTimingAvailable"/>). On by default; the --snapshot and
     /// --bench runs switch it off so a measurement runs at the quality asked for.
     /// </summary>
     public bool AutoQuality { get; set; } = true;
 
-    /// <summary>A frame this long (s) is a pause between on-demand frames, not slowness: it is not counted and restarts the governor's window.</summary>
+    /// <summary>A frame this long (s) is a pause between on-demand frames, not a frame in a run: its render time is not fed to the governor.</summary>
     public const double MaxGovernedFrameS = 0.5;
 
     /// <summary>The overlay note after the governor lowers the quality to this level.</summary>
     public static string QualityStepDownNote(QualityLevel level)
-        => $"Quality lowered to {level} ({(int)level:N0} particles) automatically: the 3D view ran below {QualityGovernor.MinFps:0} frames per second. Choose a level in the View menu.";
+        => $"Quality lowered to {level} ({(int)level:N0} particles) automatically: the GPU took more than {1000 / QualityGovernor.MinFps:0} ms to draw a frame. Choose a level in the View menu.";
 
-    /// <summary>Feeds the governor this frame's time and applies a step down (before the frame's upload, so it is drawn at the new level).</summary>
-    private void GovernQuality(double frameS)
+    /// <summary>
+    /// Whether the GPU's time per frame can be measured (GL timer queries work). Without it the governor stays off and only the View &gt;
+    /// Quality menu changes the quality (ruling R-P2-30).
+    /// </summary>
+    public bool GpuTimingAvailable => _gpuTimer?.Available == true;
+
+    /// <summary>
+    /// Feeds the governor one rendered frame: its GPU render time and the wall time since the previous frame (both s) (ruling R-P2-30:
+    /// render time, not the frame interval, which a 30 Hz host or an event-bound on-demand rate would inflate). Applies a step down.
+    /// Public as the test hook for the timer's results.
+    /// </summary>
+    public void FeedRenderTime(double renderTimeS, double frameIntervalS)
     {
-        if (!AutoQuality) return;
-        if (frameS > MaxGovernedFrameS) { _governor.Reset(_governor.Level); return; }
-        if (!_governor.Update(frameS)) return;
+        if (!AutoQuality || frameIntervalS > MaxGovernedFrameS) return;
+        if (!_governor.Update(renderTimeS, frameIntervalS)) return;
         _qualityNote = QualityStepDownNote(_governor.Level);
         ApplyQuality(_governor.Level);
         UpdateOverlay();
@@ -417,6 +427,32 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         UpdateRings();
     }
 
+    /// <summary>Whether the notes overlay shows every note (expanded) or the first only (collapsed, the default). Kept for the session.</summary>
+    [ObservableProperty] private bool _isNotesExpanded;
+
+    /// <summary>What the notes overlay shows: every note when expanded, else the first only (<see cref="NotesText"/> is always all of them).</summary>
+    [ObservableProperty] private string _notesDisplayText = "";
+
+    /// <summary>The overlay's toggle text: "{n} more notes" with a down arrow when collapsed, "Hide notes" with an up arrow when expanded; empty when there is at most one note.</summary>
+    [ObservableProperty] private string _notesToggleText = "";
+
+    /// <summary>The collapsed toggle's text for this many hidden notes.</summary>
+    public static string MoreNotesText(int hidden) => hidden == 1 ? "1 more note \u25BE" : $"{hidden} more notes \u25BE";
+
+    public const string HideNotesText = "Hide notes \u25B4";
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void ToggleNotes() => IsNotesExpanded = !IsNotesExpanded;
+
+    partial void OnIsNotesExpandedChanged(bool value) => UpdateNotesDisplay();
+
+    private void UpdateNotesDisplay()
+    {
+        var lines = NotesText.Length == 0 ? Array.Empty<string>() : NotesText.Split(Environment.NewLine);
+        NotesDisplayText = IsNotesExpanded || lines.Length <= 1 ? NotesText : lines[0];
+        NotesToggleText = lines.Length <= 1 ? "" : IsNotesExpanded ? HideNotesText : MoreNotesText(lines.Length - 1);
+    }
+
     private void UpdateOverlay()
     {
         TimeText = _vm.Timeline.ObserverTimeText;
@@ -428,7 +464,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             RadiusText += Environment.NewLine + $"{_state.ForwardShockLabel}: {UnitFormat.Distance(_state.ForwardShockCm)}";
         var notes = IsCutaway ? _state.Notes.Append(CutawayNote) : _state.Notes;
         if (_qualityNote is not null) notes = notes.Append(_qualityNote);
-        NotesText = _modelError ?? string.Join(Environment.NewLine, notes);
+        var all = _modelError is not null ? new List<string> { _modelError } : notes.ToList();
+        NotesText = string.Join(Environment.NewLine, all);
+        UpdateNotesDisplay();
         Legend = LegendNow();
         OnPropertyChanged(nameof(ShowShockKey));
         OnPropertyChanged(nameof(ShowFingerKey));
@@ -535,6 +573,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _cutFaces = new CutFaceRenderer();
         _shells = new ShellRenderer();
         _flash = new FlashRenderer();
+        _gpuTimer = new GpuTimer();
     }
 
     /// <summary>True when a GL version string ("4.6.0 NVIDIA 551.86", "4.1 ...") is 4.1 or later.</summary>
@@ -561,12 +600,14 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private void OnDraw(TimeSpan delta, Size viewportPx)
     {
         if (_disposed) return;
-        GovernQuality(delta.TotalSeconds);
+        double interval = delta.TotalSeconds;
+        _gpuTimer?.Poll(t => FeedRenderTime(t, interval));   // measurements of earlier frames, read late
         StepDirector();
         if (_star is null || _particles is null || _hdr is null || _jets is null || _remnant is null || _rings is null) return;
         FramesDrawn++;
         if (_uploadParticles) UploadParticles();
         var s = _state;
+        _gpuTimer?.Begin();
         _hdr.Begin(viewportPx);
         GL.ColorMask(true, true, true, false);   // alpha is the cut faces' mask for the tone map: only the faces write it
         Action? cutFaces = null;
@@ -634,6 +675,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         GL.ColorMask(true, true, true, true);
         _hdr.End(s.Exposure, BloomStrength, cutFaces);
         if (FlashOverlayAlpha > 0) _flash?.RenderNoHdr(viewportPx, s.FlashColor, FlashOverlayAlpha);
+        _gpuTimer?.End();
         if (_readback is { } readback)
         {
             _readback = null;
@@ -902,6 +944,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             {
                 GlReleased = host.Shutdown(() =>
                 {
+                    _gpuTimer?.Dispose();
                     _flash?.Dispose();
                     _shells?.Dispose();
                     _cutFaces?.Dispose();
@@ -920,6 +963,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 Debug.WriteLine($"SceneController: releasing the GL objects failed: {e}");
             }
         }
+        _gpuTimer = null;
         _flash = null;
         _shells = null;
         _cutFaces = null;
