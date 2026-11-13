@@ -83,6 +83,9 @@ public class CameraDirectorTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Contains(4.0, ratios);
         Assert.Contains(5.0, ratios);
         Assert.True(worst >= minimum, $"worst cycle hold {worst:0.000} at {decadesPerSecond} decades/s");
+        // Ruling R-P2-8: every cycle, unit-boundary steps included, holds at least 2/3 at the default playback speed.
+        if (decadesPerSecond < 0.5)
+            Assert.True(Math.Min(worst, shortest) >= 2.0 / 3, $"worst cycle hold (all steps) {Math.Min(worst, shortest):0.000} at {decadesPerSecond} decades/s");
     }
 
     /// <summary>
