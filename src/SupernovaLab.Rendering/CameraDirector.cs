@@ -20,6 +20,7 @@ public sealed class CameraDirector
     private readonly double _ease;
     private bool _started;
     private double _ringCm;
+    private int _index;
     private double _fromLog, _toLog, _elapsed;
 
     public CameraDirector(double easeSeconds = 0.3) => _ease = easeSeconds > 0 ? easeSeconds : 0;
@@ -37,9 +38,8 @@ public sealed class CameraDirector
     public void Jump(double frameRadiusCm)
     {
         if (!Valid(frameRadiusCm)) return;
-        double want = frameRadiusCm / JumpFraction;
-        double unitCm = ScaleBar.UnitFor(want).UnitCm;
-        _ringCm = DistanceRings.CeilLadder(want / unitCm) * unitCm;
+        _index = DistanceRings.IndexAtLeast(frameRadiusCm / JumpFraction);
+        _ringCm = DistanceRings.TableValue(_index);
         HalfHeightCm = _ringCm / RingLine;
         _fromLog = _toLog = Math.Log(HalfHeightCm);
         _elapsed = 0;
@@ -61,18 +61,17 @@ public sealed class CameraDirector
 
     private void Retarget(double r)
     {
-        string unit = ScaleBar.UnitFor(HalfHeightCm).Name;
-        double ring = _ringCm;
-        for (int i = 0; i < 100 && r >= StepOutAt * ring; i++)
-            ring = DistanceRings.Rung(ring, 2, unit);
-        if (ring == _ringCm)
-            for (int i = 0; i < 100; i++)
-            {
-                double down = DistanceRings.Rung(ring, -2, unit);
-                if (!(r < StepInBelow * down)) break;
-                ring = down;
-            }
-        if (ring == _ringCm) return;
+        // Two rungs on the table of rings (see DistanceRings): a unit boundary is crossed consistently with Rungs.
+        int last = DistanceRings.TableCount - 1;
+        int idx = _index;
+        while (idx < last && r >= StepOutAt * DistanceRings.TableValue(idx))
+            idx = Math.Min(idx + 2, last);
+        if (idx == _index)
+            while (idx - 2 >= 0 && r < StepInBelow * DistanceRings.TableValue(idx - 2))
+                idx -= 2;
+        if (idx == _index) return;
+        _index = idx;
+        double ring = DistanceRings.TableValue(idx);
         _ringCm = ring;
         _fromLog = Math.Log(HalfHeightCm);
         _toLog = Math.Log(ring / RingLine);

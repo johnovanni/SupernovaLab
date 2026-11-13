@@ -64,29 +64,108 @@ public class CameraDirectorTests(Xunit.Abstractions.ITestOutputHelper output)
     [Theory]
     [InlineData(1.0 / 3, 0.80)]
     [InlineData(0.675, 0.66)]
-    public void HoldFraction_AtPlaybackSpeed_MeetsTheCriterion(double decadesPerSecond, double minimum)
+    public void HoldFraction_EveryPullBackCycle_MeetsTheCriterion(double decadesPerSecond, double minimum)
     {
-        double hold = HoldFraction(decadesPerSecond);
-        output.WriteLine($"hold fraction {hold:0.0000} at {decadesPerSecond} decades/s");
-        Assert.True(hold >= minimum, $"hold fraction {hold:0.000} at {decadesPerSecond} decades/s");
+        double worst = double.MaxValue, shortest = double.MaxValue;
+        var ratios = new HashSet<double>();
+        // Start offsets over a full decade of ring values, so the x5, x5 and x4 step ratios all occur.
+        for (int k = 0; k < 24; k++)
+        {
+            double r0 = 3e10 * Math.Pow(10, k / 24.0);
+            foreach (var (hold, ratio) in CycleHolds(decadesPerSecond, r0))
+            {
+                if (ratio < 3.9) { shortest = Math.Min(shortest, hold); continue; } // unit-boundary skips (e.g. 1e8 km to 1 AU), see report
+                worst = Math.Min(worst, hold);
+                ratios.Add(Math.Round(ratio));
+            }
+        }
+        output.WriteLine($"worst per-cycle hold {worst:0.0000} at {decadesPerSecond:0.###} decades/s; step ratios {string.Join(",", ratios.OrderBy(x => x))}; worst boundary-skip cycle {shortest:0.0000}");
+        Assert.Contains(4.0, ratios);
+        Assert.Contains(5.0, ratios);
+        Assert.True(worst >= minimum, $"worst cycle hold {worst:0.000} at {decadesPerSecond} decades/s");
     }
 
-    /// <summary>Playback from 1 day to 1 yr at a given log-time rate, radius ∝ t, 1/60 s frames.</summary>
-    internal static double HoldFraction(double decadesPerSecond)
+    /// <summary>
+    /// Plays back at a log-time rate with radius ∝ t over four decades, 1/60 s frames. Returns the fraction of frames not
+    /// easing in each complete cycle (from one step-out to the next) and that cycle's step ratio.
+    /// </summary>
+    private static List<(double Hold, double Ratio)> CycleHolds(double decadesPerSecond, double r0)
     {
-        const double day = 86400, v = 1e9, dt = 1.0 / 60;
-        double decades = Math.Log10(365.25), logT = 0;
+        const double dt = 1.0 / 60;
         var d = new CameraDirector();
-        d.Jump(v * day);
+        d.Jump(r0);
+        var result = new List<(double, double)>();
+        double logR = Math.Log10(r0), end = logR + 4;
+        double ringBefore = d.OuterRingCm, cycleStartRing = 0;
         int frames = 0, holding = 0;
-        while (logT < decades)
+        bool started = false;
+        while (logR < end)
         {
-            logT += decadesPerSecond * dt;
-            d.Update(v * day * Math.Pow(10, logT), dt);
+            logR += decadesPerSecond * dt;
+            bool was = d.IsEasing;
+            d.Update(Math.Pow(10, logR), dt);
+            if (!was && d.IsEasing)
+            {
+                if (started) result.Add(((double)holding / frames, ringBefore / cycleStartRing));
+                started = true;
+                cycleStartRing = ringBefore;
+                frames = 0; holding = 0;
+                ringBefore = d.OuterRingCm;
+            }
             frames++;
             if (!d.IsEasing) holding++;
         }
-        return (double)holding / frames;
+        return result;
+    }
+
+    [Theory]
+    [InlineData(1e9)]
+    [InlineData(1e12)]
+    [InlineData(1e15)]
+    [InlineData(1e17)]
+    [InlineData(1e19)]
+    public void Rungs_OuterRingIsTheDirectorsRing_AcrossUnitBoundaries(double startCm)
+    {
+        // Jump sweep, then slow playback outward and back, across the km/AU, AU/light-year, light-year/pc boundaries.
+        for (int k = 0; k < 120; k++)
+        {
+            var j = new CameraDirector();
+            j.Jump(startCm * Math.Pow(10, k / 60.0));
+            AssertOuterRing(j);
+        }
+        var d = new CameraDirector();
+        d.Jump(startCm);
+        AssertOuterRing(d);
+        double logR = Math.Log10(startCm);
+        for (int dir = 0; dir < 2; dir++)
+            for (int i = 0; i < 4000; i++)
+            {
+                logR += (dir == 0 ? 1 : -1) * 0.001;
+                d.Update(Math.Pow(10, logR), 1.0);
+                AssertOuterRing(d);
+            }
+    }
+
+    [Fact]
+    public void Rungs_OuterRingIsTheDirectorsRing_AtTheNamedThresholds()
+    {
+        // Frame radii that put H just below and just above 1 AU, 1e4 AU and 1 pc (and the km path).
+        foreach (double edge in new[] { Au, 1e4 * Au, PhysicalConstants.Pc, 1e5 })
+            foreach (double f in new[] { 0.3, 0.5, 0.54, 0.55, 0.6, 0.7, 0.9, 1.0, 1.2, 2.0 })
+            {
+                var d = new CameraDirector();
+                d.Jump(edge * f);
+                AssertOuterRing(d);
+            }
+    }
+
+    private static void AssertOuterRing(CameraDirector d)
+    {
+        if (d.IsEasing) return;
+        var rungs = DistanceRings.Rungs(d.HalfHeightCm);
+        Assert.NotEmpty(rungs);
+        Assert.Equal(d.OuterRingCm, rungs[0].RadiusCm, d.OuterRingCm * 1e-9);
+        Assert.Equal(1f, rungs[0].Opacity);
     }
 
     [Fact]

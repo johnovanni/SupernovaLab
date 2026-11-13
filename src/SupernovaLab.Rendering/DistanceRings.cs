@@ -18,8 +18,11 @@ public static class DistanceRings
     {
         var rings = new List<Ring>();
         if (!(halfHeightCm > 0) || double.IsInfinity(halfHeightCm)) return rings;
+        double outerCm = Outer * halfHeightCm;
         var (unitCm, name) = ScaleBar.UnitFor(halfHeightCm);
-        double value = FloorLadder(Outer * halfHeightCm / unitCm);
+        int top = IndexAtMost(outerCm);
+        if (top >= 0) { unitCm = Table[top].UnitCm; name = Table[top].Unit; }
+        double value = top >= 0 ? Table[top].Cm / unitCm : FloorLadder(outerCm / unitCm);
         for (int i = 0; i < 100; i++)
         {
             double cm = value * unitCm;
@@ -37,6 +40,50 @@ public static class DistanceRings
     {
         double unitCm = ScaleBar.UnitCmOf(unitName);
         return Step(FloorLadder(cm / unitCm), steps) * unitCm;
+    }
+
+    /// <summary>
+    /// Every outer-ring value the director may use, ascending: the 1-2-5 values V of each unit for which a view of half-height
+    /// V / 0.9 is shown in that same unit. So the unit the director picks and the unit <see cref="Rungs"/> derives agree.
+    /// </summary>
+    private static readonly (double Cm, double UnitCm, string Unit)[] Table = BuildTable();
+
+    private static (double Cm, double UnitCm, string Unit)[] BuildTable()
+    {
+        var list = new List<(double, double, string)>();
+        foreach (var name in new[] { "km", "AU", "light-year", "pc" })
+        {
+            double unitCm = ScaleBar.UnitCmOf(name);
+            for (int e = -8; e <= 12; e++)
+                foreach (double m in Mantissas)
+                {
+                    double cm = m * Math.Pow(10, e) * unitCm;
+                    if (cm < 1e3 || cm > 1e26) continue;
+                    if (ScaleBar.UnitFor(cm / Outer).Name == name) list.Add((cm, unitCm, name));
+                }
+        }
+        list.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+        return list.ToArray();
+    }
+
+    internal static int TableCount => Table.Length;
+
+    internal static double TableValue(int index) => Table[Math.Clamp(index, 0, Table.Length - 1)].Cm;
+
+    /// <summary>Index of the largest table ring ≤ cm (with rounding tolerance), or −1 if none.</summary>
+    internal static int IndexAtMost(double cm)
+    {
+        int found = -1;
+        for (int i = 0; i < Table.Length && Table[i].Cm <= cm * (1 + Tol); i++) found = i;
+        return found;
+    }
+
+    /// <summary>Index of the smallest table ring ≥ cm (with rounding tolerance); the last one if cm is beyond the table.</summary>
+    internal static int IndexAtLeast(double cm)
+    {
+        for (int i = 0; i < Table.Length; i++)
+            if (Table[i].Cm >= cm * (1 - Tol)) return i;
+        return Table.Length - 1;
     }
 
     /// <summary>The smallest ladder value (in the same units as x) that is at least x.</summary>
