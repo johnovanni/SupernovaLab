@@ -150,62 +150,130 @@ public class ExplosionSceneTests
 
     // ---------------------------------------------------------------- fix round 1
 
+    /// <summary>The dense-gas input on a II-P star: SN 2023ixf's confined gas, 1e15 cm. (The engine itself turns the input into a Type IIn.)</summary>
     private static Outcome DenseCsm()
-        => TestOutcomes.Engine.Compute(LabInputs.Default with { DenseCsm = true });
+        => TestOutcomes.Custom(SupernovaType.IIP, 1e51, 10, 0.07, 3e13, inputs: LabInputs.Default with { DenseCsm = true });
 
     [Fact]
-    public void GasAroundTheStar_IsShownForDenseCsm_BeforeTheExplosion_AndFramed()
+    public void DenseShell_IsInTheState_BeforeTheExplosion_AndFramed()
     {
-        // Review I1 (spec §6): a translucent shell for significant gas around the star, out to the [APPROX] 1e15 cm.
+        // Task 9 (structure §S7): a dense shell out to SN 2023ixf's 1e15 cm; a dense shell may drive the framing, as Project 1's gas shell did.
         var s = new ExplosionScene(DenseCsm()).At(1e-3);
         Assert.True(s.ShowStar);
-        Assert.True(s.ShowGas);
-        Assert.Equal(ExplosionScene.GasRadiusCm, s.GasRadiusCm);
-        Assert.Equal(ExplosionScene.GasRadiusCm, s.FrameRadiusCm);
+        var c = s.Surroundings!;
+        Assert.Equal(1e15, c.ShellOuterCm);
+        Assert.Equal(1e15, s.FrameRadiusCm);
         Assert.Equal(s.StarRadiusCm, s.RadiusCm);
-        Assert.Contains(s.Notes, n => n.StartsWith("Gas around the star (schematic", StringComparison.Ordinal));
+        Assert.Equal(0f, s.SurroundingsGlow);   // the shock has not reached the star's surface
     }
 
     [Fact]
-    public void GasAroundTheStar_IsShownForAWindTenTimesDenserThanARedSupergiants()
+    public void Haze_DoesNotDriveTheFraming_ButADenseShellDoes()
     {
-        // A_* = (Ṁ / 1e-5 M☉/yr) / (v_w / 1,000 km/s): 1e-4 M☉/yr at 10 km/s is A_* = 1,000, at or above the [APPROX]
-        // threshold of 100; the lab's ordinary red-supergiant wind, 1e-6 M☉/yr at 10 km/s, is A_* = 10 (signals §0.4).
+        // The wind extends to parsecs: the director frames the star (or the debris) instead.
         var plain = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 3, 0.07, 3e13);
-        Assert.False(new ExplosionScene(TestOutcomes.WithWind(plain, 1e-6, 10)).At(1e-3).ShowGas);
-        Assert.True(new ExplosionScene(TestOutcomes.WithWind(plain, 1e-4, 10)).At(1e-3).ShowGas);
-        // 9.9e-6 M☉/yr at 10 km/s is A_* = 99, just below the threshold.
-        Assert.False(new ExplosionScene(TestOutcomes.WithWind(plain, 9.9e-6, 10)).At(1e-3).ShowGas);
-        Assert.Equal(100, ExplosionScene.DenseWindAStar);
+        var s = new ExplosionScene(plain).At(1e-3);
+        Assert.NotNull(s.Surroundings);
+        Assert.True(s.Surroundings!.WindOuterCm > 1e18);
+        Assert.Equal(3e13, s.FrameRadiusCm);
+        var later = new ExplosionScene(plain).At(Year);
+        Assert.Equal(Math.Max(later.EjectaRadiusCm, later.Frame99RadiusCm), later.FrameRadiusCm);
+        Assert.True(later.FrameRadiusCm < later.Surroundings!.WindOuterCm / 10);
+        // A dense shell does, while the debris are inside it.
+        var scene = new ExplosionScene(DenseCsm());
+        var early = scene.At(Day);
+        Assert.True(early.EjectaRadiusCm < 1e15);
+        Assert.Equal(1e15, early.FrameRadiusCm);
     }
 
     [Fact]
-    public void ZeroWindSpeed_GivesNaNAStar_NotInfinity_AndNoGasShell()
+    public void WindSpeedZero_GivesNaNAStar_NotInfinity_AndNoHaze()
     {
-        // Task 16 re-review N3: mass loss with a still wind is A_* = Ṁ/0; it must be NaN, and the shell must not show.
+        // Task 16 re-review N3: mass loss with a still wind is A_* = Ṁ/0; it must be NaN, and the haze must not be drawn.
         var plain = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 3, 0.07, 3e13);
         var still = TestOutcomes.WithWind(plain, 1e-4, 0);
         Assert.True(double.IsNaN(CsmInteractionModel.WindAStar(still)));
-        Assert.False(new ExplosionScene(still).At(1e-3).ShowGas);
+        var c = new ExplosionScene(still).At(1e-3).Surroundings!;
+        Assert.True(double.IsNaN(c.WindAStar));
+        Assert.Equal(c.WindInnerCm, c.WindOuterCm);
         Assert.True(double.IsNaN(CsmInteractionModel.WindAStar(TestOutcomes.WithWind(plain, 1e-4, double.NaN))));
         Assert.Equal(1000, CsmInteractionModel.WindAStar(TestOutcomes.WithWind(plain, 1e-4, 10)), 6);
     }
 
     [Fact]
-    public void GasAroundTheStar_IsHiddenOnceTheEjectaPassIt()
+    public void Surroundings_AreTheModels_AndAbsentForATypeIa()
+    {
+        var o = Exploding();
+        var s = new ExplosionScene(o).At(Day);
+        Assert.Equal(CircumstellarStructureModel.For(o), s.Surroundings);
+        Assert.Equal(CircumstellarStructureModel.Glow(o, Day), s.SurroundingsGlow);
+        Assert.Null(new ExplosionScene(TestOutcomes.TypeIa()).At(Day).Surroundings);
+        Assert.Equal(0f, new ExplosionScene(TestOutcomes.TypeIa()).At(Day).SurroundingsGlow);
+        // No star, no surroundings.
+        var wd = TestOutcomes.Engine.Compute(LabInputs.Default with { InitialMass = 0.5 });
+        if (wd.Star is null) Assert.Null(new ExplosionScene(wd).At(Day).Surroundings);
+    }
+
+    [Fact]
+    public void GasNote_KeepsProject1sWording_ForTheFallbackExtent_ElseNamesItsSource()
+    {
+        // Ibn: §S7 gives no extent, so the 1e15 cm fallback and Project 1's note; the II-P dense-gas case names its source.
+        var ibn = TestOutcomes.Custom(SupernovaType.Ibn, 1e51, 3, 0.07, 1e12);
+        var fallback = new ExplosionScene(ibn).At(1e-3);
+        Assert.Equal(Confidence.Speculative, fallback.Surroundings!.ShellConfidence);
+        Assert.Contains(ExplosionScene.GasNote, fallback.Notes);
+        Assert.Equal("Gas around the star (schematic): its extent is not in the research; drawn to 1e15 cm, like SN 2023ixf's", ExplosionScene.GasNote);
+
+        var s = new ExplosionScene(DenseCsm()).At(1e-3);
+        Assert.DoesNotContain(ExplosionScene.GasNote, s.Notes);
+        Assert.Contains($"Gas around the star: extent from {s.Surroundings!.Source.Citation}", s.Notes);
+        // An ordinary star's haze is named too.
+        var plain = new ExplosionScene(Exploding()).At(1e-3);
+        Assert.Contains($"Gas around the star: extent from {plain.Surroundings!.Source.Citation}", plain.Notes);
+        Assert.Null(plain.Surroundings.ShellOuterCm);
+    }
+
+    [Fact]
+    public void DenseShell_StopsFramingOnceTheEjectaPassIt()
     {
         var o = DenseCsm();
         double passed = 0;
         for (double t = 1; t < 1e9; t *= 1.1)
-            if (EjectaKinematics.RadiusCm(o, t) >= ExplosionScene.GasRadiusCm) { passed = t; break; }
+            if (EjectaKinematics.RadiusCm(o, t) >= 1e15) { passed = t; break; }
         Assert.True(passed > 0);
         var scene = new ExplosionScene(o);
-        Assert.True(scene.At(passed / 2).ShowGas);
-        Assert.False(scene.At(passed * 1.2).ShowGas);
+        Assert.Equal(1e15, scene.At(passed / 2).FrameRadiusCm);
+        Assert.True(scene.At(passed * 1.2).FrameRadiusCm >= EjectaKinematics.RadiusCm(o, passed * 1.2));
+    }
+
+    // ---------------------------------------------------------------- Task 8 review carry-over: the readout's label at the join
+
+    [Fact]
+    public void ForwardShockLabel_StaysTheJoinLabel_WhileTheHeldJoinMaximumIsDrawn_Sn1998bw()
+    {
+        // TM99's forward shock for n = 10 reaches SN 1998bw's held peak (0.591 pc, held from 4.08 yr) only at ≈ 13.5 yr: until then
+        // the drawn R_f is the held join maximum, so the readout keeps the join label (it is not yet the steep-ejecta solution).
+        var preset = PresetCatalog.Get("sn1998bw");
+        var o = TestOutcomes.Engine.Compute(preset.Inputs, preset.Pins);
+        var scene = new ExplosionScene(o);
+        var held = scene.At(11 * Year);
+        double tm = TmForwardCm(o, 11 * Year);
+        Assert.True(held.Shocks!.ForwardCm > tm * 1.001, $"R_f {held.Shocks.ForwardCm} vs TM99 {tm}");
+        Assert.Equal(ExplosionScene.BlendShockLabel, held.ForwardShockLabel);
+        var late = scene.At(20 * Year);
+        Assert.InRange(late.Shocks!.ForwardCm / TmForwardCm(o, 20 * Year), 0.9999, 1.0001);
+        Assert.Equal(ExplosionScene.ForwardShockLabel, late.ForwardShockLabel);
+    }
+
+    private static double TmForwardCm(Outcome o, double t)
+    {
+        var (rch, tch) = ShockStructureModel.CharacteristicScales(o.ExplosionEnergyErg!.Value, o.EjectaMass!.Value,
+            RemnantEvolutionModel.AmbientDensity);
+        return ShockStructureModel.TmForward(ShockStructureModel.RemnantIndex(EjectaStructureModel.ClassOf(o)), t / tch) * rch;
     }
 
     [Fact]
-    public void OrdinaryStar_HasNoGasShell() => Assert.False(new ExplosionScene(Exploding()).At(1e-3).ShowGas);
+    public void OrdinaryStar_HasNoDenseShell() => Assert.Null(new ExplosionScene(Exploding()).At(1e-3).Surroundings!.ShellOuterCm);
 
     [Fact]
     public void EjectaRadius_IsLabelledAsTheUniformSphereEdge()

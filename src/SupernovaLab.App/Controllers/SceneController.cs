@@ -499,7 +499,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 _shells.Cutaway = IsCutaway;
             }
             if (_cutFaces is not null) _cutFaces.WedgeAngleRad = _wedgeAngleRad;
-            if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
+            if (s.Surroundings is not null && _shells is not null) DrawSurroundings(viewportPx, s, unit);
             if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor, starCut);
             if (s.ShowParticles && _uploaded is { } set)
             {
@@ -645,6 +645,83 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         double rOut = shocks.ReverseCm / unit;
         double thick = Math.Min(rOut, Math.Max(ReverseShellFraction * rOut, ReverseShellMinPx * pxUnits));
         _shells.Render(Camera, viewportPx, ShellKind.Shell, rOut - thick, rOut, ExplosionScene.HotGasColor, ReverseShellIntensity * w);
+    }
+
+    /// <summary>The wind haze: faint grey-blue (schematic).</summary>
+    public static readonly (float R, float G, float B) HazeColor = (0.55f, 0.65f, 0.85f);
+
+    /// <summary>The dense shell's colour (schematic): a little warmer than the haze.</summary>
+    public static readonly (float R, float G, float B) DenseShellColor = (0.75f, 0.70f, 0.80f);
+
+    /// <summary>The colour of the gas where the shock lights it (schematic): pale blue-white.</summary>
+    public static readonly (float R, float G, float B) GlowColor = (0.85f, 0.92f, 1.00f);
+
+    /// <summary>
+    /// [APPROX, first guess for Task 11's retune] The haze's HDR brightness at an impact parameter of 2 R* (the lines of sight
+    /// nearest the star), for A_* = 10 (the lab's ordinary red-supergiant wind); the brightness elsewhere follows the column
+    /// density (about 1/b). Faint, so the ejecta and shocks stay the picture.
+    /// </summary>
+    public const float HazeIntensityAtTenAStar = 0.06f;
+
+    /// <summary>[APPROX, first guess] The haze's brightness changes by this factor for each decade of A_* (a log scale, ∝ A_*^0.25), clamped to <see cref="HazeMinScale"/>–<see cref="HazeMaxScale"/>.</summary>
+    public const double HazeScalePerDecade = 0.25, HazeMinScale = 0.25, HazeMaxScale = 2.0;
+
+    /// <summary>[APPROX, first guess] The dense shell's HDR brightness at its brightest line of sight, and how much the glow adds to it (so it flares when hit).</summary>
+    public const float DenseShellIntensity = 0.12f, DenseShellFlare = 3f;
+
+    /// <summary>[APPROX, first guess] The lit gas at the forward shock: a thin shell of this fraction of R_f, at most this HDR brightness (times the glow; the dense gas lights this much more).</summary>
+    public const double GlowShellFraction = 0.04;
+    public const float GlowShellIntensity = 1.2f, DenseGlowGain = 2f;
+
+    /// <summary>The haze's brightness scale for a wind of this A_* (1 at A_* = 10): 10^(0.25 (log10 A_* − 1)), clamped.</summary>
+    public static double HazeScale(double aStar)
+        => aStar > 0 ? Math.Clamp(Math.Pow(10, HazeScalePerDecade * (Math.Log10(aStar) - 1)), HazeMinScale, HazeMaxScale) : 0;
+
+    /// <summary>
+    /// The gas around the star (structure §S7, plan ruling P8): the wind haze (ρ ∝ 1/r², R* out to the wind's outer extent) drawn only
+    /// outside the forward shock, the dense shell (uniform, R* to its outer radius, flaring with the shock's glow) likewise, and
+    /// at the forward shock a thin lit shell scaled by the glow. All clip to the removed quarter in the cutaway (the shell
+    /// shader). Radii in scene units (cm over the unit). The haze's brightness is pinned to its column at b = 2 R*, since the
+    /// shader normalizes by the largest column (at the wind's far edge), which is meaningless against the star.
+    /// </summary>
+    private void DrawSurroundings(Size viewportPx, SceneState s, double unit)
+    {
+        var csm = s.Surroundings!;
+        double forwardCm = s.Shocks?.ForwardCm ?? 0;
+        float glow = s.SurroundingsGlow;
+        double rOut = csm.WindOuterCm / unit;
+        if (csm.WindAStar > 0 && csm.WindOuterCm > csm.WindInnerCm && csm.WindInnerCm > 0)
+        {
+            double inner = Math.Max(csm.WindInnerCm, forwardCm) / unit;
+            if (inner < rOut)
+            {
+                // intensity such that the column through the whole wind at b = 2 R* has this brightness.
+                double bRef = 2 * csm.WindInnerCm / unit;
+                double reference = ColumnDensity.Wind(bRef, csm.WindInnerCm / unit, rOut);
+                double peak = ColumnDensity.Peak(ShellKind.Wind, inner, rOut);
+                if (reference > 0 && peak > 0)
+                {
+                    float target = (float)(HazeIntensityAtTenAStar * HazeScale(csm.WindAStar));
+                    _shells!.Render(Camera, viewportPx, ShellKind.Wind, inner, rOut, HazeColor, (float)(target * peak / reference));
+                }
+            }
+        }
+        if (csm.ShellOuterCm is { } shellOuterCm && csm.ShellInnerCm is { } shellInnerCm)
+        {
+            double inner = Math.Max(shellInnerCm, forwardCm) / unit, outer = shellOuterCm / unit;
+            if (inner < outer)
+                _shells!.Render(Camera, viewportPx, ShellKind.Shell, inner, outer, DenseShellColor, DenseShellIntensity * (1 + DenseShellFlare * glow));
+        }
+        if (s.Shocks is { } shocks && glow > 0 && shocks.ForwardCm > 0)
+        {
+            bool inDense = csm.ShellOuterCm is { } o && shocks.ForwardCm < o;
+            bool inWind = csm.WindAStar > 0 && shocks.ForwardCm < csm.WindOuterCm;
+            if (!inDense && !inWind) return;
+            double rf = shocks.ForwardCm / unit;
+            float w = (float)Math.Clamp(shocks.ConfinementWeight, 0, 1);
+            _shells!.Render(Camera, viewportPx, ShellKind.Shell, rf * (1 - GlowShellFraction), rf, GlowColor,
+                GlowShellIntensity * glow * w * (inDense ? DenseGlowGain : 1));
+        }
     }
 
     /// <summary>

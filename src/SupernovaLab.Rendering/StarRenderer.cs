@@ -16,7 +16,7 @@ public sealed record StarCutaway(IReadOnlyList<(float OuterFraction, Vector3 Col
 
 /// <summary>
 /// The star before the explosion (spec §6): a disk facing the camera, sized to the star's radius and coloured by its
-/// surface temperature, with schematic limb darkening; and, with the same disk, the translucent gas around the star.
+/// surface temperature, with schematic limb darkening; (the gas around it is drawn by ShellRenderer).
 /// Create and use with the GL context current.
 /// </summary>
 public sealed class StarRenderer : IDisposable
@@ -40,10 +40,6 @@ public sealed class StarRenderer : IDisposable
     /// <summary>The wedge's angle about the scene's y axis (ruling R-P2-22), radians.</summary>
     public double WedgeAngleRad { get; set; }
 
-    /// <summary>The gas around the star: pale blue-grey (schematic), at most this opaque.</summary>
-    private static readonly (float R, float G, float B) GasColor = (0.55f, 0.65f, 0.85f);
-    private const float GasAlpha = 0.35f;
-
     /// <summary>The shock ring's HDR colour: hot white, bright enough to stay white after the exposure (0.2) and tone map.</summary>
     private static readonly Vector3 RingColor = new(30f, 28f, 24f);
 
@@ -57,13 +53,6 @@ public sealed class StarRenderer : IDisposable
     /// </summary>
     public void RenderCutFaces(OrbitCamera camera, Size viewportPx, double radius, StarCutaway cutaway)
         => Draw(camera, viewportPx, radius, (1f, 1f, 1f), mode: 0, alpha: 1, cut: 1, pass: 1, cutaway);
-
-    /// <summary>
-    /// Draws the gas around the star (spec §6) as a translucent ball of this radius (scene units): a schematic haze, densest
-    /// through its middle, with a faint rim. Draw it before the star and the ejecta.
-    /// </summary>
-    public void RenderGas(OrbitCamera camera, Size viewportPx, double radius)
-        => Draw(camera, viewportPx, radius, GasColor, mode: 1, alpha: GasAlpha, cut: 0, pass: 0, cutaway: null);
 
     private void Draw(OrbitCamera camera, Size viewportPx, double radius, (float R, float G, float B) color, int mode,
         float alpha, int cut, int pass, StarCutaway? cutaway)

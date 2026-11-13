@@ -306,7 +306,7 @@ public static class Glossary
         "edge of the debris in the lab's simple model (a uniform ball of gas; the fastest layers are really faster), which " +
         "blends into the remnant model's blast wave between 3 and 10 years; from 10 years it is the drawn forward shock. The grey circles are measuring rings, labelled with their distance from the centre; " +
         "the view steps back to a larger scale when the debris reach the outer ring. " +
-        "Colours and the gas around the star are schematic. Drag to turn, wheel to zoom.";
+        "Colours and the gas around the star (its faint wind haze and any dense shell) are schematic. Drag to turn, wheel to zoom.";
 
     public const string DistanceRings =
         "Measuring circles, not part of the supernova: when the debris reach a ring, they are that far from the centre.";
@@ -322,6 +322,13 @@ public static class Glossary
         "star, heating it to millions of degrees. The pale shell is that swept-up gas, brightest at its rim where the line of " +
         "sight crosses the most of it. In the first years its radius is the radio model's shock; from 10 years it is Truelove & " +
         "McKee's solution for the debris' steep outer layers, larger at first than the remnant panel's uniform-debris radius.";
+    public const string WindHaze =
+        "The wind the star blew before it died, drawn as a faint haze that thins as one over the distance squared and ends " +
+        "where the wind's pressure balances the surrounding gas (about 1 to 20 light-years across). The shock lights it up where " +
+        "it arrives; the shocked gas inside belongs to the swept-up shell.";
+    public const string DenseCircumstellarShell =
+        "Dense gas the star threw off in its last years (Type IIn and similar explosions, or SN 2023ixf's confined gas). It flares " +
+        "when the shock runs into it. Its extent is a schematic estimate from the research.";
     public const string ReverseShock =
         "The reverse shock: when the swept-up gas slows the debris down, a second shock runs back into the debris themselves " +
         "(outward at first, but more slowly than they move) and heats them. Debris it has passed are drawn hot and bright, packed " +

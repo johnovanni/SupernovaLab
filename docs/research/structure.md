@@ -473,8 +473,9 @@ Outcomes with no wind era use the remnant-era solution from their start (TM99 ho
 computed on the same log grid as the confinement below, interpolated as a power law between nodes, so it is continuous and
 never decreases. R_c and R_r keep their blended ratios (R_c/R_f, R_r/R_f at t), applied to this R_f.
 - Why: for hydrogen-poor outcomes the radio model's v_s t runs 2–3× ahead of TM99 n = 10 at 3 yr, so the bare blend
-  contracted. SN 1998bw went 0.591 pc at 4 yr → 0.456 pc at 8.1 yr; the maximum holds 0.591 pc until TM99 overtakes it at
-  ≈ 12 yr.
+  contracted. SN 1998bw went 0.591 pc at 4 yr → 0.456 pc at 8.1 yr; the maximum holds 0.591 pc (reached at 4.08 yr) until
+  TM99 n = 10 overtakes it at ≈ 13.5 yr (t_ch = 633 yr, R_ch = 7.61 pc: R_f* = 0.0777 at t* ≈ 0.0211). Until then the readout keeps
+  the join label; it switches to "steep-ejecta solution" once R_f equals the TM99 value.
 - Hydrogen-rich joins instead accelerate mildly (d ln R/d ln t up to ≈ 1.3); that is disclosed, not corrected.
 - The join is schematic (inconsistency #45).
 
@@ -500,7 +501,9 @@ Project 1's remnant model is unchanged; using the class-n solution there would c
 - forward shock: 0.73% (n = 7, at t* = 0.732), 0.20% (n = 10), 0.14% (n = 12);
 - reverse shock: 0.59% (n = 7, at t* = 0.363), 0.13% (n = 10), 0.05% (n = 12).
 
-They are drawn as published.
+They are drawn as published in TM99's own curves, but because R_f is a running maximum (ruling R-P2-26) the forward-shock steps
+are not seen in R_f: TM99's forward-shock join steps (−0.73% for n = 7 at t* ≈ 0.732, −0.20% for n = 10, −0.14% for n = 12) are
+held flat in R_f, and appear instead as small outward steps in R_c and R_r, whose ratios to R_f are applied to the held R_f.
 
 **Tests.** TM99 Tables 5 and 7 and the n = 10/12 rebuilds at t* = 0.1, 0.5, 1 and 2 (TC17 contact likewise for n = 10 and 12 at 0.1 and 0.5).
 R_f never decreases (fine log grid from the start to 1,000 yr, every preset, the outcome-map strip at Z = 1 and 0.1, and
@@ -617,6 +620,14 @@ only, and the inner layers become visible after expansion, in velocity space (§
     SN 2023ixf preset) and for 1998S-like IIn. It is [APPROX] for Ibn, Icn and pulsational-pair-instability shells,
     which were not researched.
   - Labelled with its source.
+  - In code (`CircumstellarStructureModel`): a hydrogen-rich II-P/II-L dense-gas outcome that is not a pulsational pair
+    instability takes the Jacobson-Galán 10¹⁵ cm [V]; Ibn, Icn, pulsational pair instability and any other get the 10¹⁵ cm
+    fallback marked `Confidence.Speculative`. The engine turns the lab's dense-gas input into a Type IIn, so the lab reaches the
+    3 × 10¹⁶ cm case, not the II-P one. The dense shell is drawn uniform from R* to its outer radius.
+- Drawn (Task 9): haze and shell only outside the forward shock; the haze never drives the framing, a dense shell does while
+  the debris are inside it. The shock's glow is `CsmInteractionModel.ThermalXrayLuminosity` (∝ 1/t, so independent of A_*)
+  mapped logarithmically over 4 decades below its value at the model's start (0 before it; ≈ 0 after 10⁴ times that). Brightness
+  constants are first guesses for Task 11's retune.
 
 ---
 

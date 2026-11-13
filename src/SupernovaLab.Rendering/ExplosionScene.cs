@@ -32,8 +32,13 @@ public sealed record SceneState
     public double FrameRadiusCm { get; init; } = double.NaN;
     public double RadiusCm { get; init; } = double.NaN;
     public string RadiusLabel { get; init; } = "Radius";
-    public bool ShowGas { get; init; }
-    public double GasRadiusCm { get; init; } = double.NaN;
+    /// <summary>
+    /// The gas around the star (structure §S7): its wind, as a faint haze, and any dense shell. Null for a Type Ia and for no
+    /// star. The view draws the haze outside the forward shock and the dense shell until the shock has crossed it.
+    /// </summary>
+    public CircumstellarStructure? Surroundings { get; init; }
+    /// <summary>0 to 1: how brightly the shock lights the gas it meets now (<see cref="CircumstellarStructureModel.Glow"/>); 0 before it arrives.</summary>
+    public float SurroundingsGlow { get; init; }
     public bool ShowStar { get; init; }
     public double StarRadiusCm { get; init; } = double.NaN;
     public (float R, float G, float B) StarColor { get; init; } = (1f, 1f, 1f);
@@ -83,9 +88,10 @@ public sealed record SceneState
 /// The simple 3D view's content (spec §6) for one outcome, as a function of source time: no OpenGL here.
 /// <list type="bullet">
 /// <item>Before breakout: the star, sized to its radius and coloured by its surface temperature.</item>
-/// <item>Gas around the star (spec §6), when it is significant: the dense-gas cases <see cref="CsmInteractionModel"/>
-/// does not model (<see cref="CsmInteractionModel.HasDenseCsm"/>), or a wind with A_* ≥ <see cref="DenseWindAStar"/>. A
-/// translucent shell out to <see cref="GasRadiusCm"/>, until the ejecta pass it; framing includes it.</item>
+/// <item>Gas around the star (spec §6, structure §S7): the star's own wind as a faint haze, and for the dense-gas cases
+/// <see cref="CsmInteractionModel"/> does not model (<see cref="CsmInteractionModel.HasDenseCsm"/>) a dense shell
+/// (<see cref="SceneState.Surroundings"/>), lit where the forward shock meets it (<see cref="SceneState.SurroundingsGlow"/>). The haze
+/// never drives the framing (it reaches parsecs); a dense shell does, while the debris are inside it.</item>
 /// <item>After breakout: the ejecta shell at <see cref="EjectaKinematics.RadiusCm"/>, coloured by the light curve's
 /// colour temperature (<see cref="LightCurveModel.ColourTemperatureK"/>, the one the V magnitudes and the schematic
 /// spectrum use, so the view agrees with them; it is defined from breakout on, ruling R45a). The Stefan–Boltzmann
@@ -109,26 +115,17 @@ public sealed class ExplosionScene
     /// <summary>A pulsar's beams turn once in this many seconds on screen, whatever its model period ("slowed down").</summary>
     public const double ShownPulsarPeriodS = 2;
 
-    /// <summary>
-    /// [APPROX] A wind counts as significant gas around the star from A_* = 100: ten times the lab's ordinary
-    /// red-supergiant wind (Ṁ = 1e-6 M☉/yr at 10 km/s, A_* ≈ 10, signals §0.4). The research gives no threshold.
-    /// </summary>
-    public const double DenseWindAStar = 100;
-
-    /// <summary>
-    /// [APPROX, Speculative] The drawn extent of the gas around the star, cm: SN 2023ixf's dense confined gas "within
-    /// ~1e15 cm" (Jacobson-Galán et al. 2023, presets.md, SN 2023ixf [R]). The research gives no extent rule, so every
-    /// case uses this one example.
-    /// </summary>
-    public const double GasRadiusCm = 1e15;
-
     public const string SchematicNote = "Colours schematic";
 
     /// <summary>Shown while the Rayleigh-Taylor fingers are drawn (structure S3).</summary>
     public const string MixingNote = "Mixing fingers: shapes schematic; their reach is from 3D simulations (structure §S3)";
 
+    /// <summary>Project 1's note for a dense shell whose extent is the 1e15 cm fallback (§S7 gives none).</summary>
     public const string GasNote =
         "Gas around the star (schematic): its extent is not in the research; drawn to 1e15 cm, like SN 2023ixf's";
+
+    /// <summary>The note when the extent is from a source ({0}: its citation).</summary>
+    public const string GasNoteFormat = "Gas around the star: extent from {0}";
 
     /// <summary>Review I4: what the stated ejecta radius is, in plain words.</summary>
     public const string UniformSphereNote =
@@ -169,7 +166,8 @@ public sealed class ExplosionScene
     private static readonly ShockBreakoutModel Breakout = new();
 
     private readonly double _z1;
-    private readonly bool _ejecta, _thermonuclear, _gas, _lowLuminosityGrb, _pinnedGrb;
+    private readonly bool _ejecta, _thermonuclear, _lowLuminosityGrb, _pinnedGrb;
+    private readonly CircumstellarStructure? _surroundings;
     private readonly object _particleLock = new();
     private ParticleSet? _particles;
     private readonly double _particleStartS;
@@ -184,8 +182,7 @@ public sealed class ExplosionScene
         _thermonuclear = outcome.Type is SupernovaType.Ia or SupernovaType.Ia91T or SupernovaType.Ia91bg or SupernovaType.Iax;
         _breakoutS = EjectaKinematics.BreakoutTimeS(outcome);
         _pulsarS = Pulsar.Applies(outcome) ? Pulsar.EmergenceTimeS(outcome) : double.NaN;
-        _gas = outcome.Star is not null
-               && (CsmInteractionModel.HasDenseCsm(outcome) || CsmInteractionModel.WindAStar(outcome) >= DenseWindAStar);
+        _surroundings = CircumstellarStructureModel.For(outcome);
 
         // Review I3: the jets are drawn while the GRB model covers the burst: burst and afterglow for a classical burst;
         // for a pinned low-luminosity burst (ruling R39) the prompt burst only, since the model draws no afterglow for it.
@@ -293,7 +290,7 @@ public sealed class ExplosionScene
             RadiusLabel = "Star radius",
         };
 
-        if (!_ejecta) return WithGas(WithoutEjecta(state, t, notes), notes, double.NaN);
+        if (!_ejecta) return WithSurroundings(WithoutEjecta(state, t, notes), notes, t, double.NaN);
 
         bool jets = !double.IsNaN(_jetsFromS) && t >= _jetsFromS && t <= _jetsToS;
         AddJetNote(t, jets, notes);
@@ -303,11 +300,11 @@ public sealed class ExplosionScene
         {
             notes.Insert(0, $"The shock is crossing the star: it reaches the surface {UnitFormat.Time(_breakoutS * _z1)} after core bounce");
             notes.Add(SchematicNote);
-            return WithGas(state with
+            return WithSurroundings(state with
             {
                 ShowStar = true, Notes = notes,
                 StarLayers = StarInterior.Layers(Outcome), ShockInStarRadiusCm = StarInterior.ShockRadiusCm(Outcome, t),
-            }, notes, double.NaN);
+            }, notes, t, double.NaN);
         }
 
         double r = EjectaKinematics.RadiusCm(Outcome, t);
@@ -320,7 +317,8 @@ public sealed class ExplosionScene
         string label = t >= RemnantEvolutionModel.StartS ? "Blast-wave radius"
             : t > EjectaKinematics.BlendStartS ? "Outer radius" : "Ejecta radius";
         string shockLabel = shocks is null ? ""
-            : !ShockStructureModel.HasWindEra(Outcome) || t >= RemnantEvolutionModel.StartS ? ForwardShockLabel
+            : !ShockStructureModel.HasWindEra(Outcome) ? ForwardShockLabel
+            : t >= RemnantEvolutionModel.StartS ? (HeldJoinMaximum(shocks!.ForwardCm, t) ? BlendShockLabel : ForwardShockLabel)
             : t > EjectaKinematics.BlendStartS ? BlendShockLabel : RadioShockLabel;
         if (remnant) notes.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, UniformRemnantNoteFormat, UnitFormat.Distance(r)));
         else if (t >= RemnantEvolutionModel.StartS) notes.Add("Radius from the remnant model's blast wave");
@@ -339,7 +337,7 @@ public sealed class ExplosionScene
         state = WithParticles(state, t, double.IsNaN(r0) ? 0 : r0);
         if (state.ShowParticles) AddStructureNotes(notes, beforeLast: true);
         state = WithShockFrame(state, t);
-        return WithGas(state, notes, r);
+        return WithSurroundings(state, notes, t, r);
     }
 
     /// <summary>
@@ -356,15 +354,45 @@ public sealed class ExplosionScene
         return state with { FrameRadiusCm = Math.Exp((1 - s) * Math.Log(debris) + s * Math.Log(shocks.ForwardCm)) };
     }
 
-    /// <summary>Adds the gas shell (and its note, and framing to include it) until ejecta of this radius pass it.</summary>
-    private SceneState WithGas(SceneState state, List<string> notes, double ejectaRadiusCm)
+    /// <summary>
+    /// From 10 yr R_f is the running maximum of the blended radius (ruling R-P2-26): where the join with the wind era overshot the
+    /// remnant model's forward shock, R_f is held at that maximum until the class-n Truelove &amp; McKee solution (the steep-ejecta
+    /// solution) reaches it. True while the drawn R_f is above that solution (by more than the model's 1e-4 interpolation error).
+    /// </summary>
+    private bool HeldJoinMaximum(double forwardCm, double t)
     {
-        if (!_gas || ejectaRadiusCm >= GasRadiusCm) return state;
-        notes.Insert(Math.Max(0, notes.Count - 1), GasNote);
+        var o = Outcome;
+        var (rch, tch) = ShockStructureModel.CharacteristicScales(o.ExplosionEnergyErg!.Value, o.EjectaMass!.Value,
+            RemnantEvolutionModel.AmbientDensity);
+        int n = ShockStructureModel.RemnantIndex(EjectaStructureModel.ClassOf(o));
+        double tm99 = ShockStructureModel.TmForward(n, t / tch) * rch;
+        return forwardCm > tm99 * (1 + HeldJoinTolerance);
+    }
+
+    /// <summary>The relative amount by which R_f must exceed the steep-ejecta solution to count as held (the running maximum's interpolation error is ~1e-5).</summary>
+    private const double HeldJoinTolerance = 1e-4;
+
+    /// <summary>
+    /// The gas around the star (structure §S7): its note, <see cref="SceneState.Surroundings"/> and the shock's glow. The haze is not
+    /// part of the framing; a dense shell is, while the ejecta (of this radius) are inside it.
+    /// </summary>
+    private SceneState WithSurroundings(SceneState state, List<string> notes, double t, double ejectaRadiusCm)
+    {
+        if (_surroundings is not { } csm) return state;
+        double forward = state.Shocks?.ForwardCm ?? 0;
+        // The shell is framed while the debris are inside it; it is drawn (and noted) until the forward shock has swept it.
+        bool framed = csm.ShellOuterCm is { } outer && !(ejectaRadiusCm >= outer);
+        bool shell = framed && !(forward >= csm.ShellOuterCm!.Value);
+        bool haze = csm.WindAStar > 0 && csm.WindOuterCm > csm.WindInnerCm;
+        state = state with { Surroundings = csm, SurroundingsGlow = CircumstellarStructureModel.Glow(Outcome, t) };
+        if (!shell && !haze) return state;
+        notes.Insert(Math.Max(0, notes.Count - 1), csm.ShellConfidence == Confidence.Speculative && csm.ShellOuterCm is not null
+            ? GasNote
+            : string.Format(System.Globalization.CultureInfo.InvariantCulture, GasNoteFormat, csm.Source.Citation));
+        if (!framed) return state with { Notes = notes };
         return state with
         {
-            ShowGas = true, GasRadiusCm = GasRadiusCm,
-            FrameRadiusCm = Math.Max(GasRadiusCm, double.IsNaN(state.FrameRadiusCm) ? 0 : state.FrameRadiusCm),
+            FrameRadiusCm = Math.Max(csm.ShellOuterCm!.Value, double.IsNaN(state.FrameRadiusCm) ? 0 : state.FrameRadiusCm),
             Notes = notes,
         };
     }
