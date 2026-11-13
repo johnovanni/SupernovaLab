@@ -10,6 +10,7 @@ using SupernovaLab.App.Windows;
 using SupernovaLab.Core.Timeline;
 using SupernovaLab.Core.Presets;
 using SupernovaLab.Core.Units;
+using SupernovaLab.Rendering;
 
 namespace SupernovaLab.App.Services;
 
@@ -40,8 +41,12 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 /// </summary>
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
-    int? SweepSteps = null)
+    int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null)
 {
+    /// <summary>The particle quality levels asked for with <c>--quality high|medium|low</c> (comma-separated for several; the
+    /// bench then runs each at every size); just the app's default when not given.</summary>
+    public IReadOnlyList<QualityLevel> Qualities => QualityLevelList is { Count: > 0 } q ? q : new[] { QualityLevels.Default };
+
     /// <summary>The most steps per preset that <c>--sweep</c> accepts.</summary>
     public const int MaxSweepSteps = 2000;
 
@@ -63,6 +68,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         var windows = new List<SnapshotWindow>();
         double? bench = null;
         int? sweep = null;
+        var qualities = new List<QualityLevel>();
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -102,13 +108,17 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                         throw new ArgumentException($"--sweep needs a number of steps between 2 and {MaxSweepSteps}, not '{value}'.");
                     sweep = steps;
                     break;
+                case "--quality":
+                    foreach (string q in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        qualities.Add(QualityLevels.Parse(q) ?? throw new ArgumentException($"--quality needs high, medium or low, not '{q}'."));
+                    break;
                 default:
                     throw new ArgumentException($"Unknown option '{option}'.");
             }
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities);
     }
 
     /// <summary>A preset entry, "id" or "id@seconds" (its own time, overriding --time for that preset).</summary>
@@ -184,6 +194,7 @@ public static class SnapshotRenderer
         {
             PlaceOffScreen(main);
             main.Show();
+            if ((main as MainWindow)?.Scene is { } quality) quality.Quality = request.Qualities[0];
             var presets = request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
             foreach (string? entry in presets)
             {
@@ -464,9 +475,6 @@ public static class SnapshotRenderer
         if (request.BenchSeconds is not double seconds) return;
         windows.ShowInstruments();
         if (windows.Instruments is { } w) PlaceOffScreen(w);
-        main.Width = request.Sizes[0].Width;
-        main.Height = request.Sizes[0].Height;
-        await NextFrame(main);
 
         // The worst case: the two views that redraw as the time moves (the schematic spectrum and the pulse train) are
         // shown, beside the other four panels' curves and the strip.
@@ -474,10 +482,34 @@ public static class SnapshotRenderer
         vm.Panels.OfType<RadioPanelViewModel>().Single().ShowSubTabForSnapshot(RadioPanelViewModel.PulsarTab);
         if (windows.Instruments is InstrumentsWindow iw) await RedrawPanels(iw);
 
+        // One run for every size with every quality level (one launch for the whole matrix): the timeline plays once per run.
+        var clock = new PlaybackClock(vm.Timeline);
+        clock.Start();
+        var all = new List<string>();
+        var scene = (main as MainWindow)?.Scene;
+        foreach (var size in request.Sizes)
+            foreach (var quality in request.Qualities)
+            {
+                if (scene is not null) scene.Quality = quality;
+                var lines = await RunBenchOnce(main, vm, size, quality, seconds, scene);
+                all.AddRange(lines);
+                all.Add("");
+            }
+        File.WriteAllLines(Path.Combine(request.OutDirectory, "bench.log"), all);
+        log.AddRange(all);
+    }
+
+    private static async Task<List<string>> RunBenchOnce(Window main, MainViewModel vm, SnapshotSize size, QualityLevel quality,
+        double seconds, SupernovaLab.App.Controllers.SceneController? scene)
+    {
+        main.Width = size.Width;
+        main.Height = size.Height;
+        await NextFrame(main);
+
         double decades = Math.Log10(TimeAxis.MaxS / TimeAxis.MinS);
         vm.Timeline.DecadesPerSecond = decades / seconds;
+        vm.Timeline.IsPlaying = false;
         vm.Timeline.ObserverTimeS = TimeAxis.MinS;
-        new PlaybackClock(vm.Timeline).Start();
         var intervals = new List<double>();
         var watch = System.Diagnostics.Stopwatch.StartNew();
         double last = 0;
@@ -489,7 +521,6 @@ public static class SnapshotRenderer
             last = now;
             frames++;
         }
-        var scene = (main as MainWindow)?.Scene;
         long sceneFrames0 = scene?.FramesDrawn ?? 0;
         CompositionTarget.Rendering += OnRendering;
         vm.Timeline.IsPlaying = true;
@@ -506,6 +537,7 @@ public static class SnapshotRenderer
         var lines = new[]
         {
             $"SupernovaLab bench {DateTime.Now:O}",
+            $"quality {quality} ({(int)quality:N0} particles); HDR pipeline {(scene is null ? "n/a" : scene.HdrEnabled ? "on (RGBA16F, bloom)" : "off (no-bloom path)")}",
             $"preset {preset}; main window {main.ActualWidth:0}x{main.ActualHeight:0} and the Instruments window open (off-screen), " +
             "the visible panel on its schematic spectrum and the radio panel on its pulses; " +
             $"playing the whole timeline ({decades.ToString("0.0", inv)} decades) at {vm.Timeline.DecadesPerSecond.ToString("0.###", inv)} decades/s",
@@ -517,8 +549,7 @@ public static class SnapshotRenderer
                 $"{(sceneFrames / elapsed).ToString("0.0", inv)} fps (GL draws counted by the scene controller)",
             $"reached the end of the timeline: {(vm.Timeline.ObserverTimeS >= TimeAxis.MaxS ? "yes" : "no")}",
         };
-        File.WriteAllLines(Path.Combine(request.OutDirectory, "bench.log"), lines);
-        log.AddRange(lines);
+        return lines.ToList();
     }
 
     /// <summary>The window's tallest scroll viewer (its main content), or null.</summary>

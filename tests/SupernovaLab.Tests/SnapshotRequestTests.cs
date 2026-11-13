@@ -79,6 +79,18 @@ public class SnapshotRequestTests
         Assert.Null(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.BenchSeconds);
     }
 
+    [Fact]
+    public void Quality_IsReadAsOneOrSeveralLevels_AndDefaultsToTheAppDefault()
+    {
+        Assert.Equal(new[] { SupernovaLab.Rendering.QualityLevel.Medium },
+            SnapshotRequest.Parse(new[] { "--snapshot", "out", "--quality", "medium" })!.Qualities);
+        Assert.Equal(new[] { SupernovaLab.Rendering.QualityLevel.High, SupernovaLab.Rendering.QualityLevel.Low },
+            SnapshotRequest.Parse(new[] { "--snapshot", "out", "--quality", "High,low" })!.Qualities);
+        Assert.Equal(new[] { SupernovaLab.Rendering.QualityLevels.Default },
+            SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.Qualities);
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--quality", "ultra" }));
+    }
+
     [Theory]
     [InlineData("0")]
     [InlineData("-3")]

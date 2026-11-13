@@ -49,7 +49,10 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>Review M1: the 3D view's model error, shown in place of its notes; null when the scene is fine.</summary>
     private string? _modelError;
     private StarRenderer? _star;
-    private EjectaRenderer? _ejecta;
+    private ParticleRenderer? _particles;
+    private HdrPipeline? _hdr;
+    private bool _uploadParticles = true;
+    private QualityLevel _quality = QualityLevels.Default;
     private JetRenderer? _jets;
     private RemnantRenderer? _remnant;
     private RingRenderer? _rings;
@@ -101,6 +104,28 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     /// <summary>True when <see cref="Dispose"/> deleted the GL objects with the context current (logged by --snapshot).</summary>
     public bool GlReleased { get; private set; }
+
+    /// <summary>The particle budget (<see cref="QualityLevel"/>): 200,000, 100,000 or 50,000 debris particles. Changing it re-uploads the set at the next frame.</summary>
+    public QualityLevel Quality
+    {
+        get => _quality;
+        set
+        {
+            if (_quality == value) return;
+            _quality = value;
+            _uploadParticles = true;
+            RequestRender();
+        }
+    }
+
+    /// <summary>True when the scene is drawn through the HDR target with bloom (false before the context exists, or without RGBA16F).</summary>
+    public bool HdrEnabled => _hdr?.Enabled == true;
+
+    /// <summary>Tone-mapping exposure and bloom strength of the HDR pipeline.</summary>
+    private const float Exposure = 0.2f, BloomStrength = 0.5f;
+
+    /// <summary>Particle seed (Project 1's ejecta seed): the set is the same on every run.</summary>
+    private const int ParticleSeed = 1987;
 
     /// <summary>True once the GL context and the renderers exist.</summary>
     public bool IsReady => _star is not null;
@@ -336,7 +361,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (!IsSupported(version))
             throw new NotSupportedException($"this computer's OpenGL is {(version.Length > 0 ? version : "unknown")}");
         _star = new StarRenderer();
-        _ejecta = new EjectaRenderer();
+        _particles = new ParticleRenderer((int)QualityLevel.High);
+        _hdr = new HdrPipeline();
+        _uploadParticles = true;
         _jets = new JetRenderer();
         _remnant = new RemnantRenderer(_jets);
         _rings = new RingRenderer();
@@ -367,9 +394,11 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         if (_disposed) return;
         StepDirector();
-        if (_star is null || _ejecta is null || _jets is null || _remnant is null || _rings is null) return;
+        if (_star is null || _particles is null || _hdr is null || _jets is null || _remnant is null || _rings is null) return;
         FramesDrawn++;
+        if (_uploadParticles) UploadParticles();
         var s = _state;
+        _hdr.Begin(viewportPx);
         double unit = UnitCm;
         if (unit > 0 && double.IsFinite(unit) && viewportPx.Width > 0 && viewportPx.Height > 0)
         {
@@ -377,7 +406,12 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
             if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor);
             if (s.ShowEjecta)
-                _ejecta.Render(Camera, viewportPx, pxPerDip, s.EjectaRadiusCm / unit, s.EjectaColor, s.EjectaBrightness);
+            {
+                // The brightness is Project 1's, spread over the particle count so the picture keeps its overall level.
+                float perParticle = (float)EjectaRendererReferenceCount / _particles.Count;
+                _particles.Render(Camera, viewportPx, pxPerDip, new ParticleUniforms((float)(s.EjectaRadiusCm / unit),
+                    new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle));
+            }
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
             double phase = 2 * Math.PI * _wall.Elapsed.TotalSeconds / ExplosionScene.ShownPulsarPeriodS;
@@ -385,11 +419,31 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
             _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
         }
+        _hdr.End(Exposure, BloomStrength);
         if (_readback is { } readback)
         {
             _readback = null;
             readback.TrySetResult(ReadPixels(viewportPx));
         }
+    }
+
+    /// <summary>Project 1's point count (its brightness was tuned for it).</summary>
+    private const int EjectaRendererReferenceCount = 50_000;
+
+    /// <summary>
+    /// TEMPORARY (Task 4; the layered velocities arrive in Task 6): an isotropic set with |v| uniform in volume over
+    /// [0.7, 1] of v_max, seed 1987 (the old shell), all in layer 0.
+    /// </summary>
+    private void UploadParticles()
+    {
+        _uploadParticles = false;
+        int n = (int)_quality;
+        var velocity = EjectaRenderer.UnitShell(n, ParticleSeed);
+        var layer = new float[n];
+        var seed = new float[n];
+        var random = new Random(ParticleSeed + 1);
+        for (int i = 0; i < n; i++) seed[i] = (float)random.NextDouble();
+        _particles!.Upload(velocity, layer, seed, n);
     }
 
     /// <summary>The frame just drawn, top row first, as a 96-dpi bitmap; null if the read fails (the error is cleared).</summary>
@@ -432,7 +486,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                     _rings?.Dispose();
                     _remnant?.Dispose();
                     _jets?.Dispose();
-                    _ejecta?.Dispose();
+                    _particles?.Dispose();
+                    _hdr?.Dispose();
                     _star?.Dispose();
                 });
             }
@@ -445,7 +500,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _rings = null;
         _remnant = null;
         _jets = null;
-        _ejecta = null;
+        _particles = null;
+        _hdr = null;
         _star = null;
     }
 }
