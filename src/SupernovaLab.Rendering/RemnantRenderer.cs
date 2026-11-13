@@ -30,16 +30,17 @@ public sealed class RemnantRenderer : IDisposable
     /// <summary>The beams are drawn with the jets' cones.</summary>
     public RemnantRenderer(JetRenderer cones) => _cones = cones;
 
-    /// <summary>Draws the marker; for a pulsar, its beams at this rotation phase (radians).</summary>
-    public void Render(OrbitCamera camera, Size viewportPx, double pxPerDip, SceneMarker marker, double beamPhaseRad)
+    /// <summary>Draws the marker; for a pulsar, its beams at this rotation phase (radians) and length (scene units).</summary>
+    public void Render(OrbitCamera camera, Size viewportPx, double pxPerDip, SceneMarker marker, double beamPhaseRad,
+        double beamLength = BeamLength)
     {
         if (marker == SceneMarker.None) return;
         if (marker == SceneMarker.Pulsar)
         {
             var axis = new Vector3d(Math.Sin(BeamTiltRad) * Math.Cos(beamPhaseRad), Math.Sin(BeamTiltRad) * Math.Sin(beamPhaseRad),
                 Math.Cos(BeamTiltRad));
-            _cones.RenderCone(camera, viewportPx, axis, BeamLength, BeamHalfAngleRad, BeamColor, 0.8f);
-            _cones.RenderCone(camera, viewportPx, -axis, BeamLength, BeamHalfAngleRad, BeamColor, 0.8f);
+            _cones.RenderCone(camera, viewportPx, axis, beamLength, BeamHalfAngleRad, BeamColor, 0.8f);
+            _cones.RenderCone(camera, viewportPx, -axis, beamLength, BeamHalfAngleRad, BeamColor, 0.8f);
         }
 
         var (size, color, kind) = marker switch

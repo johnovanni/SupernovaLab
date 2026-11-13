@@ -18,13 +18,14 @@ namespace SupernovaLab.App.Controllers;
 /// The simple 3D explosion view (spec §6). It follows the shared <see cref="MainViewModel"/>: a new outcome or observer
 /// (<see cref="MainViewModel.OutcomeChanged"/>) rebuilds the <see cref="ExplosionScene"/>, and each time change (observer
 /// time ÷ (1 + z) = source time) restates what is drawn and redraws. It is also the overlay's view model: the time, the
-/// physical radius, the notes and the scale bar. Drawing goes through an <see cref="IRenderHost"/> made by the factory
+/// physical radius, the notes and the distance-ring labels. Drawing goes through an <see cref="IRenderHost"/> made by the factory
 /// given, so the failure path (spec §9) can be tested without OpenGL: if the host cannot start or a frame fails, the view
 /// shows <see cref="FailureMessage"/>, naming the requirement, and the rest of the app carries on.
-/// <para>Camera: auto-framing keeps the framing radius (ejecta or star) at 60% of the view's height; dragging rotates
-/// (and keeps auto-framing); the wheel zooms and freezes the physical scale, so the debris then grow across the view;
-/// Home restores auto-framing. The scene is drawn in units of the framing radius (or the frozen one), so it never
-/// stresses float precision whatever the physical size.</para>
+/// <para>Camera: the <see cref="Director"/> (plan ruling P5) holds the view's half-height still while the debris grow and
+/// steps it back to the next distance ring when they reach the outermost one; a new outcome, a timeline click or Home
+/// jumps. Dragging rotates (and keeps auto-framing); the wheel zooms and freezes the physical scale, so the debris then
+/// grow across the view. The scene is drawn in units of the view's half-height (or the frozen one), so it never stresses
+/// float precision whatever the physical size.</para>
 /// <para>Call <see cref="Dispose"/> when the window closes (its Closing event, while the GL control is still loaded):
 /// the view model lives as long as the app (Task 15's leak).</para>
 /// </summary>
@@ -33,16 +34,19 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>The OpenGL version the 3D view needs (spec §1 and §9).</summary>
     public const string Requirement = "OpenGL 4.1";
 
-    /// <summary>Auto-framing puts the framing diameter at this fraction of the view's height (task brief).</summary>
-    public const double FrameFraction = 0.6;
+    /// <summary>A change of observer time bigger than this many decades in one tick is a jump (timeline click), not playback.</summary>
+    public const double JumpDecades = 0.05;
 
-    /// <summary>The scale bar is at most this long, in device-independent pixels.</summary>
-    public const double ScaleBarMaxDip = 150;
+    /// <summary>The longest wall-clock gap one frame hands the director (a frame after idle time is not a long ease).</summary>
+    private const double MaxFrameGapS = 0.1;
 
     private readonly MainViewModel _vm;
     private readonly Func<IRenderHost> _hostFactory;
     private readonly Func<Outcome, double, ExplosionScene> _sceneFactory;
     private readonly Stopwatch _wall = Stopwatch.StartNew();
+    private readonly Func<double> _clock;
+    private double? _lastFrameS;
+    private double _lastObserverS;
     private IRenderHost? _host;
     private ExplosionScene? _scene;
     private SceneState _state = new();
@@ -52,6 +56,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private EjectaRenderer? _ejecta;
     private JetRenderer? _jets;
     private RemnantRenderer? _remnant;
+    private RingRenderer? _rings;
     private double? _frozenUnitCm;
     private Size _viewDip;
     private TaskCompletionSource<BitmapSource?>? _readback;
@@ -59,23 +64,39 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     /// <param name="sceneFactory">Builds the scene of an outcome at a time dilation; null for <see cref="ExplosionScene"/>'s
     /// own constructor (tests pass one that fails, review M1).</param>
+    /// <param name="wallClock">Wall-clock seconds for the director's ease; null for the real clock (tests pass a fake).</param>
     public SceneController(MainViewModel vm, Func<IRenderHost> hostFactory,
-        Func<Outcome, double, ExplosionScene>? sceneFactory = null)
+        Func<Outcome, double, ExplosionScene>? sceneFactory = null, Func<double>? wallClock = null)
     {
+        _clock = wallClock ?? (() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
         _vm = vm ?? throw new ArgumentNullException(nameof(vm));
         _hostFactory = hostFactory ?? throw new ArgumentNullException(nameof(hostFactory));
         _sceneFactory = sceneFactory ?? ((o, z1) => new ExplosionScene(o, z1));
         BuildScene();
         ComputeState();
+        _lastObserverS = vm.Timeline.ObserverTimeS;
+        Director.Jump(_state.FrameRadiusCm);
         vm.OutcomeChanged += OnOutcomeChanged;
         vm.Timeline.PropertyChanged += OnTimelineChanged;
         UpdateOverlay();
     }
 
-    /// <summary>The camera distance at which a sphere of radius 1 fills <see cref="FrameFraction"/> of the view's height.</summary>
-    public static double AutoDistance { get; } = 1 / (FrameFraction * Math.Tan(45 * Math.PI / 360));
+    /// <summary>The camera distance at which one scene unit is the view's half-height: 1 / tan(fov / 2).</summary>
+    public static double AutoDistance { get; } = 1 / Math.Tan(45 * Math.PI / 360);
 
     public OrbitCamera Camera { get; } = new() { YawDeg = 30, PitchDeg = 20, DistanceMpc = AutoDistance };
+
+    /// <summary>The director camera (plan ruling P5): holds the scale, steps back by two rungs, jumps on request.</summary>
+    public CameraDirector Director { get; } = new();
+
+    private IReadOnlyList<RingLabel> _ringLabels = Array.Empty<RingLabel>();
+
+    /// <summary>The distance rings' labels, outermost first, each at the top of its ring (device-independent pixels).</summary>
+    public IReadOnlyList<RingLabel> RingLabels
+    {
+        get => _ringLabels;
+        private set => SetProperty(ref _ringLabels, value);
+    }
 
     /// <summary>What is drawn now.</summary>
     public SceneState State => _state;
@@ -92,16 +113,21 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     [ObservableProperty] private string _timeText = "";
     [ObservableProperty] private string _radiusText = "";
     [ObservableProperty] private string _notesText = "";
-    [ObservableProperty] private string _scaleBarText = "";
-    [ObservableProperty] private double _scaleBarWidth;
+    [ObservableProperty] private bool _showRings = true;
     [ObservableProperty] private bool _isAutoFraming = true;
     [ObservableProperty] private bool _isFailed;
     [ObservableProperty] private string _failureMessage = "";
 
     private double SourceTimeS => _vm.Timeline.ObserverTimeS / _vm.CurrentObserver.TimeDilation;
 
-    /// <summary>The physical size (cm) of one scene unit: the framing radius, or the frozen one after a zoom.</summary>
-    private double UnitCm => _frozenUnitCm ?? _state.FrameRadiusCm;
+    /// <summary>The physical size (cm) of one scene unit: the view's half-height, or the frozen one after a zoom.</summary>
+    public double UnitCm => _frozenUnitCm ?? Director.HalfHeightCm;
+
+    partial void OnShowRingsChanged(bool value)
+    {
+        UpdateRings();
+        RequestRender();
+    }
 
     /// <summary>Creates the GL host and its context; on failure shows the message and leaves the rest of the app alone.</summary>
     public void Start()
@@ -114,7 +140,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             _host.Draw += OnDraw;
             _host.FrameFailed += OnFrameFailed;
             _host.Start();
-            _host.Animating = _state.Marker == SceneMarker.Pulsar;
+            UpdateAnimating();
             _host.RequestRender();
         }
         catch (Exception ex)
@@ -123,11 +149,11 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>The view's size in device-independent pixels (for the scale bar and marker sizes).</summary>
+    /// <summary>The view's size in device-independent pixels (for the ring labels and marker sizes).</summary>
     public void SetViewSize(Size dip)
     {
         _viewDip = dip;
-        UpdateScaleBar();
+        UpdateRings();
         RequestRender();
     }
 
@@ -142,10 +168,10 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     public void Zoom(int notches)
     {
         if (notches == 0) return;
-        _frozenUnitCm ??= _state.FrameRadiusCm;
+        _frozenUnitCm ??= Director.HalfHeightCm;
         Camera.Zoom(notches);
         IsAutoFraming = false;
-        UpdateScaleBar();
+        UpdateRings();
         RequestRender();
     }
 
@@ -156,7 +182,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         Camera.DistanceMpc = AutoDistance;
         Camera.Target = default;
         IsAutoFraming = true;
-        UpdateScaleBar();
+        Director.Jump(_state.FrameRadiusCm);
+        UpdateAnimating();
+        UpdateRings();
         RequestRender();
     }
 
@@ -190,20 +218,42 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         Camera.DistanceMpc = AutoDistance;
         Camera.Target = default;
         IsAutoFraming = true;
-        Restate();
+        _lastObserverS = _vm.Timeline.ObserverTimeS;
+        Restate(jump: true);   // Review Focus 4: a new outcome reframes at once, even in the middle of an ease
     }
 
     private void OnTimelineChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(TimelineViewModel.ObserverTimeS)) Restate();
+        if (e.PropertyName != nameof(TimelineViewModel.ObserverTimeS)) return;
+        double t = _vm.Timeline.ObserverTimeS;
+        bool jump = Math.Abs(Math.Log10(t / _lastObserverS)) > JumpDecades;   // a click or a marker, not a playback tick
+        _lastObserverS = t;
+        Restate(jump);
     }
 
-    private void Restate()
+    private void Restate(bool jump = false)
     {
         ComputeState();
+        if (jump && _frozenUnitCm is null) Director.Jump(_state.FrameRadiusCm);
         UpdateOverlay();
-        if (_host is not null && !IsFailed) _host.Animating = _state.Marker == SceneMarker.Pulsar;
+        UpdateAnimating();
         RequestRender();
+    }
+
+    private void UpdateAnimating()
+    {
+        if (_host is not null && !IsFailed) _host.Animating = _state.Marker == SceneMarker.Pulsar || Director.IsEasing;
+    }
+
+    /// <summary>Each frame: hands the director the wall time since the last frame and the framing radius, then the labels follow.</summary>
+    private void StepDirector()
+    {
+        double now = _clock();
+        double dt = _lastFrameS is { } last ? Math.Clamp(now - last, 0, MaxFrameGapS) : 0;
+        _lastFrameS = now;
+        if (_frozenUnitCm is null) Director.Update(_state.FrameRadiusCm, dt);
+        UpdateAnimating();
+        UpdateRings();
     }
 
     private void UpdateOverlay()
@@ -213,7 +263,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             ? $"{_state.RadiusLabel}: {UnitFormat.Distance(_state.RadiusCm)}"
             : "";
         NotesText = _modelError ?? string.Join(Environment.NewLine, _state.Notes);
-        UpdateScaleBar();
+        UpdateRings();
     }
 
     /// <summary>
@@ -254,14 +304,32 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         return $"3D view: model error ({e.GetType().Name}: {e.Message}). The panels are unaffected.";
     }
 
-    private void UpdateScaleBar()
+    /// <summary>The rings now drawn, outermost first, for the view's scale (the director's half-height, or the frozen one).</summary>
+    private IReadOnlyList<Ring> CurrentRings() => ShowRings && UnitCm > 0 && double.IsFinite(UnitCm)
+        ? DistanceRings.Rungs(UnitCm)
+        : Array.Empty<Ring>();
+
+    /// <summary>
+    /// Places each ring's label at the top of its circle, from the GL projection (ruling P6): a ring of radius r is r / unit
+    /// scene units from the centre, in the plane facing the camera at the camera's distance D, so it is
+    /// (r / unit) / (D tan(fov / 2)) of the half-height above the middle of the view. Labels outside the view are dropped.
+    /// </summary>
+    private void UpdateRings()
     {
-        double cmPerDip = _viewDip.Height > 0
-            ? 2 * Camera.DistanceMpc * Math.Tan(Camera.FieldOfViewDeg * Math.PI / 360) * UnitCm / _viewDip.Height
-            : double.NaN;
-        var bar = ScaleBar.Choose(cmPerDip, ScaleBarMaxDip);
-        ScaleBarText = bar?.Label ?? "";
-        ScaleBarWidth = bar?.LengthPx ?? 0;
+        if (!(_viewDip.Width > 0) || !(_viewDip.Height > 0))
+        {
+            RingLabels = Array.Empty<RingLabel>();
+            return;
+        }
+        double perUnit = 1 / (Camera.DistanceMpc * Math.Tan(Camera.FieldOfViewDeg * Math.PI / 360));
+        var labels = new List<RingLabel>();
+        foreach (var ring in CurrentRings())
+        {
+            double y = _viewDip.Height / 2 * (1 - ring.RadiusCm / UnitCm * perUnit);
+            if (y < 0 || y > _viewDip.Height) continue;
+            labels.Add(new RingLabel(ring.Label, _viewDip.Width / 2, y, ring.Opacity));
+        }
+        RingLabels = labels;
     }
 
     /// <summary>"vendor | renderer | version" as the GL driver reports them (the GPU name for the performance notes); empty before the first frame.</summary>
@@ -277,6 +345,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _ejecta = new EjectaRenderer();
         _jets = new JetRenderer();
         _remnant = new RemnantRenderer(_jets);
+        _rings = new RingRenderer();
     }
 
     /// <summary>True when a GL version string ("4.6.0 NVIDIA 551.86", "4.1 ...") is 4.1 or later.</summary>
@@ -302,11 +371,13 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     private void OnDraw(TimeSpan delta, Size viewportPx)
     {
-        if (_star is null || _ejecta is null || _jets is null || _remnant is null) return;
+        if (_disposed) return;
+        StepDirector();
+        if (_star is null || _ejecta is null || _jets is null || _remnant is null || _rings is null) return;
         FramesDrawn++;
         var s = _state;
         double unit = UnitCm;
-        if (unit > 0 && double.IsFinite(unit))
+        if (unit > 0 && double.IsFinite(unit) && viewportPx.Width > 0 && viewportPx.Height > 0)
         {
             double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
             if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
@@ -314,8 +385,11 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (s.ShowEjecta)
                 _ejecta.Render(Camera, viewportPx, pxPerDip, s.EjectaRadiusCm / unit, s.EjectaColor, s.EjectaBrightness);
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
+            foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
             double phase = 2 * Math.PI * _wall.Elapsed.TotalSeconds / ExplosionScene.ShownPulsarPeriodS;
-            _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase);
+            // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
+            double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
+            _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
         }
         if (_readback is { } readback)
         {
@@ -361,6 +435,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             {
                 GlReleased = host.Shutdown(() =>
                 {
+                    _rings?.Dispose();
                     _remnant?.Dispose();
                     _jets?.Dispose();
                     _ejecta?.Dispose();
@@ -373,9 +448,13 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 Debug.WriteLine($"SceneController: releasing the GL objects failed: {e}");
             }
         }
+        _rings = null;
         _remnant = null;
         _jets = null;
         _ejecta = null;
         _star = null;
     }
 }
+
+/// <summary>A distance ring's label: its text, its position (device-independent pixels from the view's top left) and opacity.</summary>
+public sealed record RingLabel(string Text, double XDip, double YDip, double Opacity);

@@ -304,8 +304,12 @@ public static class Glossary
     public const string SceneView =
         "A simple 3D view of the star, the expanding ejecta and what is left behind. The radius at top left is the outer " +
         "edge of the debris in the lab's simple model (a uniform ball of gas; the fastest layers are really faster), which " +
-        "blends into the remnant model's blast wave between 3 and 10 years. The bar at bottom left shows the scale. " +
+        "blends into the remnant model's blast wave between 3 and 10 years. The grey circles are measuring rings, labelled with their distance from the centre; " +
+        "the view steps back to a larger scale when the debris reach the outer ring. " +
         "Colours and the gas around the star are schematic. Drag to turn, wheel to zoom.";
+
+    public const string DistanceRings =
+        "Measuring circles, not part of the supernova: when the debris reach a ring, they are that far from the centre.";
 
     // ---------------------------------------------------------------- instrument panels' views (spec §5.1)
 

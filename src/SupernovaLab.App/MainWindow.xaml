@@ -58,12 +58,28 @@
                                HorizontalAlignment="Right" VerticalAlignment="Top" TextAlignment="Right" TextWrapping="Wrap"
                                IsHitTestVisible="False"/>
 
-                    <StackPanel Margin="12,8" HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="False"
-                                Visibility="{Binding ScaleBarText, Converter={StaticResource VisibleWhen}}">
-                        <TextBlock Text="{Binding ScaleBarText}" Margin="0,0,0,3"/>
-                        <Border Width="{Binding ScaleBarWidth}" Height="5" HorizontalAlignment="Left"
-                                BorderBrush="{StaticResource TextBrush}" BorderThickness="1,0,1,2"/>
-                    </StackPanel>
+                    <!-- The distance rings' labels (plan ruling P6): WPF text placed from the GL projection, at each ring's top. -->
+                    <ItemsControl ItemsSource="{Binding RingLabels}" IsHitTestVisible="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left" Value="{Binding XDip}"/>
+                                <Setter Property="Canvas.Top" Value="{Binding YDip}"/>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Text}" Opacity="{Binding Opacity}" Width="80" TextAlignment="Center"
+                                           Margin="-40,-17,0,0" Foreground="#888780" FontSize="11"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <CheckBox Content="Rings" IsChecked="{Binding ShowRings}" Margin="12,8" HorizontalAlignment="Left"
+                              VerticalAlignment="Bottom" ToolTip="{x:Static text:Glossary.DistanceRings}"/>
                     <StackPanel Margin="10,8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal">
                         <Button Content="Auto-frame (Home)" Click="OnAutoFrameClick" Padding="6,1" Margin="0,0,8,0"
                                 Visibility="{Binding IsAutoFraming, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>

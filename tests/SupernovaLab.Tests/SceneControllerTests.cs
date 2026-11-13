@@ -24,7 +24,8 @@ public class SceneControllerTests
         public bool ShutDown { get; private set; }
         public bool Animating { get; set; }
         public event Action<string>? ContextReady;
-        public event Action<TimeSpan, Size>? Draw { add { } remove { } }
+        public event Action<TimeSpan, Size>? Draw;
+        public void RaiseDraw(Size px) => Draw?.Invoke(TimeSpan.FromSeconds(1.0 / 60), px);
         public event Action<Exception>? FrameFailed;
         public void Start() { if (StartFailure is not null) throw StartFailure; }
         public void RequestRender() => Renders++;
@@ -217,6 +218,196 @@ public class SceneControllerTests
         Assert.False(scene.GlReleased);
         Assert.Equal(0, OutcomeListeners(vm, scene));
         scene.Dispose();   // idempotent
+    }
+
+    // ------------------------------------------------------------------ Task 3: rings and the director camera
+
+    private static readonly Size View = new(800, 600);
+
+    /// <summary>A controller whose wall clock only moves when a frame is drawn (60 fps), so the ease is deterministic.</summary>
+    private sealed class Rig
+    {
+        public readonly MainViewModel Vm = NewViewModel();
+        public readonly FakeHost Host = new();
+        public readonly SceneController Scene;
+        private double _now;
+
+        public Rig()
+        {
+            Scene = new SceneController(Vm, () => Host, wallClock: () => _now);
+            Scene.Start();
+            Scene.SetViewSize(View);
+        }
+
+        public void Frame(int count = 1)
+        {
+            for (int i = 0; i < count; i++) { _now += 1.0 / 60; Host.RaiseDraw(View); }
+        }
+
+        public void Seek(double observerS) => Vm.Timeline.ObserverTimeS = observerS;
+
+        /// <summary>Plays forward in small steps (well under 0.05 decades a tick) until the director starts a step.</summary>
+        public bool PlayUntilStep(double fromS, double toS)
+        {
+            double h = Scene.Director.HalfHeightCm;
+            for (double t = fromS; t < toS; t *= 1.01)
+            {
+                Seek(t);
+                Frame();
+                if (Scene.Director.HalfHeightCm != h) return true;
+            }
+            return false;
+        }
+    }
+
+    [Fact]
+    public void Playing_StepsTheDirector_AndTheLabelsFollow()
+    {
+        var rig = new Rig();
+        var scene = rig.Scene;
+        rig.Seek(PhysicalConstants.Day);
+        rig.Frame();
+        double h0 = scene.Director.HalfHeightCm;
+        Assert.True(h0 > 0);
+        Assert.NotEmpty(scene.RingLabels);
+
+        // At rest the outermost ring sits on the 90% line: 10% of the half-height below the top of a 600 px view.
+        var outer = scene.RingLabels[0];
+        Assert.Equal(DistanceRings.Rungs(h0)[0].Label, outer.Text);
+        Assert.Equal(400, outer.XDip, 6);
+        Assert.Equal(300 * (1 - CameraDirector.RingLine), outer.YDip, 6);
+        Assert.Equal(1.0, outer.Opacity, 6);
+
+        // While the debris grow inside the outer ring the camera holds still.
+        rig.Seek(1.2 * PhysicalConstants.Day);
+        rig.Frame();
+        Assert.Equal(h0, scene.Director.HalfHeightCm);
+
+        // Later the debris reach the outer ring: the camera steps back, easing, and the labels follow.
+        Assert.True(rig.PlayUntilStep(1.2 * PhysicalConstants.Day, 1000 * PhysicalConstants.Day));
+        Assert.True(scene.Director.IsEasing);
+        Assert.True(rig.Host.Animating);
+        rig.Frame(30);
+        Assert.False(scene.Director.IsEasing);
+        Assert.True(scene.Director.HalfHeightCm > 3 * h0);
+        Assert.Equal(DistanceRings.Rungs(scene.Director.HalfHeightCm)[0].Label, scene.RingLabels[0].Text);
+        Assert.Equal(300 * (1 - CameraDirector.RingLine), scene.RingLabels[0].YDip, 6);
+        Assert.Equal(scene.Director.HalfHeightCm, scene.UnitCm);
+    }
+
+    [Fact]
+    public void NewOutcome_DuringAnEase_ReframesAtOnce()
+    {
+        var rig = new Rig();
+        rig.Seek(PhysicalConstants.Day);
+        rig.Frame();
+        Assert.True(rig.PlayUntilStep(PhysicalConstants.Day, 1000 * PhysicalConstants.Day));
+        Assert.True(rig.Scene.Director.IsEasing);
+
+        rig.Vm.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");   // Review Focus 4: a jump, not a slow ease
+
+        var expected = new CameraDirector();
+        expected.Jump(rig.Scene.State.FrameRadiusCm);
+        Assert.False(rig.Scene.Director.IsEasing);
+        Assert.Equal(expected.HalfHeightCm, rig.Scene.Director.HalfHeightCm);
+        Assert.Equal(expected.OuterRingCm, rig.Scene.Director.OuterRingCm);
+    }
+
+    [Fact]
+    public void TimelineClick_IsAJump_NotAnEase()
+    {
+        var rig = new Rig();
+        rig.Seek(PhysicalConstants.Day);
+        rig.Frame();
+
+        rig.Seek(100 * PhysicalConstants.Day);   // two decades in one click
+        var expected = new CameraDirector();
+        expected.Jump(rig.Scene.State.FrameRadiusCm);
+        Assert.False(rig.Scene.Director.IsEasing);
+        Assert.Equal(expected.HalfHeightCm, rig.Scene.Director.HalfHeightCm);
+        rig.Frame();
+        Assert.Equal(expected.HalfHeightCm, rig.Scene.Director.HalfHeightCm);
+        Assert.False(rig.Scene.Director.IsEasing);
+
+        // A marker jump is a jump too, even from a nearby time.
+        var marker = rig.Vm.Timeline.Markers.First(m => m.ObserverTimeS > 1000 * PhysicalConstants.Day);
+        rig.Vm.Timeline.JumpToMarkerCommand.Execute(marker);
+        Assert.False(rig.Scene.Director.IsEasing);
+    }
+
+    [Fact]
+    public void Zoom_FreezesTheScale_HomeHandsBackToTheDirector()
+    {
+        var rig = new Rig();
+        var scene = rig.Scene;
+        rig.Seek(PhysicalConstants.Day);
+        rig.Frame();
+        double h0 = scene.Director.HalfHeightCm;
+
+        scene.Zoom(2);
+        Assert.False(scene.IsAutoFraming);
+        Assert.Equal(h0, scene.UnitCm);
+
+        // The debris outgrow the ring, but the scale stays frozen.
+        rig.Seek(30 * PhysicalConstants.Day);
+        rig.Frame(30);
+        Assert.Equal(h0, scene.UnitCm);
+        Assert.Equal(h0, scene.Director.HalfHeightCm);
+
+        scene.Home();
+        var expected = new CameraDirector();
+        expected.Jump(scene.State.FrameRadiusCm);
+        Assert.True(scene.IsAutoFraming);
+        Assert.Equal(expected.HalfHeightCm, scene.UnitCm);
+        Assert.Equal(expected.HalfHeightCm, scene.Director.HalfHeightCm);
+        Assert.Equal(SceneController.AutoDistance, scene.Camera.DistanceMpc, 12);
+        Assert.Equal(1 / Math.Tan(22.5 * Math.PI / 180), SceneController.AutoDistance, 12);
+    }
+
+    [Fact]
+    public void RedshiftedObserver_UsesSourceTimeForTheRadius()
+    {
+        // Review Focus 3: observer time ÷ (1 + z) is the source time the radius is taken at.
+        var near = new Rig();
+        near.Seek(PhysicalConstants.Day);
+
+        var far = new Rig();
+        far.Vm.Lab.DistancePc = 5e9;
+        double dilation = far.Vm.CurrentObserver.TimeDilation;
+        Assert.True(dilation > 1.5);
+        far.Seek(dilation * PhysicalConstants.Day);
+
+        Assert.Equal(near.Scene.State.FrameRadiusCm, far.Scene.State.FrameRadiusCm, 6);
+        far.Frame();
+        near.Frame();
+        Assert.Equal(near.Scene.Director.HalfHeightCm, far.Scene.Director.HalfHeightCm);
+    }
+
+    [Fact]
+    public void ZeroSizeView_DoesNotThrow()
+    {
+        var rig = new Rig();
+        rig.Seek(PhysicalConstants.Day);
+        rig.Scene.SetViewSize(new Size(0, 0));
+        rig.Host.RaiseDraw(new Size(0, 0));
+        rig.Scene.Zoom(1);
+        rig.Scene.Home();
+        Assert.Empty(rig.Scene.RingLabels);
+        rig.Scene.SetViewSize(View);
+        Assert.NotEmpty(rig.Scene.RingLabels);
+    }
+
+    [Fact]
+    public void ShowRings_False_HidesTheLabels()
+    {
+        var rig = new Rig();
+        rig.Seek(PhysicalConstants.Day);
+        rig.Frame();
+        Assert.NotEmpty(rig.Scene.RingLabels);
+        rig.Scene.ShowRings = false;
+        Assert.Empty(rig.Scene.RingLabels);
+        rig.Scene.ShowRings = true;
+        Assert.NotEmpty(rig.Scene.RingLabels);
     }
 
     private static int OutcomeListeners(MainViewModel vm, object target)
