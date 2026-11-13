@@ -66,7 +66,22 @@ plain words. Each has a number so you can find its full wording, reason and cost
 - **App launches:** I set a budget of one or two per task for your antivirus. Three tasks went over (Task 11 used 6,
   because of a snapshot bug; Tasks 10 and 14 used 3). No screen capture was ever used, and nothing was flagged.
 
-## Left for you to decide (residuals from the final review)
+## After your first look (Task 15, approved by you on 2026-11-13)
+
+- **Turning or zooming the view no longer pauses the tour;** only the timeline does, and a click on the caption
+  resumes. The tour's camera sways instead of circling, so the cutaway stays in view.
+- **The sway is lopsided on purpose (R-P2-34):** the full 60° on one side, 45–59° on the other for 9 of 14
+  presets. The cut is turned about a different axis from the camera's swing, so a symmetric 60° would show some cut
+  faces from behind.
+- **On cutaway stops the caption moves to the top; panels fold; Focus view (F) clears the screen;** what you fold
+  is remembered in %LOCALAPPDATA%\SupernovaLab\layout.json.
+- **The neutrino and gravitational-wave labels keep fixed rows on the timeline.** I also fixed the detector order
+  in the instrument panels, but the review found those lists were already fixed, so if what you saw moving wasn't
+  the timeline label, it is still undiagnosed.
+- **R1 and R2 are fixed** (#51's cause corrected; the caption no longer covers the slice).
+- **App launches:** this follow-up used 3 + 3 launches against budgets of 1–2; no screen capture, nothing flagged.
+
+## Residuals from the final review (now fixed in Task 15)
 
 - **R1.** Inconsistency #51 names the wrong cause. The real one: when the breakout model gives no breakout (dense
   gas), Project 1's light curve starts at 1 hour, so its "peak" is its first point. A one-line docs fix.
@@ -77,7 +92,7 @@ Smaller leftovers (polish) are listed in `project2-ledger.md`.
 
 ## Numbers at the end
 
-- **Tests:** 2,157 passing, 0 build warnings.
+- **Tests:** 2,213 passing, 0 build warnings (2,157 before Task 15).
 - **Spec success criteria:** 1–4 pass in validation tests across all 14 presets; the sweep of 14 presets × 40 times
   found no errors.
 - **Performance (criterion 5):** 67–70 fps at 1366×768 and 62–67 fps at 1920×1080 with 200,000 particles, bloom and
