@@ -50,8 +50,7 @@ public sealed partial class OutcomeEngine
             if (pins.ConfinedCsmOuterCm is > 0 and double confined && d.Type is not (SupernovaType.Ia or SupernovaType.Ia91T or
                     SupernovaType.Ia91bg or SupernovaType.Iax))
             {
-                confinedCsm = confined;
-                published = true;
+                confinedCsm = confined;   // geometry only (ruling R-P2-28): not a published modelled value, so not `published`
             }
             if (pins.RadiusCm is double r) star = star with { RadiusCm = Pin(r, "cm") };
             if (!explosion)

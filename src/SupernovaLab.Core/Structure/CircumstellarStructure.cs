@@ -29,6 +29,9 @@ public static class CircumstellarStructureModel
     /// <summary>The glow spans this many decades of luminosity below its maximum (brief: 4 decades).</summary>
     public const double GlowDecades = 4;
 
+    /// <summary>The wind extent's source, cited alone by the haze's note when no dense shell is drawn.</summary>
+    public const string WindSourceCitation = "Chevalier 2005, ApJ 619, 839 (wind, p/k = 1e4 [APPROX])";
+
     private static readonly CsmInteractionModel Csm = new();
 
     private static bool Thermonuclear(Outcome o)
@@ -58,7 +61,7 @@ public static class CircumstellarStructureModel
         double inner = double.IsFinite(r0) && r0 > 0 ? r0 : 0;
         double windOuter = wind ? Math.Max(outer, inner) : inner;
 
-        const string windSource = "Chevalier 2005, ApJ 619, 839 (wind, p/k = 1e4 [APPROX])";
+        const string windSource = WindSourceCitation;
         bool pinned = o.ConfinedCsmOuterCm is > 0;
         if (!CsmInteractionModel.HasDenseCsm(o) && !pinned)
             return new CircumstellarStructure(wind ? aStar : double.NaN, inner, windOuter, null, null, Confidence.ModelDependent,

@@ -126,7 +126,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void OnLabChanged(object? sender, LabChangedEventArgs e)
     {
         if (e.AppliedPreset is { } p)
-            StatusMessage = p.Pins is null
+            StatusMessage = p.Pins?.ChangesModelledValue != true
                 ? $"{p.Name}: the lab is set to its best match, at its published distance and dust."
                 : $"{p.Name}: the lab is set to its best match, with its published values pinned.";
         else if (e.DroppedPresetName is { } name)

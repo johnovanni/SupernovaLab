@@ -625,8 +625,8 @@ only, and the inner layers become visible after expansion, in velocity space (§
     1987A's rings (`HasEquatorialRing`): `Outcome.ConfinedCsmOuterCm`, read only by `CircumstellarStructureModel` and the 3D
     view, by no signal model, so the outcome stays a Type II-P and every panel value is unchanged. (The engine turns the lab's
     dense-gas input into a Type IIn, so no engine outcome reaches the II-P 10¹⁵ cm case.) The shell is drawn uniform from R* to
-    10¹⁵ cm; its flare is schematic: on while the debris' 99%-of-mass radius sweeps through it, then fading over one decade
-    of time. Editing any lab input drops the pins, and with them this shell.
+    10¹⁵ cm; its flare is schematic (ruling R-P2-28): lit from the debris' start until the forward shock has swept it. The pin is geometry
+    only: it does not set the outcome's "Published" badge or the preset status text (PresetPins.ChangesModelledValue). Editing any lab input drops the pins, and with them this shell.
   - In code (`CircumstellarStructureModel`): the pin, then IIn (3 × 10¹⁶ cm), then a dense-gas II-P/II-L (10¹⁵ cm, [V]), then
     the Speculative 10¹⁵ cm fallback. The shell is drawn uniform from R* to its outer radius.
 - Drawn (Task 9): haze and shell only outside the forward shock; the haze never drives the framing, a dense shell does while

@@ -95,7 +95,9 @@ public class PresetValidationTests
     {
         foreach (var p in PresetCatalog.LoadEmbedded())
         {
-            Assert.Equal(p.Pins is not null, Of(p.Id).UsesPublishedValues);
+            // Ruling R-P2-28: the geometry-only pin (SN 2023ixf's confined gas, drawn by the 3D view) changes no modelled value, so it
+            // does not make the outcome "published"; every other pin does.
+            Assert.Equal(p.Pins?.ChangesModelledValue == true, Of(p.Id).UsesPublishedValues);
             // Changing an input clears the pins (spec §2.3): the lab computes again without them.
             var edited = TestOutcomes.Engine.Compute(p.Inputs with { InitialMass = p.Inputs.InitialMass + 1 }, null);
             Assert.False(edited.UsesPublishedValues, p.Id);

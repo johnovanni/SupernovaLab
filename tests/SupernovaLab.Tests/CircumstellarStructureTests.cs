@@ -1,4 +1,5 @@
 using SupernovaLab.App.Controllers;
+using SupernovaLab.App.ViewModels;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Presets;
 using SupernovaLab.Core.Progenitors;
@@ -193,15 +194,30 @@ public class CircumstellarStructureTests
         Assert.Contains(ExplosionScene.ConfinedGasNote, early.Notes);
         Assert.Contains("flare is schematic", ExplosionScene.ConfinedGasNote, StringComparison.Ordinal);
         Assert.Equal(0f, scene.At(0.5 * Day).ShellFlare);          // before the debris are launched
-        // Fading over one decade of time after the debris pass the shell, then off.
-        double exit = 0;
-        for (double t = Day; t < 1e8; t *= 1.02)
-            if (scene.At(t).Frame99RadiusCm >= 1e15) { exit = t; break; }
-        Assert.True(exit > 5 * Day);
-        var later = scene.At(exit * 3);
-        Assert.InRange(later.ShellFlare, 0.01f, 0.99f);
-        Assert.Equal(0f, scene.At(exit * 20).ShellFlare);
-        Assert.True(scene.At(exit * 3).ShellFlare > scene.At(exit * 6).ShellFlare);
+        // Lit until swept (ruling R-P2-28): on at every time the shell is still drawn, i.e. until the forward shock passes 1e15 cm.
+        for (double t = 2 * Day; t < 1e8; t *= 1.3)
+        {
+            var s = scene.At(t);
+            if (s.Shocks is { } sh && sh.ForwardCm >= 1e15) break;
+            Assert.Equal(1f, s.ShellFlare);
+        }
+    }
+
+    [Fact]
+    public void Sn2023ixf_GeometryOnlyPin_DoesNotMakeTheOutcomePublished()
+    {
+        // Ruling R-P2-28: the headline badge and the status text apply only to pins that change a modelled value.
+        var p = PresetCatalog.Get("sn2023ixf");
+        Assert.False(Ixf().UsesPublishedValues);
+        Assert.False(p.Pins!.ChangesModelledValue);
+        Assert.True(PresetCatalog.Get("sn1987a").Pins!.ChangesModelledValue);
+        var vm = new MainViewModel(TestOutcomes.Engine, new FakeWindowService());
+        vm.Lab.SelectedPreset = p;
+        Assert.Equal("SN 2023ixf: the lab is set to its best match, at its published distance and dust.", vm.StatusMessage);
+        Assert.False(vm.Outcome.UsesPublishedValues);
+        Assert.Null(vm.Outcome.PublishedText);
+        vm.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");
+        Assert.Contains("published values pinned", vm.StatusMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -215,6 +231,10 @@ public class CircumstellarStructureTests
         // The haze note only while the view is at most 100 R* wide; a dense-shell note whenever a shell is drawn (M1).
         double r0 = o.Star!.RadiusCm.Value;
         Assert.Contains(scene.At(1e-3).Notes, n => n.StartsWith("Gas around the star", StringComparison.Ordinal));
+        // After the confined shell is swept, the haze note cites the wind source alone.
+        var swept = new ExplosionScene(Ixf()).At(30 * Day);
+        Assert.Contains($"Gas around the star: extent from {CircumstellarStructureModel.WindSourceCitation}", swept.Notes);
+        Assert.DoesNotContain(swept.Notes, n => n.Contains("Jacobson", StringComparison.Ordinal));
         var wide = scene.At(Year);
         Assert.True(wide.FrameRadiusCm > 100 * r0);
         Assert.DoesNotContain(wide.Notes, n => n.StartsWith("Gas around the star", StringComparison.Ordinal));

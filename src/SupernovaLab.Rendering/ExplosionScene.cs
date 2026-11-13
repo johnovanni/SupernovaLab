@@ -41,8 +41,8 @@ public sealed record SceneState
     public float SurroundingsGlow { get; init; }
     /// <summary>
     /// 0 to 1: how brightly the dense shell is lit now. The shock's glow (<see cref="SurroundingsGlow"/>) for a dense shell the lab
-    /// models; for SN 2023ixf's pinned confined gas (ruling R-P2-27) a schematic flare: on while the debris sweep through the
-    /// shell, then fading over one decade of time.
+    /// models; for SN 2023ixf's pinned confined gas (rulings R-P2-27, R-P2-28) a schematic flare: lit from the debris' start until
+    /// the forward shock has swept the shell (when it is no longer drawn).
     /// </summary>
     public float ShellFlare { get; init; }
     public bool ShowStar { get; init; }
@@ -398,7 +398,7 @@ public sealed class ExplosionScene
         bool shell = framed && !(forward >= csm.ShellOuterCm!.Value);
         bool haze = csm.WindAStar > 0 && csm.WindOuterCm > csm.WindInnerCm;
         float glow = CircumstellarStructureModel.Glow(Outcome, t);
-        state = state with { Surroundings = csm, SurroundingsGlow = glow, ShellFlare = ConfinedFlare(state, t) ?? glow };
+        state = state with { Surroundings = csm, SurroundingsGlow = glow, ShellFlare = ConfinedFlare(t) ?? glow };
         // Notes: one while a shell is drawn; the haze's only while the view is close enough to see it (frame at most 100 R*).
         string? note = null;
         double frame = double.IsNaN(state.FrameRadiusCm) ? 0 : state.FrameRadiusCm;
@@ -407,7 +407,7 @@ public sealed class ExplosionScene
                 : csm.ShellConfidence == Confidence.Speculative ? GasNote
                 : string.Format(System.Globalization.CultureInfo.InvariantCulture, GasNoteFormat, csm.Source.Citation);
         else if (haze && frame <= HazeNoteMaxFrameRadii * csm.WindInnerCm)
-            note = string.Format(System.Globalization.CultureInfo.InvariantCulture, GasNoteFormat, csm.Source.Citation);
+            note = string.Format(System.Globalization.CultureInfo.InvariantCulture, GasNoteFormat, CircumstellarStructureModel.WindSourceCitation);
         if (note is not null) notes.Insert(Math.Max(0, notes.Count - 1), note);
         if (!framed) return state with { Notes = notes };
         return state with
@@ -417,43 +417,12 @@ public sealed class ExplosionScene
         };
     }
 
-    private readonly object _exitLock = new();
-    private double _confinedExitS = double.NaN;
-
     /// <summary>
-    /// Ruling R-P2-27's schematic flare of SN 2023ixf's pinned confined gas: 1 from the debris' start while their 99%-of-mass
-    /// radius is inside the shell, then falling to 0 over one decade of time; null when the outcome has no pinned gas.
+    /// Ruling R-P2-28's schematic flare of SN 2023ixf's pinned confined gas: lit from the debris' start for as long as the shell is
+    /// drawn (it is removed once the forward shock has swept it); null when the outcome has no pinned gas.
     /// </summary>
-    private float? ConfinedFlare(SceneState state, double t)
-    {
-        if (Outcome.ConfinedCsmOuterCm is not > 0 || Structure is null) return null;
-        if (!(t >= _particleStartS)) return 0;
-        double exit = ConfinedExitS();
-        if (!double.IsFinite(exit) || t <= exit) return 1;
-        return (float)Math.Clamp(1 - Math.Log10(t / exit), 0, 1);
-    }
-
-    /// <summary>The time the 99%-of-mass debris reach the pinned shell's outer radius (bisection in log t; NaN if they never do by 1e4 yr).</summary>
-    private double ConfinedExitS()
-    {
-        lock (_exitLock)
-        {
-            if (!double.IsNaN(_confinedExitS)) return _confinedExitS;
-            double outer = Outcome.ConfinedCsmOuterCm!.Value, r0 = Outcome.Star?.RadiusCm.Value ?? 0;
-            double vmax = Structure!.MaxCmS, v99 = Structure.Frame99CmS;
-            double Radius(double t) => ParticleKinematics.RadiusCm(v99, t - _particleStartS, r0, vmax, ShockStructureModel.At(Outcome, t));
-            double lo = Math.Max(_particleStartS, 1), hi = 1e4 * PhysicalConstantsYear;
-            if (!double.IsFinite(v99) || !(Radius(hi) >= outer)) return _confinedExitS = double.PositiveInfinity;
-            for (int i = 0; i < 50; i++)
-            {
-                double mid = Math.Sqrt(lo * hi);
-                if (Radius(mid) >= outer) hi = mid; else lo = mid;
-            }
-            return _confinedExitS = hi;
-        }
-    }
-
-    private const double PhysicalConstantsYear = Core.Units.PhysicalConstants.Year;
+    private float? ConfinedFlare(double t)
+        => Outcome.ConfinedCsmOuterCm is > 0 && Structure is not null ? (t >= _particleStartS ? 1f : 0f) : null;
 
     /// <summary>The jets' note while they are drawn, and after a low-luminosity burst's jets stop, why they stopped.</summary>
     private void AddJetNote(double t, bool shown, List<string> notes)

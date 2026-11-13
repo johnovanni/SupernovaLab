@@ -36,11 +36,23 @@ public enum Fate
 /// set that breaks it gets a note.</para>
 /// </summary>
 /// <para>Ruling R-P2-27: <see cref="ConfinedCsmOuterCm"/> is observed geometry only (SN 2023ixf's confined gas, structure §S7), drawn by
-/// the 3D view and read by no signal model; it does not change the outcome's type or any value.</para>
+/// the 3D view and read by no signal model; it does not change the outcome's type or any value, and (ruling R-P2-28) it does not
+/// make the outcome "published" (<see cref="ChangesModelledValue"/>).</para>
 public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
     double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null,
     double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null,
-    double? NsGravitationalMass = null, double? RemnantMass = null, double? ConfinedCsmOuterCm = null);
+    double? NsGravitationalMass = null, double? RemnantMass = null, double? ConfinedCsmOuterCm = null)
+{
+    /// <summary>
+    /// Whether any pin changes a value the lab models (every pin but the geometry-only <see cref="ConfinedCsmOuterCm"/>, ruling
+    /// R-P2-28): only then do the outcome's "Published" badge and the preset status text apply.
+    /// </summary>
+    public bool ChangesModelledValue =>
+        ExplosionEnergyErg is not null || EjectaMass is not null || NickelMass is not null || RadiusCm is not null ||
+        Ti44Mass is not null || GrbEisoErg is not null || GrbEpKeV is not null || GrbT90S is not null ||
+        NsSpinPeriodS is not null || NsFieldG is not null || PulsarRadioLumMjyKpc2 is not null ||
+        EquatorialRing == true || NsGravitationalMass is not null || RemnantMass is not null;
+}
 
 /// <summary>
 /// The lab's result (spec §3). <see cref="Inputs"/> are the inputs as used, held inside their slider ranges.
