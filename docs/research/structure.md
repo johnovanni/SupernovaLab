@@ -581,7 +581,7 @@ only, and the inner layers become visible after expansion, in velocity space (§
 | Quantity | Value | Source |
 |---|---|---|
 | Equatorial ring (ER) semi-major axis | 0.820″ ± 0.005″ (minor 0.600″) | Sugerman et al. 2005, ApJS 159, 60, arXiv:astro-ph/0502378, Table 2 [V] |
-| ER radius | 6.31 × 10¹⁷ cm = 0.666 ly at 51.4 kpc [D]; Panagia: (6.23 ± 0.08) × 10¹⁷ cm (0.659 ly, 241 light-days) [R]; "0.65 light-years" (Barlow 2025, arXiv:2510.13629) [V]; "≈ 6 × 10¹⁷ cm" (CF17) [V] | |
+| ER radius | **6.29 × 10¹⁷ cm = 0.665 ly** at 51.4 kpc (Table 3's 0.647 ly × 51.4/50; the value the app uses) [D]. Cross-checks: 0.820″ × 51.4 kpc = 6.31 × 10¹⁷ cm [D]; Panagia: (6.23 ± 0.08) × 10¹⁷ cm (0.659 ly, 241 light-days) [R]; "0.65 light-years" (Barlow 2025, arXiv:2510.13629) [V]; "≈ 6 × 10¹⁷ cm" (CF17) [V] | |
 | ER inclination | 43.0° ± 0.1° | Sugerman 2005 Table 2 [V] |
 | ER major-axis position angle | 81.1° ± 0.8° E of N | same [V] |
 | ER expansion | 10.5 ± 0.3 km/s | Crotts & Heathcote 2000, arXiv:astro-ph/9907367 [V] |
@@ -594,7 +594,8 @@ only, and the inner layers become visible after expansion, in velocity space (§
 | First hotspot | 1995 (≈ day 3,000), north-east side | signals §6.3; Barlow 2025 [V] |
 | Ring brightening and peak | 26 hotspots by 2003; optical peak ≈ day 7,000 (CF17) to a plateau in 2009 (≈ day 8,000); fading since; R-band projected to reach zero ≈ 2035 (Larsson et al. 2019) | [V via CF17 and Barlow 2025] |
 | Forward shock near the ring | 4,100–6,700 km/s; ≤ 500 km/s inside the dense clumps | Barlow 2025 [V] |
-| **3D fit of all three rings (used by the app)** | at 50 kpc: ER a = 0.647 ly, b/a 0.98, P.A. 81.1°, z₀ = 0; north ring a = 1.42 ly, b/a 0.94, z₀ = 1.36 ly; south ring a = 1.59 ly, b/a 0.92, z₀ = 1.00 ly, on the other side of the ER plane (z₀ = distance from the SN along the axis; rings fitted as planar ellipses viewed along the axis) | Sugerman 2005 Table 3 and §8.3 [V] |
+| **3D fit of all three rings (used by the app)** | at 50 kpc: ER a = 0.647 ly, z₀ = 0, P.A. 81.1°; north ring a = 1.42 ly, **z₀ = −1.36 ly**, P.A. 70.5°; south ring a = 1.59 ly, **z₀ = +1.00 ly**, P.A. −1.1° [V]. z₀ is "the distance to the SN along the axis" [V]; the table's remaining column (0.98, 0.94, 0.92) is read here as b/a, but the extracted header is ambiguous (no tag). | Sugerman 2005 Table 3 and §8.3 (extracted with pdftotext -raw) |
+| Sign convention | "the standard orientation ... with z toward the observer", x west, y north; the rings' symmetry axis is that z axis inclined (rotated) south/north by i_x and east/west by i_y [V, Sugerman §5.3.1]. Positive z₀ therefore lies on the observer's side of the ER plane. Sugerman's Fig. 41 agrees: the north ring lies on the tube "opening away from the observer", the south ring on the one "opening toward the observer" [V]. The CS nebula's axis is inclined 41° south and 8° east of the line of sight (abstract) [V]. | |
 
 ### App implementation (§S8)
 
@@ -602,16 +603,25 @@ For SN 1987A-like outcomes only (`Outcome.HasEquatorialRing`). There is one geom
 Table 3, with every length scaled by D/50 kpc, where D is the preset's distance [D]. At the preset's 51.4 kpc
 (factor 1.028):
 
-| Ring | Radius (semi-major axis) | Centre on the symmetry axis |
+| Ring | Radius (semi-major axis) | Centre on the symmetry axis (signed; + = toward the observer) |
 |---|---|---|
 | Equatorial | 0.665 ly = 6.29 × 10¹⁷ cm | 0 (the SN) |
-| North | 1.460 ly = 1.381 × 10¹⁸ cm | 1.398 ly = 1.323 × 10¹⁸ cm, north side |
-| South | 1.635 ly = 1.546 × 10¹⁸ cm | 1.028 ly = 9.73 × 10¹⁷ cm, south side |
+| North (far side, behind the ER plane) | 1.460 ly = 1.381 × 10¹⁸ cm | −1.398 ly = −1.323 × 10¹⁸ cm |
+| South (near side, in front of the ER plane) | 1.635 ly = 1.546 × 10¹⁸ cm | +1.028 ly = +9.73 × 10¹⁷ cm |
 
-- All three rings are drawn as circles in planes perpendicular to one symmetry axis. The axis is tilted 43.0° from the
-  line of sight; the ER's major axis lies at P.A. 81°.
-- Schematic and labelled: the fitted in-plane ellipticities (b/a 0.92–0.98), the rings' small centroid offsets and
-  Burrows' 0.4″ misalignment are not drawn.
+- **Axis.** Sky coordinates are Sugerman's: x west, y north, z toward the observer. The axis's positive end points
+  toward the observer, tilted 43.0° from the line of sight toward P.A. θ = 171.1°. That is the ER's minor axis, 90° from
+  its 81.1° major axis, and lies just east of south [D]. With P.A. counted from north through east:
+
+      â = sin 43.0° · (−sin θ, cos θ, 0) + cos 43.0° · (0, 0, 1) = (−0.1055, −0.6738, +0.7314)
+
+  A ring with signed offset z₀ is centred at z₀·â. The scene's view direction is −z (looking from the observer
+  toward the SN).
+- Consequences, checkable in a render [D]: the south ring is in front of the ER plane and projects south of the SN; the
+  north ring is behind it and projects north; the ER's north side is the near side (its point at P.A. 351° has line-of-sight coordinate +R sin 43° ≈ +0.45 ly).
+- All three rings are drawn as circles in planes perpendicular to â.
+- Schematic and labelled: the in-plane ellipticities, each ring's own position angle, the small centroid offsets
+  (x₀, y₀ ≤ 0.26 ly) and Burrows' 0.4″ misalignment are not drawn.
 - Hotspot brightness follows signals §6.3's ring component (logistic rise over 3,000–9,000 d, a plateau, and a decline
   after ≈ 10,000 d).
 
