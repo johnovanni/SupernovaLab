@@ -89,9 +89,13 @@ Hover over any term for a plain-language explanation.
   between 3 and 10 years; that stretch is labelled schematic.
 - **Surroundings.** The progenitor's wind as a haze, dense shells (for example SN 2023ixf's confined gas), and the swept-up
   remnant.
-- **The Crab's pulsar wind nebula,** inside its debris, grown from the pulsar's power. Its outer shell is predicted but has
-  never been detected, and says so.
-- **SN 1987A's rings,** at their measured size and tilt, with hotspots that light as the blast wave reaches the ring.
+- **A pulsar wind nebula** inside the debris of every outcome that leaves a pulsar, grown from the pulsar's power. For the
+  Crab it comes out small (the lab's SN 1054 has more debris than the Crab is thought to have), and its outer shell is
+  predicted but has never been detected; for SN 1987A one is drawn although none has been confirmed. The view says each of
+  these in its notes.
+- **SN 1987A's rings,** at their measured size and tilt (drawn as symmetric circles, which the real outer rings are not).
+  The hotspots' brightness follows the observed X-ray light curve from about day 3,000; the drawn spherical shock reaches
+  the ring only about 17 years after the explosion, and the view says so.
 - **The breakout flash** and a glow around bright gas (HDR with bloom). The flash's brightness comes from the breakout
   model.
 - **The guided tour** (the Tour button beside Play). It stops at each event of this explosion, and for a preset also at
@@ -181,13 +185,31 @@ away. Each is also stated in that preset's own summary in the app.
 | SN 1998bw | Radio of 45 mJy at 4.8 GHz on day 12 (Kulkarni et al. 1998) | About 3.7 mJy at 5 GHz on day 12, 9 to 12 times too faint | The lab's shock formulas are Newtonian, capped at the speed of light. The real shock was mildly relativistic (E ~1e50 erg in ejecta at Γβ ~1 to 2; Kulkarni et al. 1998, Nature 395, 663, via `docs/research/presets.md`). |
 | SN 1998bw | Peak V 13.62 near day 16 (Galama et al. 1998) | V 14.1 on day 23 | A one-zone (Arnett) light curve over all 10.9 solar masses of ejecta. |
 | SN 1987A | Radio peaked near 130 mJy at 843 MHz within days, and faded below detection after September 1987 | About 350 mJy at 1.4 GHz near day 18, still about 90 mJy on day 100 | The research has no wind for a blue supergiant. The lab uses a Wolf-Rayet-like wind and a red-supergiant shock speed. No single paper giving both was verified, so nothing is pinned. |
-| SN 1987A | 847 keV line of 1.0e-3 ph/cm²/s over days 159-250 (SMM) | 4.6e-5 over the same days, about 22 times too faint | The lab has no outward mixing of the cobalt. |
+| SN 1987A | 847 keV line of 1.0e-3 ph/cm²/s over days 159-250 (SMM) | 4.6e-5 over the same days, about 22 times too faint | The lab's gamma-ray model has no outward mixing of the cobalt. The 3D view draws the observed mixing, but the gamma-ray panel does not use it (spec §9). |
 | SN 1987A | No pulsar has been seen | From 10 years, the 3D view draws a pulsar with sweeping beams | The lab's pulsar model gives every neutron star one. JWST found indirect evidence of a hidden neutron star in 2024 (Fransson et al.). |
 | SN 1054 | Peak roughly -4 to -7, visible in daylight for 23 days, from the historical records | Peak V about -2.0, behind dust | The lab's weak electron-capture explosion. Not tuned. |
 | SN 2011fe | INTEGRAL/SPI did not detect its gamma-ray lines (Isern et al. 2013) | Not detected, but the margin is thin: at best 0.76 of the threshold | It rests on SPI's resolution (taken as 2 keV; the ratio would be about 0.93 at 3 keV) and on 0.53 solar masses of nickel (about 0.70 would reach the threshold). The limit used is preliminary. |
 | SN 2011fe | B-band decline Δm15(B) = 1.10 ± 0.04 (Pereira et al. 2013) | 0.99, measured on the drawn curve | Every near-Chandrasekhar Type Ia in the lab has one light-curve shape (the nickel sets only its brightness), and its colour after the peak is a simple blend toward the Lira relation. |
 | SN 2015bn | Peak 2.3 ± 0.4e44 erg/s after a 69-day rise (Nicholl et al. 2016) | 1.8e44 erg/s (0.77 of it, about 1.3σ low) at about day 62 | The published magnetar goes through the lab's one-zone diffusion, not the fit's own model. |
 | SN 1998bw, SN 2015bn | Published ejecta and remnant (1998bw: 10.9 + 2.9 solar masses, Iwamoto et al. 1998) | Both exceed what the lab's star holds when it dies (11.2 and 9.3 solar masses) | The lab's star models are lighter than the real stars. The published values are kept, and a note says so. |
+
+The 3D view has its own misses. These are stated in the view's notes: SN 1987A's rings drawn symmetric (#38), a nebula
+drawn for SN 1987A though none is confirmed (#49), Cas A's reverse shock at 0.85 of the forward shock against about 0.62
+observed (#46), the Crab's nebula drawn small (#47, #39) and its undetected outer shell (#31), and the hotspots' observed
+timing against the drawn shock (#48). These are documented in `docs/research/scientific-inconsistencies.md` only, not on
+screen:
+
+- **#35, the slow inner debris.** The debris profile puts about 0.5 solar masses of a red supergiant's debris below
+  1,000 km/s; 3D simulations put about 2 solar masses there.
+- **#36, when the reverse shock reaches the centre.** The published formulas disagree by 8 to 10%; this matters inside
+  the lab's 1,000-year window only for some Type Ia remnants.
+- **#37, SN 1987A's nickel and progenitor.** The 3D view draws the observed mixing reach, which current single-star
+  models do not produce.
+- **#41, mixing in pair-instability supernovae.** None is drawn; two red-supergiant models in the research mix
+  vigorously.
+- **#44, the 3 to 10 year shock join.** The reverse shock moves outward through the debris across the join. Shocked
+  debris stay shocked, and since the final review they are never drawn ahead of free expansion (SN 1987A's fastest
+  particles were up to 1.72 times too far out at 10 years before that fix).
 
 ### Other known limits
 
@@ -257,13 +279,14 @@ SupernovaLab.App.exe --snapshot <out-dir> [--preset <list>] [--time <seconds>] [
 - `--preset <list>`: preset ids, comma-separated or repeated (for example `sn1987a,sn1998bw`). An entry can carry its
   own time, `id@seconds`, in observer time (`sn1987a@86400`). `default` (or `default@seconds`) is the lab as launched;
   list it before any preset. Add `+densecsm` to an entry to turn on the lab's dense-gas input after the preset loads,
-  or `+cutaway` to turn on the 3D view's cutaway for that entry only. Without this option the lab's defaults are used.
+  or `+cutaway` to turn on the 3D view's cutaway for that entry only, or `+tour` to capture `--tour`'s stops for that entry
+  only (the other entries are then captured plainly). Without this option the lab's defaults are used.
 - `--time <seconds>`: the observer time for every preset that has no `@seconds`. Positive number.
 - `--size <WxH list>`: the main window size, for example `1366x768,1920x1080`. Default 1366x768.
 - `--window <list>`: which windows to render: `main`, `main-advanced`, `instruments`, `instrument-tabs`, `details`,
   `presetinfo`. Default `main`.
 - `--cutaway`: turns on the 3D view's wedge cutaway for every capture.
-- `--tour <stops>`: starts the guided tour of each preset and captures the requested windows at each listed stop
+- `--tour <stops>`: starts the guided tour of each preset (or of each `+tour` entry, if any has it) and captures the requested windows at each listed stop
   (`0,3,last`; stop 0 is the first). The caption, cutaway and instrument highlight are those of that stop. Nothing ticks
   the tour, so the picture is the stop itself.
 - `--quality <list>`: the particle quality, `high`, `medium` or `low` (comma-separated for several; the bench then runs

@@ -126,8 +126,9 @@ Plus a **guided tour** for every explosion, alongside free play.
     - The first line is always the debris radius as Project 1 gives it.
     - While shocks are drawn, a second line gives the forward shock, labelled by era (radio model's shock / join,
       schematic / steep-ejecta solution).
-    - From 10 years a note gives Project 1's uniform-ejecta value, which the remnant panel keeps (up to about 2.6× smaller
-      at 10 years for a red supergiant; correction C10; inconsistency #33).
+    - From 10 years the first line is labelled "Remnant panel's blast wave (uniform ejecta)": Project 1's value, which the
+      remnant panel keeps (up to about 2.6× smaller at 10 years for a red supergiant; correction C10; inconsistency #33),
+      and a note says why the lines differ. Both lines share one unit (ruling R-P2-33).
     - The view's framing blends to include the forward shock between 3 and 10 years, so nothing jumps.
 
   Corrected 2026-11-12: this line first said the forward shock "must agree" with Project 1's radius, then (ruling
@@ -154,7 +155,8 @@ Plus a **guided tour** for every explosion, alongside free play.
   SN 2023ixf) stays and is labelled, as now.
 - **SN 1987A's rings:** the equatorial ring (radius about 0.6 light-years, tilted about 43° to our line of sight) and
   the two outer rings, for SN 1987A-like presets only: it is observed geometry, pinned by the preset, not something
-  the lab predicts. Hotspots from about day 3,000; peak about day 8,000; then fading (signals §6.3). Geometry to be
+  the lab predicts. Hotspots from about day 3,000; peak about day 10,000 as drawn (the ring's soft X-ray plateau; the optical ring
+  peaked about day 8,000); then fading (signals §6.3). Geometry to be
   confirmed by the research.
 - **The remnant era:** interstellar gas swept into a thin shell, drawn brighter at the edge (limb brightening, as in
   Tycho's remnant). Radius from Project 1's blast-wave model.
@@ -226,8 +228,9 @@ nebula growth; failed-supernova envelope ejection. Any mismatch found goes on `d
 ### 7.4 When things fail
 - OpenGL missing or below 4.1: as in Project 1.
 - No HDR render target: a no-bloom path, as Project 1 draws.
-- A quality setting (200,000, 100,000 or 50,000 particles), stepping down automatically when the frame rate stays under
-  50 fps.
+- A quality setting (200,000, 100,000 or 50,000 particles), stepping down automatically when the GPU's render time per
+  frame stays over 20 ms (1/50 s; measured with GL timer queries, ruling R-P2-30; with no timer queries the step-down is off
+  and only the View menu changes the quality).
 - A model error: as in Project 1, the 3D view shows the error in its notes and the panels carry on.
 
 ### 7.5 Order of work (each milestone leaves a working app)

@@ -491,7 +491,9 @@ particle stays shocked. Particles with v > v_m are placed between R_r and R_c in
 - While shocks are drawn, a second line gives the drawn forward shock. It is labelled "Forward shock (radio model's shock)"
   to 3 yr and "Forward shock (join between the wind and remnant models; schematic)" over 3–10 yr (R-P2-26). It is labelled
   "Forward shock (steep-ejecta solution)" from 10 yr, and throughout for an outcome with no wind era.
-- From 10 yr a note gives Project 1's uniform-ejecta value, which the remnant panel uses (inconsistency #33).
+- From 10 yr (ruling R-P2-33) the first line is labelled "Remnant panel's blast wave (uniform ejecta)": it is Project 1's
+  uniform-ejecta value, which the remnant panel uses, and it lies inside the drawn debris; a note says why the two lines
+  differ (inconsistency #33). Both lines are given in one unit, the larger value's.
 - The frame blends geometrically from the debris frame F_d (Project 1's radius or the 99%-mass particle radius) to
   max(F_d, R_f) over 3–10 yr, with the same smoothstep in log t. So it includes R_f from 10 yr and never jumps; before 3 yr
   the wind-era shell may extend past the view.
