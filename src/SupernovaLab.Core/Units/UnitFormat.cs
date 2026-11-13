@@ -118,6 +118,25 @@ public static class UnitFormat
         return $"{Scaled(cm / PhysicalConstants.Pc, DistanceUnits)} ({Count(Sig(ly), "light-years")})";
     }
 
+    /// <summary>
+    /// <paramref name="cm"/> formatted as <see cref="Distance"/> would format it, but in the unit <see cref="Distance"/> picks for
+    /// <paramref name="unitOfCm"/> (km, AU, or pc/kpc/Mpc with light-years), so two lines of a readout share one unit (final review I4:
+    /// the larger value's unit). E.g. 0.3 pc against a reference of 2 pc reads "0.3 pc (0.978 light-years)", and 5,000 AU against
+    /// 2 pc reads "0.0242 pc (0.0791 light-years)".
+    /// </summary>
+    public static string Distance(double cm, double unitOfCm)
+    {
+        double refAu = Round3(Math.Abs(unitOfCm) / PhysicalConstants.Au);
+        if (refAu < 1) return $"{Sig(cm / 1e5)} km";
+        if (refAu < MaxAu) return $"{Sig(cm / PhysicalConstants.Au)} AU";
+        double refPc = Math.Abs(unitOfCm) / PhysicalConstants.Pc;
+        var unit = DistanceUnits[^1];
+        foreach (var u in DistanceUnits)
+            if (Round3(refPc / u.Div) < u.Upper) { unit = u; break; }
+        double ly = cm / PhysicalConstants.LightYear;
+        return $"{Count(Sig(cm / PhysicalConstants.Pc / unit.Div), unit.Name)} ({Count(Sig(ly), "light-years")})";
+    }
+
     private static string Superscript(int n)
     {
         var s = new System.Text.StringBuilder();

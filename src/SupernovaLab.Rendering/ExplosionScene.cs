@@ -174,6 +174,10 @@ public sealed class ExplosionScene
     /// <summary>Shown while the Rayleigh-Taylor fingers are drawn (structure S3).</summary>
     public const string MixingNote = "Mixing fingers: shapes schematic; their reach is from 3D simulations (structure §S3)";
 
+    /// <summary>SN 1987A's mixing note (the outcome with its ring takes the observed reach, structure §S3; inconsistency #37).</summary>
+    public const string Sn1987aMixingNote =
+        "Mixing fingers: shapes schematic; their reach is the one observed in SN 1987A (structure §S3)";
+
     /// <summary>Project 1's note for a dense shell whose extent is the 1e15 cm fallback (§S7 gives none).</summary>
     public const string GasNote =
         "Gas around the star (schematic): its extent is not in the research; drawn to 1e15 cm, like SN 2023ixf's";
@@ -207,6 +211,26 @@ public sealed class ExplosionScene
     public const string CrabShellNote =
         "The Crab's outer shell (drawn) is predicted but has never been detected (scientific inconsistency #31)";
 
+    /// <summary>Ruling R-P2-32 (inconsistency #38): shown with SN 1987A's rings' note.</summary>
+    public const string RingsSymmetricNote =
+        "SN 1987A's rings are drawn as symmetric circles with evenly spaced hotspots (schematic); the real outer rings are not " +
+        "symmetric (scientific inconsistency #38)";
+
+    /// <summary>Ruling R-P2-32 (inconsistency #49): shown with the nebula's note for SN 1987A (the outcome with its ring).</summary>
+    public const string Sn1987aNebulaNote =
+        "A pulsar wind nebula is drawn for SN 1987A, but none is confirmed: the JWST evidence for a compact object (Fransson et al. " +
+        "2024) is indirect (scientific inconsistency #49)";
+
+    /// <summary>Ruling R-P2-32 (inconsistency #46): shown for Cas A (its preset's disclosure) in the remnant era.</summary>
+    public const string CasAReverseShockNote =
+        "Cas A's reverse shock is drawn at 0.85 of the forward shock's radius at its age, against about 0.62 observed: the remnant " +
+        "solution assumes uniform gas, not the star's own wind (scientific inconsistency #46)";
+
+    /// <summary>Rulings R-P2-32 (inconsistencies #47, #39): shown with the Crab's nebula (its preset's disclosure).</summary>
+    public const string CrabNebulaNote =
+        "The Crab's nebula is drawn small (about 0.96 pc at its age, against about 1.7 pc measured): the lab's SN 1054 has the " +
+        "engine's 7.4 M☉ of debris, not the 4.6 M☉ usually estimated (scientific inconsistencies #47, #39)";
+
     /// <summary>The note when the extent is from a source ({0}: its citation).</summary>
     public const string GasNoteFormat = "Gas around the star: extent from {0}";
 
@@ -215,10 +239,24 @@ public sealed class ExplosionScene
         "Radius: the edge of a uniform ball of debris with this energy and mass (the spec's simple model); the fastest " +
         "outer layers, and the line speeds in the spectrum, are faster";
 
-    /// <summary>Shown while the shocks are drawn (structure §S4; ruling R-P2-24).</summary>
+    /// <summary>Shown while the shocks are drawn for an outcome with a wind era (structure §S4; ruling R-P2-24).</summary>
     public const string ShockNote =
         "Shocks: radii from the radio model's shock with Chevalier 1982's ratios in the first years, then Truelove & McKee 1999 " +
         "and Tang & Chevalier 2017 for steep outer debris (structure §S4)";
+
+    /// <summary>
+    /// Final review I5: the shock note for an outcome with no wind era (<see cref="ShockStructureModel.HasWindEra"/> false: a Type Ia,
+    /// or no wind the radio model covers), whose shocks start at 3 yr on the remnant-era solution ({0}: the ejecta index n).
+    /// </summary>
+    public const string NoWindShockNoteFormat =
+        "Shocks: radii from Truelove & McKee 1999 and Tang & Chevalier 2017 for power-law outer debris (n = {0}), drawn from 3 years: " +
+        "the lab has no wind-era shock model for this outcome (structure §S4)";
+
+    /// <summary>The shock note for this outcome: <see cref="ShockNote"/> with a wind era, else <see cref="NoWindShockNoteFormat"/>.</summary>
+    public static string ShockNoteFor(Outcome o)
+        => ShockStructureModel.HasWindEra(o) ? ShockNote
+            : string.Format(System.Globalization.CultureInfo.InvariantCulture, NoWindShockNoteFormat,
+                ShockStructureModel.RemnantIndex(EjectaStructureModel.ClassOf(o)));
 
     /// <summary>The forward-shock readout's label from 10 yr, and for an outcome with no wind era (rulings R-P2-24, R-P2-25).</summary>
     public const string ForwardShockLabel = "Forward shock (steep-ejecta solution)";
@@ -229,15 +267,25 @@ public sealed class ExplosionScene
     /// <summary>The forward-shock readout's label while the two eras blend, 3 to 10 yr (rulings R-P2-25, R-P2-26).</summary>
     public const string BlendShockLabel = "Forward shock (join between the wind and remnant models; schematic)";
 
-    /// <summary>From 10 yr (ruling R-P2-24): Project 1's uniform-ejecta value, which the panels use ({0}: the radius).</summary>
-    public const string UniformRemnantNoteFormat =
-        "The remnant model behind the panels assumes uniform ejecta and gives {0}; see scientific inconsistency #33";
+    /// <summary>
+    /// Ruling R-P2-33 (final review I4): the readout's first line from 10 yr, while shocks are drawn. It is Project 1's uniform-ejecta
+    /// blast wave, which the remnant panel shows; it lies inside the drawn (steep-ejecta) debris.
+    /// </summary>
+    public const string RemnantPanelLabel = "Remnant panel's blast wave (uniform ejecta)";
+
+    /// <summary>From 10 yr (ruling R-P2-24, final review I4): why the readout's two lines differ.</summary>
+    public const string UniformRemnantNote =
+        "Readout: the first line is the remnant panel's blast wave, from a model that assumes uniform debris; the drawn debris and " +
+        "forward shock follow the steep-ejecta solution and run beyond it (scientific inconsistency #33)";
 
     /// <summary>[APPROX, schematic] The temperature whose blackbody colour tints the shocked debris: X-ray-hot gas, about 10⁷ K.</summary>
     public const double HotGasTemperatureK = 1e7;
 
     /// <summary>The shocked debris' tint: <see cref="BlackbodyColor"/> at <see cref="HotGasTemperatureK"/> (normalized, so capped at 1).</summary>
     public static (float R, float G, float B) HotGasColor { get; } = BlackbodyColor.FromTemperature(HotGasTemperatureK);
+
+    /// <summary>From 10 yr when no shocks are drawn: the radius is Project 1's remnant model's.</summary>
+    public const string RemnantRadiusNote = "Radius from the remnant model's blast wave";
 
     /// <summary>Task 16 re-review N1: the 3 to 10 yr hand-off from the uniform ball to the remnant model's blast wave.</summary>
     public const string BlendNote =
@@ -249,6 +297,7 @@ public sealed class ExplosionScene
     private static readonly ShockBreakoutModel Breakout = new();
 
     private readonly double _z1;
+    private readonly string _shockNote;
     private readonly bool _nebula;
     private readonly bool _ejecta, _thermonuclear, _lowLuminosityGrb, _pinnedGrb;
     private readonly CircumstellarStructure? _surroundings;
@@ -269,6 +318,8 @@ public sealed class ExplosionScene
         _pulsarS = Pulsar.Applies(outcome) ? Pulsar.EmergenceTimeS(outcome) : double.NaN;
         _surroundings = CircumstellarStructureModel.For(outcome);
         _nebula = PulsarWindNebulaModel.Applies(outcome);
+        // Final review I5: the shock note by whether there is a wind era (only outcomes with shocks ever show it).
+        _shockNote = double.IsFinite(ShockStructureModel.StartTimeS(outcome)) ? ShockNoteFor(outcome) : ShockNote;
 
         // Review I3: the jets are drawn while the GRB model covers the burst: burst and afterglow for a classical burst;
         // for a pinned low-luminosity burst (ruling R39) the prompt burst only, since the model draws no afterglow for it.
@@ -370,7 +421,8 @@ public sealed class ExplosionScene
     {
         int at = beforeLast ? Math.Max(0, notes.Count - 1) : notes.Count;
         foreach (string n in Structure!.Notes) if (!notes.Contains(n)) notes.Insert(at++, n);
-        if (Structure.Mixing.HasFingers && !Structure.IsEnvelopeShell) notes.Insert(at, MixingNote);
+        if (Structure.Mixing.HasFingers && !Structure.IsEnvelopeShell)
+            notes.Insert(at, Outcome.HasEquatorialRing ? Sn1987aMixingNote : MixingNote);
     }
 
     /// <summary>The view at this source time (s after bounce, or ignition for a Type Ia).</summary>
@@ -438,20 +490,23 @@ public sealed class ExplosionScene
         var marker = MarkerAt(t, notes, out double period);
         var shocks = ShockStructureModel.At(Outcome, t);
         // Ruling R-P2-25: the readout's first line is the debris radius as Project 1 gives it; while shocks are drawn a second
-        // line gives the drawn forward shock, labelled by era. From 10 yr a note gives Project 1's uniform-ejecta value.
+        // line gives the drawn forward shock, labelled by era. From 10 yr (ruling R-P2-33) the first line is labelled as the remnant
+        // panel's uniform-ejecta blast wave, with a note on why the lines differ.
         bool remnant = t >= RemnantEvolutionModel.StartS && shocks is not null;
-        string label = t >= RemnantEvolutionModel.StartS ? "Blast-wave radius"
+        string label = remnant ? RemnantPanelLabel
+            : t >= RemnantEvolutionModel.StartS ? "Blast-wave radius"
             : t > EjectaKinematics.BlendStartS ? "Outer radius" : "Ejecta radius";
         string shockLabel = shocks is null ? ""
             : !ShockStructureModel.HasWindEra(Outcome) ? ForwardShockLabel
             : t >= RemnantEvolutionModel.StartS ? (HeldJoinMaximum(shocks!.ForwardCm, t) ? BlendShockLabel : ForwardShockLabel)
             : t > EjectaKinematics.BlendStartS ? BlendShockLabel : RadioShockLabel;
-        if (remnant) notes.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, UniformRemnantNoteFormat, UnitFormat.Distance(r)));
-        else if (t >= RemnantEvolutionModel.StartS) notes.Add("Radius from the remnant model's blast wave");
+        if (remnant) notes.Add(UniformRemnantNote);
+        else if (t >= RemnantEvolutionModel.StartS) notes.Add(RemnantRadiusNote);
         else if (t > EjectaKinematics.BlendStartS) notes.Add(BlendNote);
         else notes.Add(UniformSphereNote);
         if (t > _lightCurveEndS) notes.Add("Past the light-curve model (3 yr): debris drawn dimly");
-        if (shocks is not null) notes.Add(ShockNote);
+        if (shocks is not null) notes.Add(_shockNote);
+        if (remnant && shocks!.ReverseCm > 0 && Outcome.Discloses(46)) notes.Add(CasAReverseShockNote);
         notes.Add(SchematicNote);
         state = state with
         {
@@ -491,12 +546,19 @@ public sealed class ExplosionScene
     private SceneState WithNebula(SceneState state, List<string> notes, double t)
     {
         if (!_nebula) return state;
-        double radius = PulsarWindNebulaModel.RadiusCm(Outcome, t);
+        // Final review I2: the structure and shocks this scene already holds, so a frame rebuilds neither.
+        double radius = PulsarWindNebulaModel.RadiusCm(Outcome, Structure!, state.Shocks, t);
         if (!(radius > 0)) return state;
         if (radius >= NebulaNoteMinFrameFraction * state.FrameRadiusCm)
+        {
             notes.Insert(Math.Max(0, notes.Count - 1), PulsarWindNebulaModel.Note);
-        // Ruling R-P2-29: the Crab (the preset with a measured pulsar) has its forward-shock shell drawn; it is the undetected outer shell.
-        if (Outcome.PulsarRadioLuminosityMjyKpc2 is not null && state.Shocks is not null)
+            // Ruling R-P2-32: the nebula's misses, with its note (#49 for SN 1987A, the outcome with its ring; #47/#39 for the Crab).
+            if (Outcome.HasEquatorialRing) notes.Insert(Math.Max(0, notes.Count - 1), Sn1987aNebulaNote);
+            if (Outcome.Discloses(47)) notes.Insert(Math.Max(0, notes.Count - 1), CrabNebulaNote);
+        }
+        // Ruling R-P2-29: the Crab's drawn forward-shock shell is its undetected outer shell. Ruling R-P2-33 (I12): flagged by the preset
+        // (Outcome.HasUndetectedOuterShell, read by no signal model), and noted only in the remnant era, from 10 yr.
+        if (Outcome.HasUndetectedOuterShell && state.Shocks is not null && t >= RemnantEvolutionModel.StartS)
             notes.Insert(Math.Max(0, notes.Count - 1), CrabShellNote);
         return state with { NebulaRadiusCm = radius };
     }
@@ -511,6 +573,7 @@ public sealed class ExplosionScene
         if (state.FrameRadiusCm >= RingsNoteMinFrameFraction * Sn1987aRings.EquatorialRadiusCm)
         {
             notes.Insert(Math.Max(0, notes.Count - 1), Sn1987aRings.Note);
+            notes.Insert(Math.Max(0, notes.Count - 1), RingsSymmetricNote);   // ruling R-P2-32, #38
             if (Sn1987aRings.HotspotBrightness(t) > 0)
             {
                 double day = ShockReachesRingDay();
@@ -564,9 +627,12 @@ public sealed class ExplosionScene
     {
         if (_surroundings is not { } csm) return state;
         double forward = state.Shocks?.ForwardCm ?? 0;
-        // The shell is framed while the debris are inside it; it is drawn (and noted) until the forward shock has swept it.
-        bool framed = csm.ShellOuterCm is { } outer && !(ejectaRadiusCm >= outer);
-        bool shell = framed && !(forward >= csm.ShellOuterCm!.Value);
+        // The shell is drawn (and noted) until the forward shock has swept it. It is framed while the debris are inside it, and only
+        // once they have started (final review I6): before breakout the view keeps the star's framing, or a IIn's star would be a speck
+        // in a view 500 times its size.
+        bool inside = csm.ShellOuterCm is { } outer && !(ejectaRadiusCm >= outer);
+        bool shell = inside && !(forward >= csm.ShellOuterCm!.Value);
+        bool framed = inside && Structure is not null && t >= _particleStartS;
         bool haze = csm.WindAStar > 0 && csm.WindOuterCm > csm.WindInnerCm;
         float glow = CircumstellarStructureModel.Glow(Outcome, t);
         state = state with { Surroundings = csm, SurroundingsGlow = glow, ShellFlare = ConfinedFlare(t) ?? glow };

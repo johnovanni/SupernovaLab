@@ -157,12 +157,13 @@ public class ExplosionSceneTests
     [Fact]
     public void DenseShell_IsInTheState_BeforeTheExplosion_AndFramed()
     {
-        // Task 9 (structure §S7): a dense shell out to SN 2023ixf's 1e15 cm; a dense shell may drive the framing, as Project 1's gas shell did.
+        // Task 9 (structure §S7): a dense shell out to SN 2023ixf's 1e15 cm. Final review I6: before breakout the view keeps the
+        // star's framing (the shell drives it only once the debris have started), or the star would be a speck.
         var s = new ExplosionScene(DenseCsm()).At(1e-3);
         Assert.True(s.ShowStar);
         var c = s.Surroundings!;
         Assert.Equal(1e15, c.ShellOuterCm);
-        Assert.Equal(1e15, s.FrameRadiusCm);
+        Assert.Equal(s.StarRadiusCm, s.FrameRadiusCm);
         Assert.Equal(s.StarRadiusCm, s.RadiusCm);
         Assert.Equal(0f, s.SurroundingsGlow);   // the shock has not reached the star's surface
     }
@@ -495,10 +496,12 @@ public class ExplosionSceneTests
         // labelled by era; from 10 yr a note gives Project 1's uniform-ejecta value (R-P2-24).
         double p1 = EjectaKinematics.RadiusCm(o, 30 * Year);
         Assert.Equal(p1, s.RadiusCm);
-        Assert.Equal("Blast-wave radius", s.RadiusLabel);
+        // Ruling R-P2-33 (I4): in the remnant era the first line says it is the remnant panel's uniform-ejecta blast wave.
+        Assert.Equal("Remnant panel's blast wave (uniform ejecta)", s.RadiusLabel);
         Assert.Equal(s.Shocks!.ForwardCm, s.ForwardShockCm);
         Assert.Equal("Forward shock (steep-ejecta solution)", s.ForwardShockLabel);
-        Assert.Contains($"The remnant model behind the panels assumes uniform ejecta and gives {UnitFormat.Distance(p1)}; see scientific inconsistency #33", s.Notes);
+        Assert.Contains(ExplosionScene.UniformRemnantNote, s.Notes);
+        Assert.Contains("#33", ExplosionScene.UniformRemnantNote);
         Assert.True(s.FrameRadiusCm >= s.Shocks.ForwardCm && s.FrameRadiusCm >= p1);
 
         // The wind era (radio model's shock) and the 3-10 yr blend (a neutral label); the readout's first line is Project 1's.

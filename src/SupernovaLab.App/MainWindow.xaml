@@ -23,7 +23,7 @@
                           IsChecked="{Binding DataContext.IsCutaway, ElementName=SceneHost, Mode=TwoWay}"
                           ToolTip="{x:Static text:Glossary.Cutaway}"/>
                 <MenuItem Header="_Quality" Foreground="Black"
-                          ToolTip="How many debris particles the 3D view draws. It steps down by itself if the view runs below 50 frames per second; a choice here starts it over.">
+                          ToolTip="How many debris particles the 3D view draws. It steps down by itself if the graphics card needs more than 20 ms to draw a frame (as measured by the card's own timer; the step-down is off where the card cannot time itself); a choice here starts it over.">
                     <MenuItem Header="_High (200,000 particles)" Foreground="Black" IsCheckable="True"
                               IsChecked="{Binding DataContext.IsQualityHigh, ElementName=SceneHost, Mode=TwoWay}"/>
                     <MenuItem Header="_Medium (100,000)" Foreground="Black" IsCheckable="True"
@@ -65,15 +65,22 @@
                     <!-- Snapshot diagnostic only: the GL frame read back with GL.ReadPixels (ruling R19). -->
                     <Image x:Name="SnapshotImage" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False"/>
 
-                    <!-- Task 11: a translucent dark backdrop keeps the readout and notes legible over bright shells. -->
-                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
+                    <!-- Task 11: a translucent dark backdrop keeps the readout and notes legible over bright shells. Final review I8: the
+                         readout and the notes each take at most half the view's width (two equal columns of a background-less grid,
+                         which passes drags and wheel through), so they cannot overlap at the 1,100 px minimum window width. -->
+                    <Grid VerticalAlignment="Top">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
                             VerticalAlignment="Top" IsHitTestVisible="False">
                         <StackPanel>
                             <TextBlock Text="{Binding TimeText}" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding RadiusText}" Margin="0,2,0,0" MaxWidth="340" TextWrapping="Wrap" HorizontalAlignment="Left"/>
                         </StackPanel>
                     </Border>
-                    <Border Margin="6,4" Padding="6,4" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right"
+                    <Border Grid.Column="1" Margin="6,4" Padding="6,4" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right"
                             VerticalAlignment="Top">
                         <Border.Style>
                             <Style TargetType="Border">
@@ -104,6 +111,7 @@
                             </TextBlock>
                         </StackPanel>
                     </Border>
+                    </Grid>
 
                     <!-- The distance rings' labels (plan ruling P6): WPF text placed from the GL projection, at each ring's top. -->
                     <ItemsControl ItemsSource="{Binding RingLabels}" IsHitTestVisible="False">

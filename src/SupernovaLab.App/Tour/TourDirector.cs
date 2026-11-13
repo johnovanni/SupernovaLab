@@ -50,9 +50,14 @@ public sealed class TourDirector
         set
         {
             if (ReferenceEquals(_scene, value)) return;
-            if (_scene is not null) _scene.UserInteracted -= OnUserInput;
+            if (_scene is not null)
+            {
+                _scene.UserInteracted -= OnUserInput;
+                _scene.IsTourOrbiting = false;
+            }
             _scene = value;
             if (_scene is not null) _scene.UserInteracted += OnUserInput;
+            SyncOrbit();
         }
     }
 
@@ -89,7 +94,7 @@ public sealed class TourDirector
         if (State is not (TourState.Playing or TourState.Dwelling)) return;
         _resumeState = State;
         State = TourState.Paused;
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged();
     }
 
     /// <summary>Continues from the stop the time is at: the dwell if it was held on the stop, else travel to the next one.</summary>
@@ -102,7 +107,7 @@ public sealed class TourDirector
         if (atStop && _resumeState == TourState.Dwelling)
         {
             State = TourState.Dwelling;
-            Changed?.Invoke(this, EventArgs.Empty);
+            RaiseChanged();
             return;
         }
         // The user moved the time: carry on from the last stop at or before it.
@@ -112,7 +117,7 @@ public sealed class TourDirector
         if (i == _stops.Count - 1) { Exit(); return; }   // at or past the last stop: nothing left to play
         if (i != StopIndex) ApplyStop(i);
         State = TourState.Playing;
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged();
     }
 
     /// <summary>Jumps to the next stop; past the last one it ends the tour.</summary>
@@ -138,7 +143,7 @@ public sealed class TourDirector
         if (!wasPaused) return;
         _resumeState = TourState.Dwelling;
         State = TourState.Paused;
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged();
     }
 
     /// <summary>Ends the tour: the user's cutaway setting comes back and the highlight clears.</summary>
@@ -148,7 +153,7 @@ public sealed class TourDirector
         State = TourState.Off;
         _vm.Highlight(null);
         if (_scene is not null) _scene.IsCutaway = _savedCutaway;
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged();
     }
 
     /// <summary>Advances the tour by this much wall-clock time (called once per rendered frame while the tour is on).</summary>
@@ -166,7 +171,7 @@ public sealed class TourDirector
             else
             {
                 State = TourState.Playing;
-                Changed?.Invoke(this, EventArgs.Empty);
+                RaiseChanged();
             }
             return;
         }
@@ -186,7 +191,7 @@ public sealed class TourDirector
         _vm.Timeline.DirectTo(_stops[index].ObserverTimeS, playbackStep: !jump);
         _dwellLeftS = _stops[index].DwellS;
         State = TourState.Dwelling;
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged();
     }
 
     /// <summary>Shows a stop's cutaway and highlight (its caption follows from <see cref="Current"/>).</summary>
@@ -196,10 +201,26 @@ public sealed class TourDirector
         var stop = _stops[index];
         if (_scene is not null) _scene.IsCutaway = stop.Cutaway;
         _vm.Highlight(stop.Highlight);
-        if (!quiet) Changed?.Invoke(this, EventArgs.Empty);
+        if (!quiet) RaiseChanged();
     }
 
     private void OnUserInput(object? sender, EventArgs e) => Pause();
+
+    /// <summary>
+    /// Ruling R-P2-32: the 3D view animates while the camera orbits, so the orbit renders smoothly (the Task 14 bench drew 17–19 fps
+    /// with on-demand frames). On while travelling or dwelling at a stop whose orbit speed is not 0; off when paused or ended.
+    /// </summary>
+    private void SyncOrbit()
+    {
+        if (_scene is not null)
+            _scene.IsTourOrbiting = State is TourState.Playing or TourState.Dwelling && Current is { OrbitDegPerS: not 0 };
+    }
+
+    private void RaiseChanged()
+    {
+        SyncOrbit();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     private void OnOutcomeChanged(object? sender, EventArgs e)
     {
@@ -208,6 +229,6 @@ public sealed class TourDirector
         Note = NewExplosionNote;
         var existing = _vm.StatusMessage;
         _vm.StatusMessage = string.IsNullOrEmpty(existing) ? Note : $"{existing}  {Note}";
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged();
     }
 }

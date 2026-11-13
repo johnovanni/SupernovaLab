@@ -360,6 +360,28 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// </summary>
     public event EventHandler? UserInteracted;
 
+    private bool _isTourOrbiting;
+
+    /// <summary>
+    /// True while the guided tour's camera orbits (its stop's orbit speed is above 0 and the tour is travelling or dwelling): the view
+    /// then animates every frame (ruling R-P2-32), rather than drawing one on-demand frame per orbit step. The tour sets it and
+    /// clears it on Pause, Exit and a stop without an orbit.
+    /// </summary>
+    public bool IsTourOrbiting
+    {
+        get => _isTourOrbiting;
+        set
+        {
+            if (_isTourOrbiting == value) return;
+            _isTourOrbiting = value;
+            UpdateAnimating();
+            RequestRender();
+        }
+    }
+
+    /// <summary>Whether the view renders every frame now: a pulsar's beams, a camera ease, or the tour's orbit.</summary>
+    public bool IsAnimating => !IsFailed && (_state.Marker == SceneMarker.Pulsar || (Director.IsEasing && _frozenUnitCm is null) || _isTourOrbiting);
+
     /// <summary>The guided tour's orbit: turns the camera about the vertical axis by this many degrees (not user input).</summary>
     public void Orbit(double yawDeg)
     {
@@ -449,7 +471,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     private void UpdateAnimating()
     {
-        if (_host is not null && !IsFailed) _host.Animating = _state.Marker == SceneMarker.Pulsar || (Director.IsEasing && _frozenUnitCm is null);
+        if (_host is not null && !IsFailed) _host.Animating = IsAnimating;
     }
 
     /// <summary>Each frame: hands the director the wall time since the last frame and the framing radius, then the labels follow.</summary>
@@ -489,35 +511,76 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         NotesToggleText = lines.Length <= 1 ? "" : IsNotesExpanded ? HideNotesText : MoreNotesText(lines.Length - 1);
     }
 
-    /// <summary>The notes that describe what is on screen now (the breakout flash, the cutaway, SN 1987A's rings): shown first after a quality note.</summary>
+    /// <summary>The notes that describe what is on screen now (the breakout flash, the cutaway, SN 1987A's rings).</summary>
     private static readonly HashSet<string> EventNotes = new(StringComparer.Ordinal)
     {
         ExplosionScene.FlashNote, CutawayNote, Sn1987aRings.Note,
     };
 
+    /// <summary>The notes that say what the radius readout's lines are (final review I3: they come right after the current event).</summary>
+    private static readonly HashSet<string> ReadoutNotes = new(StringComparer.Ordinal)
+    {
+        ExplosionScene.UniformSphereNote, ExplosionScene.BlendNote, ExplosionScene.UniformRemnantNote, ExplosionScene.RemnantRadiusNote,
+    };
+
     /// <summary>
-    /// The notes in the order the collapsed overlay needs, since it shows the first one only: a "quality lowered" note, then the
-    /// notes of what is on screen now (<see cref="EventNotes"/>), then the rest, each group in its own order.
+    /// The group a note sorts into (final review I3), first shown first:
+    /// <list type="number">
+    /// <item>(the quality note, placed by <see cref="OrderNotes"/>);</item>
+    /// <item>what is on screen now (<see cref="EventNotes"/>: the flash, the cutaway, SN 1987A's rings);</item>
+    /// <item>the stage the explosion is at (the shock crossing the star, the core collapsing);</item>
+    /// <item>the readout's labels (<see cref="ReadoutNotes"/> and the shocks' note);</item>
+    /// <item>disclosures of the lab's misses (any note citing a scientific inconsistency);</item>
+    /// <item>schematic and structure notes (everything else);</item>
+    /// <item>the remnant's marker and the jets, last.</item>
+    /// </list>
+    /// </summary>
+    public static int NoteRank(string note)
+    {
+        if (EventNotes.Contains(note)) return 1;
+        if (note.StartsWith("The shock is crossing the star", StringComparison.Ordinal) ||
+            note.StartsWith("The core is collapsing", StringComparison.Ordinal)) return 2;
+        if (ReadoutNotes.Contains(note) || note.StartsWith("Shocks: radii from", StringComparison.Ordinal)) return 3;
+        if (note.Contains("inconsistency #", StringComparison.Ordinal) || note.Contains("inconsistencies #", StringComparison.Ordinal))
+            return 4;
+        if (note.Contains("(marker)", StringComparison.Ordinal) || note.Contains("(schematic marker)", StringComparison.Ordinal) ||
+            note.Contains("beams slowed down", StringComparison.Ordinal) ||
+            note.StartsWith("Gamma-ray-burst jets", StringComparison.Ordinal) ||
+            note.StartsWith("The gamma-ray burst's jets", StringComparison.Ordinal)) return 6;
+        return 5;
+    }
+
+    /// <summary>
+    /// The notes in the order the collapsed overlay needs, since it shows the first one only: a "quality lowered" note, then each
+    /// <see cref="NoteRank"/> group in turn (the current event, the stage, the readout's labels, disclosures, schematic notes, the
+    /// marker and jets), each group in the scene's own order.
     /// </summary>
     public static IReadOnlyList<string> OrderNotes(IEnumerable<string> notes, string? qualityNote)
     {
-        var list = notes.ToList();
         var ordered = new List<string>();
         if (qualityNote is not null) ordered.Add(qualityNote);
-        ordered.AddRange(list.Where(EventNotes.Contains));
-        ordered.AddRange(list.Where(n => !EventNotes.Contains(n)));
+        ordered.AddRange(notes.Select((n, i) => (n, i)).OrderBy(p => NoteRank(p.n)).ThenBy(p => p.i).Select(p => p.n));
         return ordered;
+    }
+
+    /// <summary>
+    /// The radius readout: the state's radius line and, while shocks are drawn, a second line for the drawn forward shock (ruling
+    /// R-P2-25). Both lines are in one unit, the larger value's (ruling R-P2-33, final review I4), so they compare at a glance. Empty
+    /// without a radius.
+    /// </summary>
+    public static string ReadoutText(SceneState s)
+    {
+        if (!(double.IsFinite(s.RadiusCm) && s.RadiusCm > 0)) return "";
+        if (!(double.IsFinite(s.ForwardShockCm) && s.ForwardShockCm > 0)) return $"{s.RadiusLabel}: {UnitFormat.Distance(s.RadiusCm)}";
+        double unit = Math.Max(s.RadiusCm, s.ForwardShockCm);
+        return $"{s.RadiusLabel}: {UnitFormat.Distance(s.RadiusCm, unit)}" + Environment.NewLine +
+               $"{s.ForwardShockLabel}: {UnitFormat.Distance(s.ForwardShockCm, unit)}";
     }
 
     private void UpdateOverlay()
     {
         TimeText = _vm.Timeline.ObserverTimeText;
-        RadiusText = double.IsFinite(_state.RadiusCm) && _state.RadiusCm > 0
-            ? $"{_state.RadiusLabel}: {UnitFormat.Distance(_state.RadiusCm)}"
-            : "";
-        // Ruling R-P2-25: while shocks are drawn, a second line gives the drawn forward shock.
-        if (RadiusText.Length > 0 && double.IsFinite(_state.ForwardShockCm) && _state.ForwardShockCm > 0)
-            RadiusText += Environment.NewLine + $"{_state.ForwardShockLabel}: {UnitFormat.Distance(_state.ForwardShockCm)}";
+        RadiusText = ReadoutText(_state);
         var notes = IsCutaway ? _state.Notes.Append(CutawayNote) : _state.Notes;
         var all = _modelError is not null ? new List<string> { _modelError } : OrderNotes(notes, _qualityNote).ToList();
         NotesText = string.Join(Environment.NewLine, all);
@@ -598,7 +661,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         if (!(_viewDip.Width > 0) || !(_viewDip.Height > 0))
         {
-            RingLabels = Array.Empty<RingLabel>();
+            if (_ringLabels.Count > 0) RingLabels = Array.Empty<RingLabel>();
             return;
         }
         double perUnit = 1 / (Camera.DistanceMpc * Math.Tan(Camera.FieldOfViewDeg * Math.PI / 360));
@@ -609,7 +672,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (y < 0 || y > _viewDip.Height) continue;
             labels.Add(new RingLabel(ring.Label, _viewDip.Width / 2, y, ring.Opacity));
         }
-        RingLabels = labels;
+        // Final review M1: this runs every frame; a new list only when a label changed, so the ItemsControl does not rebuild at 60 Hz.
+        if (!labels.SequenceEqual(_ringLabels)) RingLabels = labels;
     }
 
     /// <summary>"vendor | renderer | version" as the GL driver reports them (the GPU name for the performance notes); empty before the first frame.</summary>
@@ -718,17 +782,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (s.FlashIntensity > 0 && HdrEnabled) _flash?.RenderHdr(viewportPx, s.FlashColor, s.FlashIntensity);
             if (starCut || particleCut)
             {
-                var star = _star;
-                var uploaded = _uploaded;
-                cutFaces = () =>
-                {
-                    GL.ColorMask(true, true, true, true);
-                    if (particleCut && uploaded is not null) DrawCutFaces(viewportPx, s, uploaded, unit, faceColors);
-                    if (!starCut) return;
-                    var layers = s.StarLayers.Select(l => ((float)(l.OuterRadiusCm / s.StarRadiusCm), ToVector(faceColors[(int)l.Layer]))).ToList();
-                    float shock = double.IsFinite(s.ShockInStarRadiusCm) ? (float)(s.ShockInStarRadiusCm / s.StarRadiusCm) : float.NaN;
-                    star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, new StarCutaway(layers, shock));
-                };
+                // Final review M1: one cached delegate reads this frame's inputs from a field (no closure per frame).
+                _cutFrame = (viewportPx, s, _uploaded, unit, faceColors, starCut, particleCut);
+                cutFaces = _drawCutFacesNow ??= DrawCutFacesNow;
             }
         }
         GL.ColorMask(true, true, true, true);
@@ -784,6 +840,39 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         return _cones;
     }
 
+    /// <summary>The inputs of this frame's cut faces, read by <see cref="DrawCutFacesNow"/> inside <see cref="HdrPipeline.End"/>.</summary>
+    private (Size Viewport, SceneState State, ParticleSet? Set, double Unit, (float R, float G, float B)[] Colors, bool StarCut, bool ParticleCut) _cutFrame;
+    private Action? _drawCutFacesNow;
+
+    /// <summary>The cut faces of the frame being drawn (<see cref="_cutFrame"/>): the debris' faces and the star's.</summary>
+    private void DrawCutFacesNow()
+    {
+        var (viewportPx, s, set, unit, colors, starCut, particleCut) = _cutFrame;
+        GL.ColorMask(true, true, true, true);
+        if (particleCut && set is not null) DrawCutFaces(viewportPx, s, set, unit, colors);
+        if (!starCut || _star is null) return;
+        if (!ReferenceEquals(_starCutFor, s) || !ReferenceEquals(_starCutColors, colors))
+        {
+            var layers = s.StarLayers.Select(l => ((float)(l.OuterRadiusCm / s.StarRadiusCm), ToVector(colors[(int)l.Layer]))).ToList();
+            float shock = double.IsFinite(s.ShockInStarRadiusCm) ? (float)(s.ShockInStarRadiusCm / s.StarRadiusCm) : float.NaN;
+            _starCut = new StarCutaway(layers, shock);
+            _starCutFor = s;
+            _starCutColors = colors;
+        }
+        _star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, _starCut!);
+    }
+
+    private SceneState? _starCutFor;
+    private (float R, float G, float B)[]? _starCutColors;
+    private StarCutaway? _starCut;
+
+    /// <summary>
+    /// The debris faces' uniforms, cached per drawn state, unit, particle set and face colours (final review M1): building them runs
+    /// <see cref="CutFaceModel.Build"/> and several lists, which a frame of an unchanged state (the tour's orbit, a pulsar's beams)
+    /// need not redo.
+    /// </summary>
+    private (SceneState? State, double Unit, ParticleSet? Set, (float R, float G, float B)[]? Colors, CutFaceUniforms? Uniforms, float Extent) _faceCache;
+
     /// <summary>
     /// The debris' two cut faces (ruling R-P2-21), drawn after the bloom is built (<see cref="HdrPipeline.End"/>'s hook), over
     /// the particles and shells; the tone map's face mask (alpha) is written by the faces only. Their radii are confined behind the
@@ -792,9 +881,24 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private void DrawCutFaces(Size viewportPx, SceneState s, ParticleSet set, double unit, (float R, float G, float B)[] colors)
     {
         if (_scene?.Structure is not { } structure || _cutFaces is null) return;
+        var c = _faceCache;
+        if (ReferenceEquals(c.State, s) && c.Unit == unit && ReferenceEquals(c.Set, set) && ReferenceEquals(c.Colors, colors))
+        {
+            if (c.Uniforms is not null) _cutFaces.Render(Camera, viewportPx, c.Extent, c.Uniforms);
+            return;
+        }
+        var built = BuildFaceUniforms(structure, s, set, unit, colors, out float extent);
+        _faceCache = (s, unit, set, colors, built, extent);
+        if (built is not null) _cutFaces.Render(Camera, viewportPx, extent, built);
+    }
+
+    private CutFaceUniforms? BuildFaceUniforms(EjectaStructure structure, SceneState s, ParticleSet set, double unit,
+        (float R, float G, float B)[] colors, out float extent)
+    {
+        extent = 0;
         double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
         var model = CutFaceModel.Build(structure, ConesFor(structure), s.SinceBreakoutS, starCm, set.MaxCmS, s.Shocks);
-        if (model is null) return;
+        if (model is null) return null;
         var layers = model.Layers.Select(l => ((float)(l.OuterRadiusCm / unit), ToVector(colors[(int)l.Layer]))).ToList();
         var axes = model.Cones.Axes.Select(a => new OpenTK.Mathematics.Vector3((float)a.X, (float)a.Y, (float)a.Z)).ToList();
         var uniforms = new CutFaceUniforms(layers, (float)(model.NickelInnerRadiusCm / unit), (float)(model.NickelMaxRadiusCm / unit),
@@ -809,7 +913,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             ShockWeight = (float)(s.Shocks?.ConfinementWeight ?? 0),
             ShockRatio = (float)ParticleKinematics.ShockedSpeedRatio(s.Shocks, s.SinceBreakoutS, starCm, set.MaxCmS),
         };
-        _cutFaces.Render(Camera, viewportPx, (float)(model.OuterRadiusCm / unit), uniforms);
+        extent = (float)(model.OuterRadiusCm / unit);
+        return uniforms;
     }
 
     private static OpenTK.Mathematics.Vector3 ToVector((float R, float G, float B) c) => new(c.R, c.G, c.B);
@@ -937,11 +1042,20 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// </summary>
     private (float R, float G, float B)[] FaceColors()
     {
+        // Final review M1: the same array while the HDR path and the exposure are unchanged (the caches above key on it).
+        bool hdr = HdrEnabled;
+        float exposure = _state.Exposure;
+        if (_faceColors is { } cached && _faceColorsHdr == hdr && _faceColorsExposure == exposure) return cached;
         var colors = new (float R, float G, float B)[LayerColors.Count];
         for (int i = 0; i < colors.Length; i++)
-            colors[i] = HdrEnabled ? LayerColors.FaceHdr((ElementLayer)i, _state.Exposure) : LayerColors.For((ElementLayer)i);
+            colors[i] = hdr ? LayerColors.FaceHdr((ElementLayer)i, exposure) : LayerColors.For((ElementLayer)i);
+        (_faceColors, _faceColorsHdr, _faceColorsExposure) = (colors, hdr, exposure);
         return colors;
     }
+
+    private (float R, float G, float B)[]? _faceColors;
+    private bool _faceColorsHdr;
+    private float _faceColorsExposure;
 
     /// <summary>
     /// [Presentation, tuned in Task 11 (1 to 0.5)] The debris' overall brightness against Project 1's: at 1 the core of the debris near

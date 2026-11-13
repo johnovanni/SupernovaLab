@@ -148,7 +148,8 @@ public sealed partial class OutcomeEngine
             ti44 = new Quantity(Ti44PerNickel * ejectedNickel.Value, MSun, Confidence.Speculative, Ti44Source);
         return new Outcome(x, d.Fate, pinned.Type, d.HasGrb, pinned.Remnant, star, energy, ejecta, nickel, peak,
             d.MagnetarEnergy, d.MagnetarTimescale, notes, pinned.Published, magB, ti44, pinned.GrbEnergy,
-            pinned.GrbPeak, pinned.GrbT90, pinned.PulsarRadio, pinned.Ring, pinned.ConfinedCsmOuterCm);
+            pinned.GrbPeak, pinned.GrbT90, pinned.PulsarRadio, pinned.Ring, pinned.ConfinedCsmOuterCm,
+            pinned.UndetectedOuterShell, pinned.SceneDisclosures);
     }
 
     /// <summary>

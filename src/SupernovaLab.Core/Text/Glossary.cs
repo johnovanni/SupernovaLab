@@ -328,15 +328,18 @@ public static class Glossary
     public const string ForwardShock =
         "The forward shock is the outer edge of the explosion: a shock wave running ahead of the debris into the gas around the " +
         "star, heating it to millions of degrees. The pale shell is that swept-up gas, brightest at its rim where the line of " +
-        "sight crosses the most of it. In the first years its radius is the radio model's shock; from 10 years it is Truelove & " +
-        "McKee's solution for the debris' steep outer layers, larger at first than the remnant panel's uniform-debris radius.";
+        "sight crosses the most of it. Where the lab models the star's wind (most core-collapse outcomes), its radius in the first " +
+        "years is the radio model's shock, joined over 3 to 10 years to Truelove & McKee's solution for the debris' steep outer " +
+        "layers; for an outcome without that wind model (a Type Ia, for one) it is drawn from 3 years on Truelove & McKee's solution " +
+        "alone. From 10 years it is larger at first than the remnant panel's uniform-debris radius.";
     public const string WindHaze =
         "The wind the star blew before it died, drawn as a faint haze that thins as one over the distance squared and ends " +
         "where the wind's pressure balances the surrounding gas (about 1 to 20 light-years across). The shock lights it up where " +
         "it arrives; the shocked gas inside belongs to the swept-up shell.";
     public const string DenseCircumstellarShell =
         "Dense gas the star threw off in its last years (Type IIn and similar explosions, or SN 2023ixf's confined gas). It flares " +
-        "when the shock runs into it. Its extent is a schematic estimate from the research.";
+        "when the shock runs into it. SN 2023ixf's extent is observed (Jacobson-Galán et al. 2023); for the lab's own dense-gas " +
+        "outcomes it is a schematic estimate from the research.";
     public const string ReverseShock =
         "The reverse shock: when the swept-up gas slows the debris down, a second shock runs back into the debris themselves " +
         "(outward at first, but more slowly than they move) and heats them. Debris it has passed are drawn hot and bright, packed " +

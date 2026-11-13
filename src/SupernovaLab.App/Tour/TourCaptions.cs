@@ -84,6 +84,21 @@ public static class TourCaptions
         });
     }
 
+    /// <summary>
+    /// The mixing stop's caption (ruling R-P2-33, final review I7), model-labelled: what the cut-away slice shows. Nickel is carried
+    /// outward and, where the class has hydrogen to mix, hydrogen inward; the reach is SN 1987A's observed one for that preset (the
+    /// outcome with its ring), otherwise from 3D simulations (structure §S3); the shapes are schematic.
+    /// </summary>
+    public static string Mixing(Outcome o, Core.Structure.MixingReach m)
+    {
+        string what = double.IsFinite(m.HydrogenMinCmS)
+            ? "nickel carried outward and hydrogen pulled inward"
+            : "nickel carried outward";
+        string reach = o.HasEquatorialRing ? "their reach is the one observed in SN 1987A" : "their reach is from 3D simulations";
+        return InTheLab($"A slice through the debris shows the mixing fingers: {what} by Rayleigh–Taylor instabilities as the shock " +
+                        $"crossed the star; {reach}, their shapes schematic (structure §S3).");
+    }
+
     /// <summary>", at about V = 12.3 as seen from here" from the light-curve model, or "" when the model gives no finite value.</summary>
     private static string PeakMagnitude(Outcome o, ObserverSetup obs, double observerTimeS)
     {

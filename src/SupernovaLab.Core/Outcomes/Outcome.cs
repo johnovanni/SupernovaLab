@@ -38,14 +38,21 @@ public enum Fate
 /// <para>Ruling R-P2-27: <see cref="ConfinedCsmOuterCm"/> is observed geometry only (SN 2023ixf's confined gas, structure §S7), drawn by
 /// the 3D view and read by no signal model; it does not change the outcome's type or any value, and (ruling R-P2-28) it does not
 /// make the outcome "published" (<see cref="ChangesModelledValue"/>).</para>
+/// <para>Ruling R-P2-33 (final review I12): <see cref="UndetectedOuterShell"/> marks a remnant whose outer forward-shock shell is
+/// predicted but has never been detected (the Crab, inconsistency #31). A pass-through flag for the 3D view's note only: no signal model
+/// reads it, it is not a published value, and it does not count in <see cref="ChangesModelledValue"/>.</para>
+/// <para>Ruling R-P2-32 (final review I1): <see cref="SceneDisclosures"/> lists the numbers of scientific inconsistencies the 3D view must
+/// disclose for this preset's own event (Cas A's reverse shock, #46; the lab's Crab nebula, #47). Pass-through for the view's notes only,
+/// like <see cref="UndetectedOuterShell"/>: no signal model reads it and it is not a published value.</para>
 public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
     double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null,
     double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null,
-    double? NsGravitationalMass = null, double? RemnantMass = null, double? ConfinedCsmOuterCm = null)
+    double? NsGravitationalMass = null, double? RemnantMass = null, double? ConfinedCsmOuterCm = null,
+    bool? UndetectedOuterShell = null, int[]? SceneDisclosures = null)
 {
     /// <summary>
     /// Whether any pin changes a value the lab models (every pin but the geometry-only <see cref="ConfinedCsmOuterCm"/>, ruling
-    /// R-P2-28): only then do the outcome's "Published" badge and the preset status text apply.
+    /// R-P2-28, and the note-only <see cref="UndetectedOuterShell"/> and <see cref="SceneDisclosures"/>, rulings R-P2-32 and R-P2-33): only then do the outcome's "Published" badge and the preset status text apply.
     /// </summary>
     public bool ChangesModelledValue =>
         ExplosionEnergyErg is not null || EjectaMass is not null || NickelMass is not null || RadiusCm is not null ||
@@ -70,6 +77,10 @@ public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, 
 /// null for the population median <c>PulsarModel</c> uses. <see cref="HasEquatorialRing"/> is true when a preset gives the
 /// supernova SN 1987A's equatorial ring (ruling R41). <see cref="ConfinedCsmOuterCm"/> (ruling R-P2-27) is a preset's observed outer
 /// radius (cm) of confined circumstellar gas (SN 2023ixf), for the 3D view only: no signal model reads it.
+/// <see cref="HasUndetectedOuterShell"/> (ruling R-P2-33) is true when a preset says the remnant's outer shell is predicted but never
+/// detected (the Crab, SN 1054); the 3D view's note only, read by no signal model and not a published value.
+/// <see cref="SceneDisclosures"/> (ruling R-P2-32) are the preset's inconsistency numbers the 3D view discloses (<see cref="Discloses"/>);
+/// null for none. Likewise read by no signal model.
 /// </summary>
 public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bool HasGrb, Remnant Remnant,
     PresupernovaStar? Star, Quantity? ExplosionEnergyErg, Quantity? EjectaMass, Quantity? NickelMass,
@@ -77,4 +88,9 @@ public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bo
     IReadOnlyList<string> Notes, bool UsesPublishedValues,
     Quantity? PeakAbsoluteMagB = null, Quantity? Ti44Mass = null,
     Quantity? GrbIsotropicEnergyErg = null, Quantity? GrbPeakEnergyKeV = null, Quantity? GrbT90S = null,
-    Quantity? PulsarRadioLuminosityMjyKpc2 = null, bool HasEquatorialRing = false, double? ConfinedCsmOuterCm = null);
+    Quantity? PulsarRadioLuminosityMjyKpc2 = null, bool HasEquatorialRing = false, double? ConfinedCsmOuterCm = null,
+    bool HasUndetectedOuterShell = false, IReadOnlyList<int>? SceneDisclosures = null)
+{
+    /// <summary>Whether the preset asks the 3D view to disclose scientific inconsistency #<paramref name="number"/> (ruling R-P2-32).</summary>
+    public bool Discloses(int number) => SceneDisclosures?.Contains(number) == true;
+}

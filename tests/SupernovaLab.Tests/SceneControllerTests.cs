@@ -533,8 +533,11 @@ public class SceneControllerTests
         vm.Timeline.ObserverTimeS = 30 * PhysicalConstants.Year;
         var lines = c.RadiusText.Split(Environment.NewLine);
         Assert.Equal(2, lines.Length);
-        Assert.StartsWith("Blast-wave radius: ", lines[0]);
-        Assert.Equal($"Forward shock (steep-ejecta solution): {UnitFormat.Distance(c.State.Shocks!.ForwardCm)}", lines[1]);
+        Assert.StartsWith("Remnant panel's blast wave (uniform ejecta): ", lines[0]);
+        // Ruling R-P2-33 (I4): both lines in the larger value's unit.
+        double larger = Math.Max(c.State.RadiusCm, c.State.Shocks!.ForwardCm);
+        Assert.Equal($"Remnant panel's blast wave (uniform ejecta): {UnitFormat.Distance(c.State.RadiusCm, larger)}", lines[0]);
+        Assert.Equal($"Forward shock (steep-ejecta solution): {UnitFormat.Distance(c.State.Shocks!.ForwardCm, larger)}", lines[1]);
         vm.Timeline.ObserverTimeS = PhysicalConstants.Year;
         lines = c.RadiusText.Split(Environment.NewLine);
         Assert.StartsWith("Ejecta radius: ", lines[0]);

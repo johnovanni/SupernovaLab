@@ -163,6 +163,26 @@ public class SnapshotRequestTests
     }
 
     [Fact]
+    public void APresetEntry_MayAskForTheTour_SoPlainAndTourCapturesShareOneLaunch()
+    {
+        // Final fix wave: with a "+tour" entry, --tour's stops are captured for that entry only; the others are plain captures.
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "default@2592000,sn1987a+tour,casa@1e10+cutaway+tour",
+            "--tour", "0,last" })!;
+        Assert.False(r.ToursEntry(r.PresetIds[0]));
+        Assert.True(r.ToursEntry(r.PresetIds[1]));
+        Assert.True(r.ToursEntry(r.PresetIds[2]));
+        Assert.Equal(("sn1987a", (double?)null), SnapshotRequest.SplitPreset(r.PresetIds[1]));
+        Assert.Equal("-sn1987a", SnapshotRequest.FileSuffix(r.PresetIds[1]));
+        Assert.True(SnapshotRequest.WantsCutaway(r.PresetIds[2]));
+        Assert.Equal(("casa", (double?)1e10), SnapshotRequest.SplitPreset(r.PresetIds[2]));
+        // Without any "+tour" entry, --tour applies to every entry (as before); without --tour, to none.
+        var all = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "default,sn1987a", "--tour", "1" })!;
+        Assert.True(all.ToursEntry(all.PresetIds[0]) && all.ToursEntry(all.PresetIds[1]));
+        var none = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1987a+tour" })!;
+        Assert.False(none.ToursEntry(none.PresetIds[0]));
+    }
+
+    [Fact]
     public void APresetEntry_MayTurnOnTheCutaway()
     {
         // Task 8: "+cutaway" turns the wedge on for that entry only, so plain and cutaway views share one launch.

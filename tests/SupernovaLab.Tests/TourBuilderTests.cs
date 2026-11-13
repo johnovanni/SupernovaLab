@@ -113,10 +113,14 @@ public class TourBuilderTests
         Assert.False(bo.Cutaway); // at breakout the star is gone: not "between"
         Assert.Equal(0, bo.OrbitDegPerS);
 
+        // Ruling R-P2-33 (I7): the default star's debris have mixing fingers, so the peak-light stop is cut away with the orbit and
+        // says what the slice shows; every other post-breakout stop is not.
         var peak = Assert.Single(tour, s => s.Highlight == Messenger.VisibleLight);
         Assert.True(peak.ObserverTimeS > breakout);
-        Assert.False(peak.Cutaway);
-        Assert.All(tour, s => Assert.Equal(s.ObserverTimeS < breakout, s.Cutaway));
+        Assert.True(peak.Cutaway);
+        Assert.Equal(10, peak.OrbitDegPerS);
+        Assert.Contains("In the lab, a slice through the debris shows the mixing fingers", peak.Caption);
+        Assert.All(tour, s => Assert.Equal(s.ObserverTimeS < breakout || ReferenceEquals(s, peak), s.Cutaway));
     }
 
     [Fact]
@@ -232,9 +236,11 @@ public class TourBuilderTests
 
         // The model's peak magnitude is pinned to the light-curve model at the stop's own time.
         double v = new LightCurveModel().Sample(o, p.Observer, peak.ObserverTimeS / p.Observer.TimeDilation, "appV");
-        Assert.Equal(2, peak.Notes.Count);
+        // The observed line, the lab's peak and (ruling R-P2-33, I7) the lab's mixing slice, in caption order.
+        Assert.Equal(3, peak.Notes.Count);
         Assert.Equal(TourSourceKind.ObservedChecked, peak.Notes[0].Kind);
         Assert.Equal(TourSourceKind.LabModel, peak.Notes[1].Kind);
+        Assert.Equal(TourSourceKind.LabModel, peak.Notes[2].Kind);
         var model = TourBuilder.For(o, p.Observer, null).First(s => s.Highlight == Messenger.VisibleLight);
         double vModel = new LightCurveModel().Sample(o, p.Observer, model.ObserverTimeS / p.Observer.TimeDilation, "appV");
         Assert.Contains($"at about V = {vModel.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} as seen from here", peak.Caption);

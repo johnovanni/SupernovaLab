@@ -197,7 +197,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         while (again)
         {
             again = false;
-            foreach (string flag in new[] { DenseCsmFlag, CutawayFlag })
+            foreach (string flag in KnownFlags)
                 if (entry.EndsWith(flag, StringComparison.Ordinal))
                 {
                     entry = entry[..^flag.Length];
@@ -214,14 +214,32 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         while (true)
         {
             if (entry.EndsWith(flag, StringComparison.Ordinal)) return true;
-            string other = flag == DenseCsmFlag ? CutawayFlag : DenseCsmFlag;
-            if (!entry.EndsWith(other, StringComparison.Ordinal)) return false;
+            string? other = KnownFlags.FirstOrDefault(f => f != flag && entry.EndsWith(f, StringComparison.Ordinal));
+            if (other is null) return false;
             entry = entry[..^other.Length];
         }
     }
 
     /// <summary>A preset entry's suffix that turns on the lab's dense-gas input after the preset is applied.</summary>
     public const string DenseCsmFlag = "+densecsm";
+
+    /// <summary>
+    /// A preset entry's suffix (final fix wave) that captures the guided tour's <c>--tour</c> stops for that entry only, so one launch can
+    /// take plain captures and tour captures. Without any "+tour" entry, <c>--tour</c> applies to every entry, as before.
+    /// </summary>
+    public const string TourFlag = "+tour";
+
+    private static readonly string[] KnownFlags = { DenseCsmFlag, CutawayFlag, TourFlag };
+
+    /// <summary>True for an entry with <see cref="TourFlag"/> among its options, e.g. "sn1987a+tour".</summary>
+    public static bool WantsTour(string? entry) => HasFlag(entry, TourFlag);
+
+    /// <summary>
+    /// Whether this entry is captured at the tour's stops: with <c>--tour</c>, every entry when none carries <see cref="TourFlag"/>,
+    /// else only the entries that do.
+    /// </summary>
+    public bool ToursEntry(string? entry)
+        => TourStops.Count > 0 && (!PresetIds.Any(WantsTour) || WantsTour(entry));
 
     /// <summary>
     /// True for an entry ending in <see cref="DenseCsmFlag"/>, e.g. "sn2023ixf@0.001+densecsm": no preset sets the lab's
@@ -284,7 +302,7 @@ public static class SnapshotRenderer
                 if ((main as MainWindow)?.Scene is { } scene) scene.IsCutaway = request.Cutaway || SnapshotRequest.WantsCutaway(entry);
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = SnapshotRequest.FileSuffix(entry);
-                if (request.TourStops.Count == 0)
+                if (!request.ToursEntry(entry))
                 {
                     await Capture(request, main, windows, suffix, log);
                     continue;
@@ -347,6 +365,9 @@ public static class SnapshotRenderer
                 continue;
             }
             director.GoTo(stop);
+            // Nothing ticks the tour here, so its orbit never turns: keep the 3D view on demand while capturing (the tour's orbit sets
+            // it animating, ruling R-P2-32; the final fix wave's first tour capture drew a stale caption layout while it was).
+            if ((main as MainWindow)?.Scene is { } scene) scene.IsTourOrbiting = false;
             log.Add($"tour{suffix}: stop {stop} at {UnitFormat.Time(director.Current!.ObserverTimeS)}: {vm.Tour.Caption}");
             await Capture(request, main, windows, suffix + SnapshotRequest.TourSuffix(stop), log);
         }

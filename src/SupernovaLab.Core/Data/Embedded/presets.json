@@ -66,7 +66,7 @@
         "source": { "citation": "Distance 2.0 kpc (ATNF Pulsar Catalogue v2.6.1, Manchester et al. 2005, AJ 129, 1993); A_V = 3.1 × E(B−V) 0.52 (Sollerman et al. 2000, arXiv:astro-ph/0002374) [DERIVED]", "researchRef": "presets §2; presets-verification" }
       },
       "pins": {
-        "nsSpinPeriodS": 0.016845, "nsFieldG": 3.794e12, "pulsarRadioLumMjyKpc2": 56,
+        "nsSpinPeriodS": 0.016845, "nsFieldG": 3.794e12, "pulsarRadioLumMjyKpc2": 56, "undetectedOuterShell": true, "sceneDisclosures": [47],
         "source": { "citation": "Crab pulsar, ATNF Pulsar Catalogue v2.6.1 (Manchester et al. 2005, AJ 129, 1993): P = 33.3924 ms and Ṗ = 4.20972 × 10⁻¹³ at MJD 48442.5, S1400 = 14 mJy at 2.0 kpc (56 mJy kpc²); field B = 3.2 × 10¹⁹ √(PṖ) G and birth period P0 = √(P² − 2PṖt) for dipole spin-down (n = 3) over the 937 years since 1054 July 4 [DERIVED]", "researchRef": "presets §2; signals §8.1–8.3; presets-verification" }
       },
       "facts": [
@@ -96,7 +96,7 @@
         "source": { "citation": "Distance 3.4 kpc (Reed et al. 1995, ApJ 440, 706); A_V about 5 (presets.md, recalled, not verified) [APPROX]", "researchRef": "presets §3; presets-verification" }
       },
       "pins": {
-        "ti44Mass": 1.25e-4,
+        "ti44Mass": 1.25e-4, "sceneDisclosures": [46],
         "source": { "citation": "Grefenstette et al. 2014, Nature 506, 339 (initial ⁴⁴Ti 1.25 ± 0.3 × 10⁻⁴ M☉, ruling R35)", "researchRef": "presets §3; signals §5.3; presets-verification" }
       },
       "facts": [
@@ -111,7 +111,7 @@
       "summary": "A Type Ia supernova in the Pinwheel Galaxy (M101), caught within a day of exploding. The closest Type Ia in decades and the best observed: a white dwarf that blew itself apart completely. The lab does not detect its gamma-ray lines with INTEGRAL/SPI, as observed (Isern et al. 2013), but only just: its best signal is 0.76 of SPI's threshold for lines this broad, and the margin depends on the assumed instrument resolution and the 0.53 solar masses of nickel. The lab's B light curve fades 0.99 magnitudes in the 15 days after its peak, slower than the observed 1.10 ± 0.04 (Pereira et al. 2013): every near-Chandrasekhar Type Ia in the lab has the same light-curve shape (one opacity, ejecta mass and energy, with the nickel setting only the brightness), and its colour after the peak follows a simple blend toward the Lira relation, not a fit to this supernova.",
       "whatWasSeen": "It was found about 11 hours after first light and peaked near magnitude 10 some 18 days later. Pre-explosion images showed the star was far too faint to be a giant, and no radio or X-rays were seen, so its surroundings were clean.",
       "tourLines": [
-        {"sourceTimeS": 39600, "text": "PTF caught it about 11 hours after first light, which makes it the best-observed Type Ia ever.", "source": {"citation": "Discovered by PTF 2011 Aug 24.17 UT, ~11 h after first light; explosion estimated Aug 23.7 UT (Nugent et al. 2011, Nature 480, 344) [R: recalled in presets.md, not re-opened against the paper]", "researchRef": "presets §4 (Date)"}, "highlight": "VisibleLight", "recalled": true},
+        {"sourceTimeS": 39600, "text": "A transient survey (PTF) caught it about 11 hours after first light.", "source": {"citation": "Discovered by PTF 2011 Aug 24.17 UT, ~11 h after first light; explosion estimated Aug 23.7 UT (Nugent et al. 2011, Nature 480, 344) [R: recalled in presets.md, not re-opened against the paper]", "researchRef": "presets §4 (Date)"}, "highlight": "VisibleLight", "recalled": true},
         {"sourceTimeS": 1520640, "text": "It brightened for about 17.6 days to a peak near 10th magnitude.", "source": {"citation": "Rise to B-max ~17.6 d [R: recalled in presets.md, not re-opened]; B_max = 9.94 and V_max = 9.98 (Pereira et al. 2013, A&A 554, A27) [V]", "researchRef": "presets §4; presets-verification"}, "highlight": "VisibleLight", "recalled": true}
       ],
       "inputs": { "kind": "WhiteDwarf", "iaChannel": "NearChandrasekhar" },

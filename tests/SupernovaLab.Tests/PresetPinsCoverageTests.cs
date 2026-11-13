@@ -10,8 +10,15 @@ namespace SupernovaLab.Tests;
 /// </summary>
 public class PresetPinsCoverageTests
 {
-    /// <summary>Not a pinned value: the source citation; and the geometry-only pin the lab draws but no model reads (rulings R-P2-27, R-P2-28).</summary>
-    private static readonly string[] Exempt = { nameof(PresetPins.ConfinedCsmOuterCm), nameof(PresetPins.Source) };
+    /// <summary>
+    /// Not a pinned value: the source citation; the geometry-only pin the lab draws but no model reads (rulings R-P2-27, R-P2-28); and the
+    /// note-only flag for a predicted-but-undetected outer shell (ruling R-P2-33).
+    /// </summary>
+    private static readonly string[] Exempt =
+    {
+        nameof(PresetPins.ConfinedCsmOuterCm), nameof(PresetPins.UndetectedOuterShell), nameof(PresetPins.SceneDisclosures),
+        nameof(PresetPins.Source),
+    };
 
     private static PresetPins WithOnly(ParameterInfo[] parameters, int index)
     {
@@ -21,6 +28,7 @@ public class PresetPinsCoverageTests
         var under = Nullable.GetUnderlyingType(parameters[index].ParameterType) ?? parameters[index].ParameterType;
         if (under == typeof(double)) args[index] = 1.0;
         else if (under == typeof(bool)) args[index] = true;
+        else if (under == typeof(int[])) args[index] = new[] { 46 };
         else if (under != typeof(Source)) throw new NotSupportedException($"{parameters[index].Name}: {under}");
         return (PresetPins)Activator.CreateInstance(typeof(PresetPins), args)!;
     }
