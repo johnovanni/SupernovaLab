@@ -387,6 +387,15 @@ public sealed class CsmInteractionModel : ISignalModel
         return double.IsFinite(a) ? a : double.NaN;
     }
 
+    /// <summary>
+    /// The shock's radius R = v_s t (cm) at source time t, the radius the radio model's synchrotron peak uses (a read-only
+    /// accessor for the 3D view's forward shock, ruling R-P2-24). For an outcome the model applies to.
+    /// </summary>
+    public static double ShockRadiusCm(Outcome o, double sourceTimeS) => Shock.Of(o).SpeedCmS * sourceTimeS;
+
+    /// <summary>The shock speed R/t (cm/s) the radio model uses (<see cref="ShockRadiusCm"/> / t).</summary>
+    public static double ShockSpeedCmS(Outcome o) => Shock.Of(o).SpeedCmS;
+
     /// <summary>One outcome's shock: R/t (cm/s), the wind's A_*, and whether the ejecta are hydrogen-rich.</summary>
     private readonly record struct Shock(double SpeedCmS, double AStar, bool HydrogenRich)
     {

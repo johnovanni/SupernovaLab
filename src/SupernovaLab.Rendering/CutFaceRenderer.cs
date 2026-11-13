@@ -19,6 +19,8 @@ public sealed record CutFaceUniforms(IReadOnlyList<(float OuterRadius, Vector3 C
     public float Reverse { get; init; }
     public float Contact { get; init; }
     public float ShockWeight { get; init; }
+    /// <summary>s_m (<c>ParticleKinematics.ShockedSpeedRatio</c>); 1 or more: nothing shocked.</summary>
+    public float ShockRatio { get; init; } = 2;
 }
 
 /// <summary>
@@ -95,6 +97,7 @@ public sealed class CutFaceRenderer : IDisposable
         _program.Set("u_reverse", u.Reverse);
         _program.Set("u_contact", u.Contact);
         _program.Set("u_shockWeight", u.ShockWeight);
+        _program.Set("u_shockRatio", float.IsFinite(u.ShockRatio) ? Math.Min(u.ShockRatio, 2f) : 2f);
         WedgeUniforms.Set(_program, WedgeAngleRad);
 
         // Over what is drawn (alpha = the density profile's opacity); the alpha channel accumulates as the bloom mask.

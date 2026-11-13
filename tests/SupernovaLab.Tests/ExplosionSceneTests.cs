@@ -420,13 +420,26 @@ public class ExplosionSceneTests
         var s = scene.At(30 * Year);
         Assert.Equal(ShockStructureModel.At(o, 30 * Year), s.Shocks);
         Assert.Contains(ExplosionScene.ShockNote, s.Notes);
-        Assert.Contains(ExplosionScene.ShockUniformNote, s.Notes);
-        Assert.StartsWith("Shocks: radii from Chevalier 1982, Truelove & McKee 1999 and Tang & Chevalier 2017", ExplosionScene.ShockNote);
-        // Fully confined (w = 1 a decade after the start): the fastest particle is drawn on the contact surface, and the view
-        // frames Project 1's radius, the forward shock.
-        Assert.Equal(1, s.Shocks!.ConfinementWeight);
-        Assert.Equal(1, s.MaxRadiusCm / s.Shocks.ContactCm, 9);
-        Assert.Equal(s.Shocks.ForwardCm, s.FrameRadiusCm);
+        Assert.StartsWith("Shocks: radii from the radio model's shock with Chevalier 1982's ratios", ExplosionScene.ShockNote);
+        Assert.Contains("Truelove & McKee 1999 and Tang & Chevalier 2017", ExplosionScene.ShockNote);
+
+        // Ruling R-P2-24, from 10 yr: the readout is the drawn forward shock, Project 1's uniform-ejecta value is in a note, and
+        // the framing includes the forward shock.
+        double p1 = EjectaKinematics.RadiusCm(o, 30 * Year);
+        Assert.Equal(s.Shocks!.ForwardCm, s.RadiusCm);
+        Assert.Equal(ExplosionScene.ForwardShockLabel, s.RadiusLabel);
+        Assert.Equal("Forward shock (steep-ejecta solution)", s.RadiusLabel);
+        Assert.Contains($"The remnant model behind the panels assumes uniform ejecta and gives {UnitFormat.Distance(p1)}; see scientific inconsistency #33", s.Notes);
+        Assert.Equal(p1, s.EjectaRadiusCm);
+        Assert.True(s.FrameRadiusCm >= s.Shocks.ForwardCm && s.FrameRadiusCm >= p1);
+        Assert.DoesNotContain("Radius from the remnant model's blast wave", s.Notes);
+
+        // Before 10 yr the readout and frame are Project 1's as before.
+        var early = scene.At(Year);
+        Assert.NotNull(early.Shocks);
+        Assert.Equal(EjectaKinematics.RadiusCm(o, Year), early.RadiusCm);
+        Assert.Equal("Ejecta radius", early.RadiusLabel);
+        Assert.Equal(Math.Max(early.EjectaRadiusCm, early.Frame99RadiusCm), early.FrameRadiusCm);
     }
 
     [Fact]

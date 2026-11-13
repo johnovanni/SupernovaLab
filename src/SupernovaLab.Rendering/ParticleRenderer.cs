@@ -11,10 +11,12 @@ namespace SupernovaLab.Rendering;
 /// <paramref name="Cutaway"/> the wedge is on (ruling R-P2-21): particles in the removed quarter are not drawn, and the cut faces
 /// (<see cref="CutFaceRenderer"/>, drawn after the bloom) fade the cloud behind them. With <paramref name="Shocks"/>, the
 /// particles the reverse shock has passed are confined between <paramref name="Reverse"/> and <paramref name="Contact"/>
-/// (scene units) with ruling R-P2-4's <paramref name="ShockWeight"/>, and take <paramref name="HotColor"/> (Task 8).
+/// (scene units) with ruling R-P2-4's <paramref name="ShockWeight"/>, and take <paramref name="HotColor"/> (Task 8): those with
+/// v / v_max above <paramref name="ShockRatio"/> (<c>ParticleKinematics.ShockedSpeedRatio</c>; 1 or more: none).
 /// </summary>
 public readonly record struct ParticleUniforms(float StarRadius, float Expansion, Vector3 Color, float Brightness,
-    bool Cutaway = false, bool Shocks = false, float Reverse = 0, float Contact = 0, float ShockWeight = 0, Vector3 HotColor = default)
+    bool Cutaway = false, bool Shocks = false, float Reverse = 0, float Contact = 0, float ShockWeight = 0, Vector3 HotColor = default,
+    float ShockRatio = 2)
 {
     /// <summary>The dots' size (dip) and opacity at full brightness: soft 2.5 dip dots at 35%, as Project 1.</summary>
     public const float PointDip = 2.5f, Alpha = 0.35f;
@@ -108,6 +110,7 @@ public sealed class ParticleRenderer : IDisposable
         _program.Set("u_reverse", u.Reverse);
         _program.Set("u_contact", u.Contact);
         _program.Set("u_shockWeight", u.Shocks ? Math.Clamp(u.ShockWeight, 0f, 1f) : 0f);
+        _program.Set("u_shockRatio", float.IsFinite(u.ShockRatio) ? Math.Min(u.ShockRatio, 2f) : 2f);
         _program.Set("u_hotColor", u.HotColor * u.Brightness);
         _program.Set("u_shockBoost", ParticleUniforms.ShockedBoost);
         _program.Set("u_pointPx", (float)(ParticleUniforms.PointDip * pxPerDip));

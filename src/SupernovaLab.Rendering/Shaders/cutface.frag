@@ -26,18 +26,19 @@ uniform float u_freeScale;        // K = R* + v_max (t - t_bo), scene units: the
 uniform float u_reverse;          // R_r and R_c, scene units, and ruling R-P2-4's weight (0: no shocks)
 uniform float u_contact;
 uniform float u_shockWeight;
+uniform float u_shockRatio;       // s_m (ParticleKinematics.ShockedSpeedRatio); >= 1: nothing shocked
 
 out vec4 o_color;
 
 // ParticleKinematics.FreeRadiusCm: the free-expansion radius of the debris drawn at radius r (identity without shocks).
 float freeRadius(float r)
 {
-    if (u_shockWeight <= 0.0 || u_freeScale <= 0.0) return r;
-    float sr = u_reverse / u_freeScale;
-    if (sr >= 1.0 || r <= u_reverse) return r;
-    float slope = (1.0 - u_shockWeight) * u_freeScale + u_shockWeight * (u_contact - u_reverse) / (1.0 - sr);
-    if (slope <= 0.0) return u_reverse;
-    return (sr + (r - u_reverse) / slope) * u_freeScale;
+    float sm = u_shockRatio;
+    if (u_shockWeight <= 0.0 || u_freeScale <= 0.0 || sm >= 1.0) return r;
+    float first = (1.0 - u_shockWeight) * sm * u_freeScale + u_shockWeight * u_reverse;   // r(s_m+)
+    float slope = (1.0 - u_shockWeight) * u_freeScale + u_shockWeight * (u_contact - u_reverse) / (1.0 - sm);
+    if (r >= first && slope > 0.0) return (sm + (r - first) / slope) * u_freeScale;
+    return min(r / u_freeScale, sm) * u_freeScale;
 }
 
 void main()

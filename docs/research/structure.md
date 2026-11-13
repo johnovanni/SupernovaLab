@@ -403,7 +403,7 @@ R_c* = [(ζ_c t*^((n−3)/n))^−α + (c t*^b)^−α]^(−1/α), valid to t*_lim
 
 (n = 0 caveat [D]: this contact and TM99's n = 0 reverse shock come from different fits. Taken as raw radii, the
 reverse shock lies up to 1.0% outside the contact for t* below ≈ 0.16; as ratios to their own forward shocks, up to
-0.55% (largest at t* ≈ 0.03) for t* below ≈ 0.081. The App block uses the ratios and caps R_r at R_c.)
+0.55% (largest at t* ≈ 0.03) for t* below ≈ 0.081. Before ruling R-P2-24 the App block used these n = 0 ratios and capped R_r at R_c; it now draws the class-n solutions, which need no cap.)
 | 7 | 4.28 | −0.11 | 1.09 | 0.89 | 4.5 |
 | 10 | 2.92 | −0.12 | 1.07 | 1.01 | 4 |
 | 12 | 2.35 | −0.16 | 1.11 | 1.08 | 4 |
@@ -436,49 +436,63 @@ Williams; C9; the label was corrected in Project 2 Task 8). Forward-shock radius
 
 ### App implementation (§S4)
 
-Rulings R-P2-4, R-P2-10 and R-P2-11. One rule for all three radii:
-
-    R_f(t) = EjectaKinematics.RadiusCm(o, t)          the drawn forward shock = Project 1's radius, always
-    R_c(t) = q_c(t) · R_f(t)
-    R_r(t) = min(q_r(t) · R_f(t), R_c(t))
+Ruling R-P2-24 (supersedes R-P2-10 and the "× Project 1's forward radius" part of R-P2-11), with R-P2-4 for the start.
+The drawn shocks follow solutions consistent with the drawn steep-ejecta profile (§S1), and with the panels where a panel
+models the same shock. Code: `ShockStructureModel`.
 
 **Start.** Shocks exist from t_start = the circumstellar model's start for outcomes `CsmInteractionModel` applies to,
-otherwise (Type Ia, Iax) t_start = `EjectaKinematics.BlendStartS` (3 yr). Particle confinement (ruling P4) is applied
-with weight w = clamp(log10(t / t_start), 0, 1), r = lerp(free, confined, w), so nothing jumps when shocks appear.
+otherwise (Type Ia, Iax, or no wind) t_start = `EjectaKinematics.BlendStartS` (3 yr). Particle confinement (ruling P4) is
+applied with weight w = clamp(log10(t / t_start), 0, 1), r = lerp(free, confined, w), so nothing jumps when shocks appear;
+the shells are drawn × w too.
 
-**Wind-era ratios** (Chevalier 1982, s = 2, §S4.1, with the class's n from §S1): q_c,wind = 1/q₁, q_r,wind = q₂/q₁:
+**Wind era** (t_start to 3 yr, outcomes with a wind). R_f is the radio model's own shock, R_f = v_s t
+(`CsmInteractionModel.ShockRadiusCm`, the radius its synchrotron peak uses). R_c = q_c R_f and R_r = q_r R_f with Chevalier
+1982's s = 2 ratios (§S4.1) for the class's n from §S1:
 
-| Class (§S1) | n | q_c,wind | q_r,wind |
+| Class (§S1) | n | q_c,wind = 1/q₁ | q_r,wind = q₂/q₁ |
 |---|---|---|---|
 | Red supergiant | 12 | 0.8157 | 0.8054 |
 | Blue supergiant, stripped envelope | 10.18 | 0.8081 | 0.7952 |
 
-**Remnant-era ratios** (uniform ejecta, n = 0, for every class: R-P2-10), each the ratio to its own paper's forward
-shock, with t* = t / t_ch in the lab's units (§S4.2: 473 yr E51^{−1/2} M_ej^{5/6} n₀^{−1/3}, n₀ = 1 as in Project 1):
+**Remnant era** (from `RemnantEvolutionModel.StartS`, 10 yr). R_f and R_r are Truelove & McKee 1999's trajectories (§S4.2
+tables), and R_c is Tang & Chevalier 2017's contact fit (eq. 32, Table 5), for the class's n from §S4.2: 7 for a Type Ia, 12
+for a red supergiant, 10 for a blue supergiant or stripped star (TM99 has no 10.18 row). Characteristic units use the
+outcome's E and M_ej and n₀ = `RemnantEvolutionModel.AmbientDensity` = 1, with ρ₀ = n₀ m_p (the lab's convention, signals
+§7.1, which is Tang & Chevalier's; see C9 and #34). They are computed from the constants: R_ch = M_ej^{1/3} ρ₀^{−1/3}
+(3.433 pc for 1 M☉) and t_ch = E^{−1/2} M_ej^{5/6} ρ₀^{−1/3} (473.4 yr for 1 M☉ and 10⁵¹ erg), not Project 1's rounded
+3.4 pc and 473 yr. Past TC17's t*_lim (4.5 for n = 7, 4 otherwise), R_c is held at its ratio to R_f there [APPROX].
 
-    q_c,rem(t*) = R_c,TC(t*) / R_b,TC(t*)
-       R_c,TC = [ (1.826 t*)^−0.89 + (1.66 t*^−0.37)^−0.89 ]^(−1/0.89)        (TC17 eq. 32, Table 5)
-       R_b,TC = [ (2.01 t*)^−2.5 + (2.026 t*²)^−0.5 ]^−0.4                   (TC17 Tables 1, 3 = Project 1's form)
-       for t* > 4 (TC17's t*_lim) hold q_c,rem at its t* = 4 value, 0.4208 [APPROX]
-    q_r,rem(t*) = R_r,TM(t*) / R_b,TM(t*)
-       t* ≤ 0.495:  R_r,TM = 1.83 t* (1 + 3.26 t*^{3/2})^{−2/3};   R_b,TM = 2.01 t* (1 + 1.72 t*^{3/2})^{−2/3}
-       t* > 0.495:  R_r,TM = max(0, t* (0.779 − 0.106 t* − 0.533 ln t*));   R_b,TM = (1.42 t* − 0.254)^{2/5}
-                                                                            (TM99 Table 5)
+**3 to 10 yr.** Each radius is blended geometrically between the two eras' values at t, with the smoothstep in log t that
+`EjectaKinematics.RadiusCm` uses:
 
-Values [D]: t* = 0.01: q_c 0.906, q_r 0.910 (so the min() binds below t* ≈ 0.081, by up to 0.55%); 0.1: 0.887, 0.884;
-0.3: 0.866, 0.808; 1: 0.758, 0.633; 2: 0.602, 0.270; q_r = 0 from t* = 2.58.
+    x = ln(t / 3 yr) / ln(10/3),  s = x²(3 − 2x),  ln R = (1 − s) ln R_wind(t) + s ln R_rem(t)
 
-**Blend** between the eras, over Project 1's own window (3 yr → 10 yr), geometric with the same smoothstep in log t as
-`EjectaKinematics.RadiusCm`:
+Outcomes with no wind era use the remnant-era solution from their start (TM99 hold from early times).
 
-    t ≤ 3 yr:        q = q_wind
-    3 yr < t < 10 yr: x = ln(t / 3 yr) / ln(10/3),  s = x²(3 − 2x),  ln q = (1 − s) ln q_wind + s ln q_rem(t*)
-    t ≥ 10 yr:       q = q_rem(t*)
+**Order.** R_c := min(R_c, R_f) and R_r := min(R_r, R_c). Neither binds for the class-n solutions (checked for t* to 50).
 
-Outcomes with no wind era (t_start = 3 yr) use q_rem from the start, with no blend. The class's own n (§S4.2) is
-**not** drawn; the gap is disclosed in the overlay (inconsistency #33). Tests: TM99 Tables 5 and 7 values at t* = 0.1,
-0.495, 1, 2; zero crossings 2.58 (n = 0) and 2.69 (n = 7) ± 0.01; §S4.1 ratios to 0.001; R_r ≤ R_c ≤ R_f at every t;
-q continuous at 3 yr and 10 yr.
+**Confinement.** The reverse shock's Lagrangian speed is the running minimum over [t_start, t] of v(t') = R_r(t') / (t' − t_bo).
+It is evaluated on a log grid of 64 nodes per decade from t_start, interpolated as a power law between nodes, so a shocked
+particle stays shocked. Particles with v > v_m are placed between R_r and R_c in order of speed (ruling P4).
+
+**Readout.** From 10 yr the radius readout is the drawn forward shock ("Forward shock (steep-ejecta solution)"), and the
+framing includes it. A note gives Project 1's uniform-ejecta value, which the remnant panel uses (inconsistency #33). Before
+10 yr the readout and framing are Project 1's. Project 1's remnant model is unchanged; using the class-n solution there would
+change a panel (spec §9).
+
+**Joins and steps [D].** TM99's own pieces meet at t*_ST and t*_core with small steps:
+- forward shock: 0.73% (n = 7, at t* = 0.732), 0.20% (n = 10), 0.14% (n = 12);
+- reverse shock: 0.59% (n = 7, at t* = 0.363), 0.13% (n = 10), 0.05% (n = 12).
+
+They are drawn as published.
+
+**Tests.** TM99 Tables 5 and 7 and the n = 10/12 rebuilds at t* = 0.1, 0.5, 1 and 2. Zero crossings: 2.5811 (n = 0),
+2.6812 (7), 2.7411 (10) and 2.7372 (12), each within 0.01 of §S4.2's 2.58, 2.69, 2.74 and 2.74. §S4.1 ratios to 0.001.
+R_f equals the radio model's v_s t in the wind era. R_r ≤ R_c ≤ R_f at every t. Every radius is continuous at 3 yr and 10 yr.
+The running-minimum speed never rises, and the shocked speeds are nested.
+
+(Before R-P2-24 this block drew all three radii as n = 0 ratios times Project 1's radius, rulings R-P2-10/11. That shocked
+38–43% of the particles at 1 yr and moved the reverse shock outward through the debris between 3 and 10 yr; see #43 and #44.)
 
 ---
 

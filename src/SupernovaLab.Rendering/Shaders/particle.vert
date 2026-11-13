@@ -20,6 +20,7 @@ uniform int u_shocks;         // 0 = no shocks (free expansion); 1 = confine the
 uniform float u_reverse;      // R_r, scene units
 uniform float u_contact;      // R_c, scene units
 uniform float u_shockWeight;  // ruling R-P2-4's weight w, 0 to 1
+uniform float u_shockRatio;   // s_m = v_m / v_max (ParticleKinematics.ShockedSpeedRatio): faster particles are shocked; >= 1: none
 uniform float u_pointPx;
 uniform int u_cut;
 uniform vec3 u_wedgeX;        // the wedge frame (WedgeOrientation): w.x = dot(p, u_wedgeX), w.z = dot(p, u_wedgeZ)
@@ -31,18 +32,18 @@ void main()
 {
     // Mirrors ParticleKinematics.RadiusCm (C#, plan ruling P4), with s = v / v_max and a_velocity = s * direction:
     //   free: r = R* * s + v * (t - t_bo) = s * K, K = R* + v_max * (t - t_bo).
-    //   shocked (s > s_r = R_r / K, the free radius beyond the reverse shock): r_conf = R_r + (R_c - R_r)(s - s_r)/(1 - s_r),
-    //   weighted in: r = r_free + w (r_conf - r_free) (ruling R-P2-4).
+    //   shocked (s > s_m, the reverse shock's running-minimum Lagrangian speed over v_max, ruling R-P2-24):
+    //   r_conf = R_r + (R_c - R_r)(s - s_m)/(1 - s_m), weighted in: r = r_free + w (r_conf - r_free) (ruling R-P2-4).
     float s = length(a_velocity);
     float k = u_starRadius + u_expansion;
     float r = s * k;
     v_shocked = 0.0;
-    if (u_shocks != 0 && u_shockWeight > 0.0 && k > 0.0)
+    if (u_shocks != 0 && u_shockWeight > 0.0)
     {
-        float sr = u_reverse / k;
-        if (sr < 1.0 && s > sr)
+        float sm = u_shockRatio;
+        if (sm < 1.0 && s > sm)
         {
-            float confined = u_reverse + (u_contact - u_reverse) * min(1.0, (s - sr) / (1.0 - sr));
+            float confined = u_reverse + (u_contact - u_reverse) * min(1.0, (s - sm) / (1.0 - sm));
             r += u_shockWeight * (confined - r);
             v_shocked = u_shockWeight;
         }

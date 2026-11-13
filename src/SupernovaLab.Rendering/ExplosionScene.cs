@@ -127,14 +127,17 @@ public sealed class ExplosionScene
         "Radius: the edge of a uniform ball of debris with this energy and mass (the spec's simple model); the fastest " +
         "outer layers, and the line speeds in the spectrum, are faster";
 
-    /// <summary>Shown while the shocks are drawn (structure §S4; Task 8).</summary>
+    /// <summary>Shown while the shocks are drawn (structure §S4; ruling R-P2-24).</summary>
     public const string ShockNote =
-        "Shocks: radii from Chevalier 1982, Truelove & McKee 1999 and Tang & Chevalier 2017 (structure §S4)";
+        "Shocks: radii from the radio model's shock with Chevalier 1982's ratios in the first years, then Truelove & McKee 1999 " +
+        "and Tang & Chevalier 2017 for steep outer debris (structure §S4)";
 
-    /// <summary>Ruling R-P2-10's disclosure (inconsistency #33): the shocks are the uniform-debris (n = 0) solutions.</summary>
-    public const string ShockUniformNote =
-        "Shock sizes assume uniform debris, as the remnant model does: for real steep outer debris the forward shock runs further " +
-        "out at first (2.6× at 10 yr for 10 M☉ and 10⁵¹ erg), the gap closing by about 1,000 yr (inconsistency #33)";
+    /// <summary>The radius readout's label from 10 yr (ruling R-P2-24): the drawn forward shock.</summary>
+    public const string ForwardShockLabel = "Forward shock (steep-ejecta solution)";
+
+    /// <summary>From 10 yr (ruling R-P2-24): Project 1's uniform-ejecta value, which the panels use ({0}: the radius).</summary>
+    public const string UniformRemnantNoteFormat =
+        "The remnant model behind the panels assumes uniform ejecta and gives {0}; see scientific inconsistency #33";
 
     /// <summary>[APPROX, schematic] The temperature whose blackbody colour tints the shocked debris: X-ray-hot gas, about 10⁷ K.</summary>
     public const double HotGasTemperatureK = 1e7;
@@ -296,22 +299,23 @@ public sealed class ExplosionScene
         double r = EjectaKinematics.RadiusCm(Outcome, t);
         double temperature = EjectaTemperatureK(t);
         var marker = MarkerAt(t, notes, out double period);
-        string label = t >= RemnantEvolutionModel.StartS ? "Blast-wave radius"
+        var shocks = ShockStructureModel.At(Outcome, t);
+        // Ruling R-P2-24: from 10 yr the readout is the drawn forward shock (the class-n solution) and the framing includes it;
+        // Project 1's uniform-ejecta value goes in a note. Before 10 yr, Project 1's radius as before.
+        bool remnant = t >= RemnantEvolutionModel.StartS && shocks is not null;
+        double readout = remnant ? shocks!.ForwardCm : r, frame = remnant ? Math.Max(r, shocks!.ForwardCm) : r;
+        string label = t >= RemnantEvolutionModel.StartS ? remnant ? ForwardShockLabel : "Blast-wave radius"
             : t > EjectaKinematics.BlendStartS ? "Outer radius" : "Ejecta radius";
-        if (t >= RemnantEvolutionModel.StartS) notes.Add("Radius from the remnant model's blast wave");
+        if (remnant) notes.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture, UniformRemnantNoteFormat, UnitFormat.Distance(r)));
+        else if (t >= RemnantEvolutionModel.StartS) notes.Add("Radius from the remnant model's blast wave");
         else if (t > EjectaKinematics.BlendStartS) notes.Add(BlendNote);
         else notes.Add(UniformSphereNote);
         if (t > _lightCurveEndS) notes.Add("Past the light-curve model (3 yr): debris drawn dimly");
-        var shocks = ShockStructureModel.At(Outcome, t);
-        if (shocks is not null)
-        {
-            notes.Add(ShockNote);
-            notes.Add(ShockUniformNote);
-        }
+        if (shocks is not null) notes.Add(ShockNote);
         notes.Add(SchematicNote);
         state = state with
         {
-            ShowEjecta = true, EjectaRadiusCm = r, FrameRadiusCm = r, RadiusCm = r, RadiusLabel = label,
+            ShowEjecta = true, EjectaRadiusCm = r, FrameRadiusCm = frame, RadiusCm = readout, RadiusLabel = label,
             EjectaTemperatureK = temperature, EjectaColor = BlackbodyColor.FromTemperature(temperature),
             EjectaBrightness = Brightness(t), Marker = marker, PulsarPeriodS = period, Notes = notes, Shocks = shocks,
         };

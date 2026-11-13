@@ -304,7 +304,7 @@ public static class Glossary
     public const string SceneView =
         "A simple 3D view of the star, the expanding ejecta and what is left behind. The radius at top left is the outer " +
         "edge of the debris in the lab's simple model (a uniform ball of gas; the fastest layers are really faster), which " +
-        "blends into the remnant model's blast wave between 3 and 10 years. The grey circles are measuring rings, labelled with their distance from the centre; " +
+        "blends into the remnant model's blast wave between 3 and 10 years; from 10 years it is the drawn forward shock. The grey circles are measuring rings, labelled with their distance from the centre; " +
         "the view steps back to a larger scale when the debris reach the outer ring. " +
         "Colours and the gas around the star are schematic. Drag to turn, wheel to zoom.";
 
@@ -320,7 +320,8 @@ public static class Glossary
     public const string ForwardShock =
         "The forward shock is the outer edge of the explosion: a shock wave running ahead of the debris into the gas around the " +
         "star, heating it to millions of degrees. The pale shell is that swept-up gas, brightest at its rim where the line of " +
-        "sight crosses the most of it. Its radius is the lab's remnant-model radius (Chevalier 1982; Tang & Chevalier 2017).";
+        "sight crosses the most of it. In the first years its radius is the radio model's shock; from 10 years it is Truelove & " +
+        "McKee's solution for the debris' steep outer layers, larger at first than the remnant panel's uniform-debris radius.";
     public const string ReverseShock =
         "The reverse shock: when the swept-up gas slows the debris down, a second shock runs back into the debris themselves " +
         "(outward at first, but more slowly than they move) and heats them. Debris it has passed are drawn hot and bright, packed " +

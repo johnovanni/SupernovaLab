@@ -511,7 +511,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                     (float)(set.MaxCmS * s.SinceBreakoutS / unit),
                     new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle,
                     particleCut, shocks is not null, (float)((shocks?.ReverseCm ?? 0) / unit), (float)((shocks?.ContactCm ?? 0) / unit),
-                    (float)(shocks?.ConfinementWeight ?? 0), new OpenTK.Mathematics.Vector3(hot.R, hot.G, hot.B)));
+                    (float)(shocks?.ConfinementWeight ?? 0), new OpenTK.Mathematics.Vector3(hot.R, hot.G, hot.B),
+                    (float)ParticleKinematics.ShockedSpeedRatio(shocks, s.SinceBreakoutS, starCm, set.MaxCmS)));
             }
             if (s.Shocks is { } sh && _shells is not null) DrawShells(viewportPx, sh, unit);
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
@@ -609,6 +610,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             Reverse = (float)((s.Shocks?.ReverseCm ?? 0) / unit),
             Contact = (float)((s.Shocks?.ContactCm ?? 0) / unit),
             ShockWeight = (float)(s.Shocks?.ConfinementWeight ?? 0),
+            ShockRatio = (float)ParticleKinematics.ShockedSpeedRatio(s.Shocks, s.SinceBreakoutS, starCm, set.MaxCmS),
         };
         _cutFaces.Render(Camera, viewportPx, (float)(model.OuterRadiusCm / unit), uniforms);
     }

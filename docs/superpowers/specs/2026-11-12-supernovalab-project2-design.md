@@ -112,12 +112,21 @@ Plus a **guided tour** for every explosion, alongside free play.
 - Once the debris meet surrounding gas, the forward shock, the contact surface and the reverse shock are thin
   translucent surfaces. Radii from Truelove & McKee (1999) and Tang & Chevalier (2017), the source of the blast wave
   Project 1 uses (earlier mislabelled Leahy & Williams 2017: `structure.md` C9).
-- The drawn forward shock is Project 1's uniform-ejecta (n = 0) radius, and the contact and reverse shock use the
-  matching n = 0 solutions (ruling R-P2-10, `structure.md` §S4). For the steep outer layers of real ejecta, the forward
-  shock would run ahead of this early on (up to about 2.6× at 10 years for a red supergiant). The overlay discloses
-  that gap (correction C10; inconsistency #33). Corrected 2026-11-12: this line earlier said the forward shock "must
-  agree" with Project 1's radius, which holds only for uniform ejecta.
-- Particles the reverse shock has passed pile up behind the contact surface and glow as hot gas.
+- The drawn shocks follow solutions consistent with the drawn steep-ejecta profile and with the panels where a panel
+  models the same shock (ruling R-P2-24, `structure.md` §S4):
+  - **First years** (outcomes with a wind): the forward shock is the radio model's own shock (R = v_s t). The contact and
+    reverse shock come from Chevalier's (1982) wind ratios for the class's density slope.
+  - **From 10 years:** all three come from Truelove & McKee (1999) and Tang & Chevalier (2017) for the class's steep
+    ejecta (n = 7 Type Ia, 12 red supergiant, 10 otherwise).
+  - **Between 3 and 10 years:** each radius blends smoothly from the first to the second.
+  - **Readout:** from 10 years the radius readout is this forward shock, and a note gives Project 1's uniform-ejecta value,
+    which the remnant panel keeps (up to about 2.6× smaller at 10 years for a red supergiant; correction C10;
+    inconsistency #33).
+
+  Corrected 2026-11-12: this line first said the forward shock "must agree" with Project 1's radius, then (ruling
+  R-P2-10) drew Project 1's n = 0 radius; the research and Task 8 showed both misplace the shocks.
+- Particles the reverse shock has passed pile up behind the contact surface and glow as hot gas. A particle once
+  shocked stays shocked (the reverse shock's Lagrangian speed is a running minimum, ruling R-P2-24).
 - While the debris coast, positions are velocity × time (homologous expansion), computed on the GPU. After that,
   positions follow the shock solutions.
 
@@ -235,6 +244,9 @@ calls made and reported later). Pushing to GitHub only when the owner asks.
 - Asymmetric explosions beyond jets and mixing, as in Project 1.
 
 ## 9. Flagged for later (physics changes Project 2 does not make)
+- **The remnant panel's ejecta profile.** Project 1's remnant model uses uniform-ejecta (n = 0) solutions, which lag
+  steep-ejecta remnants early (2.6× at 10 yr for n = 12; C10, #33). Using the class-n solution would change the remnant
+  panel.
 - **Mixing in the gamma-ray model.** Project 2 draws mixing; using it in the gamma-ray line model would likely narrow
   inconsistency #13 (SN 1987A's 847 keV line). It changes a panel, so it is a separate decision.
 
