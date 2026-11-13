@@ -81,8 +81,10 @@ public abstract partial class InstrumentPanelViewModel
         var all = DetectorModels(instrument);
         var tab = TabModels(SelectedSubTab);
         double t = SourceTimeS;
-        var verdicts = all.Select(m => (Model: m, Verdict: VerdictNow(m, instrument, t), InTab: tab.Contains(m)))
-            .OrderBy(x => Rank(x.Verdict.Status)).ThenBy(x => x.InTab ? 0 : 1).ToList();
+        // Task 15: the list keeps the catalogue's order at every time (it used to be sorted by verdict, so what was listed moved as the
+        // verdicts changed); the badges pick the best verdict from it, the first of equals in catalogue order.
+        var verdicts = all.Select(m => (Model: m, Verdict: VerdictNow(m, instrument, t), InTab: tab.Contains(m))).ToList();
+        JudgedModelIds = verdicts.Select(v => v.Model.Id).ToList();
 
         // The tile: the best verdict over every model that judges this instrument.
         if (verdicts.Count == 0)
@@ -92,12 +94,13 @@ public abstract partial class InstrumentPanelViewModel
         }
         else
         {
-            StripDetection = verdicts[0].Verdict;
-            _stripBadgeModel = verdicts[0].Model;
+            var best = Best(verdicts);
+            StripDetection = best.Verdict;
+            _stripBadgeModel = best.Model;
         }
 
         // The panel: only the selected sub-tab's models.
-        var own = verdicts.FirstOrDefault(x => x.InTab);
+        var own = Best(verdicts.Where(x => x.InTab).ToList());
         (string, string) panelBadge;
         if (own.Model is null)
         {
@@ -116,6 +119,25 @@ public abstract partial class InstrumentPanelViewModel
     }
 
     private ISignalModel? _stripBadgeModel;
+
+    /// <summary>
+    /// The models that judge the selected instrument, in the order the panel keeps them: the catalogue's order, the same at every time
+    /// (Task 15), however their verdicts change.
+    /// </summary>
+    public IReadOnlyList<string> JudgedModelIds { get; private set; } = Array.Empty<string>();
+
+    /// <summary>The best verdict (by <see cref="Rank"/>); of equals, one in the selected sub-tab, then the earliest in the list. Default for an empty list.</summary>
+    private static (ISignalModel? Model, Detection Verdict, bool InTab) Best(IReadOnlyList<(ISignalModel Model, Detection Verdict, bool InTab)> list)
+    {
+        if (list.Count == 0) return default;
+        var best = list[0];
+        foreach (var x in list)
+        {
+            int r = Rank(x.Verdict.Status), b = Rank(best.Verdict.Status);
+            if (r < b || r == b && x.InTab && !best.InTab) best = x;
+        }
+        return best;
+    }
 
     /// <summary>
     /// A model's verdict now. A panel may restate a verdict that the model gives for a past moment (the gamma panel: a

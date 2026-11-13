@@ -2,6 +2,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SupernovaLab.Core.Observer;
+using SupernovaLab.Core.Text;
 using SupernovaLab.Core.Timeline;
 using SupernovaLab.Core.Units;
 
@@ -156,10 +157,27 @@ public sealed partial class TimelineViewModel : ObservableObject
         }
         var rows = Enumerable.Range(0, MarkerRows).Select(_ => new List<(double From, double To)>()).ToArray();
         var placed = new List<MarkerLabel>();
-        foreach (var m in Markers.OrderBy(m => Priority(m.GlossaryKey)).ThenBy(m => m.ObserverTimeS))
+
+        // Task 15: the neutrino burst and the gravitational waves share the 10 ms mark. When both apply, the burst takes row 0 and the
+        // waves row 1, reserved before any other label is placed, so the waves' label never changes row or drops out between outcomes.
+        var pair = new[] { nameof(Glossary.NeutrinoBurst), nameof(Glossary.GravitationalWaves) };
+        var burst = Markers.FirstOrDefault(m => m.GlossaryKey == pair[0]);
+        var waves = Markers.FirstOrDefault(m => m.GlossaryKey == pair[1]);
+        var reserved = new HashSet<EventMarker>();
+        if (burst is not null && waves is not null)
         {
-            double width = Math.Min(trackWidth, m.Label.Length * MarkerCharWidth + 6);
-            double left = Math.Clamp(m.Fraction * trackWidth - width / 2, 0, trackWidth - width);
+            foreach (var (m, row) in new[] { (burst, 0), (waves, 1) })
+            {
+                var (left, width) = LabelSpan(m, trackWidth);
+                rows[row].Add((left, left + width));
+                placed.Add(new MarkerLabel(m, row, left, width));
+                reserved.Add(m);
+            }
+        }
+
+        foreach (var m in Markers.Where(m => !reserved.Contains(m)).OrderBy(m => Priority(m.GlossaryKey)).ThenBy(m => m.ObserverTimeS))
+        {
+            var (left, width) = LabelSpan(m, trackWidth);
             for (int r = 0; r < MarkerRows; r++)
             {
                 if (rows[r].Any(x => left < x.To + MarkerLabelGap && x.From < left + width + MarkerLabelGap)) continue;
@@ -169,6 +187,12 @@ public sealed partial class TimelineViewModel : ObservableObject
             }
         }
         MarkerLabels = placed;
+    }
+
+    private static (double Left, double Width) LabelSpan(EventMarker m, double trackWidth)
+    {
+        double width = Math.Min(trackWidth, m.Label.Length * MarkerCharWidth + 6);
+        return (Math.Clamp(m.Fraction * trackWidth - width / 2, 0, trackWidth - width), width);
     }
 
     private static int Priority(string key)
