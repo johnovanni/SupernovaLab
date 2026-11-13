@@ -55,6 +55,12 @@ public sealed partial class TimelineViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// True only while <see cref="Tick"/> (playback) is changing <see cref="ObserverTimeS"/>. Every other change (scrubber,
+    /// marker click, loop wrap, a preset's time) is a jump of the observer's time, which the 3D camera follows at once.
+    /// </summary>
+    public bool IsPlaybackStep { get; private set; }
+
     /// <summary>The scrubber's position 0..1 on the log axis.</summary>
     public double ScrubFraction
     {
@@ -191,13 +197,18 @@ public sealed partial class TimelineViewModel : ObservableObject
     {
         if (!IsPlaying || elapsed <= TimeSpan.Zero) return;
         double t = ObserverTimeS * Math.Pow(10, DecadesPerSecond * elapsed.TotalSeconds);
-        if (t >= TimeAxis.MaxS)
+        IsPlaybackStep = true;
+        try
         {
-            ObserverTimeS = TimeAxis.MaxS;
-            IsPlaying = false;
-            return;
+            if (t >= TimeAxis.MaxS)
+            {
+                ObserverTimeS = TimeAxis.MaxS;
+                IsPlaying = false;
+                return;
+            }
+            ObserverTimeS = t;
         }
-        ObserverTimeS = t;
+        finally { IsPlaybackStep = false; }
     }
 
     /// <summary>Called by MainViewModel when the outcome or observer changes. The time itself is kept.</summary>

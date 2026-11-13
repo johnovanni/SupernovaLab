@@ -246,13 +246,16 @@ public class SceneControllerTests
 
         public void Seek(double observerS) => Vm.Timeline.ObserverTimeS = observerS;
 
-        /// <summary>Plays forward in small steps (well under 0.05 decades a tick) until the director starts a step.</summary>
+        /// <summary>Plays forward by timeline ticks (about 0.0043 decades each) until the director starts a step.</summary>
         public bool PlayUntilStep(double fromS, double toS)
         {
+            Seek(fromS);
             double h = Scene.Director.HalfHeightCm;
-            for (double t = fromS; t < toS; t *= 1.01)
+            Vm.Timeline.IsPlaying = true;
+            var dt = TimeSpan.FromSeconds(Math.Log10(1.01) / Vm.Timeline.DecadesPerSecond);
+            while (Vm.Timeline.ObserverTimeS < toS)
             {
-                Seek(t);
+                Vm.Timeline.Tick(dt);
                 Frame();
                 if (Scene.Director.HalfHeightCm != h) return true;
             }
@@ -333,6 +336,50 @@ public class SceneControllerTests
         var marker = rig.Vm.Timeline.Markers.First(m => m.ObserverTimeS > 1000 * PhysicalConstants.Day);
         rig.Vm.Timeline.JumpToMarkerCommand.Execute(marker);
         Assert.False(rig.Scene.Director.IsEasing);
+    }
+
+    [Fact]
+    public void FastPlayback_WithALongFrame_IsStillAnEase()
+    {
+        // Review: at 3 decades/s a 30 ms frame steps 0.09 decades; playback must ease, never snap.
+        var rig = new Rig();
+        rig.Vm.Timeline.DecadesPerSecond = TimelineViewModel.MaxDecadesPerSecond;
+        rig.Seek(PhysicalConstants.Day);
+        rig.Frame();
+        rig.Vm.Timeline.IsPlaying = true;
+        double h = rig.Scene.Director.HalfHeightCm;
+        bool stepped = false;
+        for (int i = 0; i < 400 && !stepped; i++)
+        {
+            rig.Vm.Timeline.Tick(TimeSpan.FromMilliseconds(30));
+            rig.Frame();
+            stepped = rig.Scene.Director.HalfHeightCm != h || rig.Scene.Director.IsEasing;
+        }
+        Assert.True(stepped);
+        // Eased, not snapped: one frame in, the view is partway to its new half-height.
+        Assert.True(rig.Scene.Director.IsEasing);
+        Assert.True(rig.Scene.Director.HalfHeightCm < rig.Scene.Director.OuterRingCm / CameraDirector.RingLine);
+        Assert.True(rig.Scene.Director.HalfHeightCm > h);
+    }
+
+    [Fact]
+    public void Zoom_MidEase_StopsTheAnimationLoop()
+    {
+        var rig = new Rig();
+        rig.Seek(PhysicalConstants.Day);
+        rig.Frame();
+        Assert.True(rig.PlayUntilStep(PhysicalConstants.Day, 1000 * PhysicalConstants.Day));
+        Assert.True(rig.Scene.Director.IsEasing);
+        Assert.True(rig.Host.Animating);
+        Assert.NotEqual(SceneMarker.Pulsar, rig.Scene.State.Marker);
+
+        rig.Scene.Zoom(1);
+        rig.Frame();
+        Assert.False(rig.Host.Animating);
+
+        rig.Scene.Home();
+        Assert.False(rig.Scene.Director.IsEasing);
+        Assert.False(rig.Host.Animating);
     }
 
     [Fact]

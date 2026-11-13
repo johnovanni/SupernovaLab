@@ -16,6 +16,9 @@
                           ToolTip="{x:Static text:Glossary.OutcomeDetails}"/>
                 <MenuItem Header="_Preset info" Foreground="Black" Command="{Binding ShowPresetInfoCommand}"
                           ToolTip="{x:Static text:Glossary.PresetInfo}"/>
+                <MenuItem Header="Distance _rings" Foreground="Black" IsCheckable="True"
+                          IsChecked="{Binding DataContext.ShowRings, ElementName=SceneHost, Mode=TwoWay}"
+                          ToolTip="{x:Static text:Glossary.DistanceRings}"/>
             </MenuItem>
         </Menu>
 
@@ -78,8 +81,6 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <CheckBox Content="Rings" IsChecked="{Binding ShowRings}" Margin="12,8" HorizontalAlignment="Left"
-                              VerticalAlignment="Bottom" ToolTip="{x:Static text:Glossary.DistanceRings}"/>
                     <StackPanel Margin="10,8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal">
                         <Button Content="Auto-frame (Home)" Click="OnAutoFrameClick" Padding="6,1" Margin="0,0,8,0"
                                 Visibility="{Binding IsAutoFraming, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>

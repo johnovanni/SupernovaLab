@@ -34,9 +34,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>The OpenGL version the 3D view needs (spec §1 and §9).</summary>
     public const string Requirement = "OpenGL 4.1";
 
-    /// <summary>A change of observer time bigger than this many decades in one tick is a jump (timeline click), not playback.</summary>
-    public const double JumpDecades = 0.05;
-
     /// <summary>The longest wall-clock gap one frame hands the director (a frame after idle time is not a long ease).</summary>
     private const double MaxFrameGapS = 0.1;
 
@@ -46,7 +43,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private readonly Stopwatch _wall = Stopwatch.StartNew();
     private readonly Func<double> _clock;
     private double? _lastFrameS;
-    private double _lastObserverS;
     private IRenderHost? _host;
     private ExplosionScene? _scene;
     private SceneState _state = new();
@@ -74,7 +70,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _sceneFactory = sceneFactory ?? ((o, z1) => new ExplosionScene(o, z1));
         BuildScene();
         ComputeState();
-        _lastObserverS = vm.Timeline.ObserverTimeS;
         Director.Jump(_state.FrameRadiusCm);
         vm.OutcomeChanged += OnOutcomeChanged;
         vm.Timeline.PropertyChanged += OnTimelineChanged;
@@ -171,6 +166,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _frozenUnitCm ??= Director.HalfHeightCm;
         Camera.Zoom(notches);
         IsAutoFraming = false;
+        UpdateAnimating();   // a zoom freezes the scale: an ease in progress no longer needs frames
         UpdateRings();
         RequestRender();
     }
@@ -218,17 +214,15 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         Camera.DistanceMpc = AutoDistance;
         Camera.Target = default;
         IsAutoFraming = true;
-        _lastObserverS = _vm.Timeline.ObserverTimeS;
         Restate(jump: true);   // Review Focus 4: a new outcome reframes at once, even in the middle of an ease
     }
 
     private void OnTimelineChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(TimelineViewModel.ObserverTimeS)) return;
-        double t = _vm.Timeline.ObserverTimeS;
-        bool jump = Math.Abs(Math.Log10(t / _lastObserverS)) > JumpDecades;   // a click or a marker, not a playback tick
-        _lastObserverS = t;
-        Restate(jump);
+        // Only playback ticks ease; a scrub, marker click or loop wrap is a jump. While a wheel zoom has frozen the scale
+        // (ruling R-P2-9) a timeline click keeps it: only Home or a new outcome hands back to the director.
+        Restate(jump: !_vm.Timeline.IsPlaybackStep);
     }
 
     private void Restate(bool jump = false)
@@ -242,7 +236,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     private void UpdateAnimating()
     {
-        if (_host is not null && !IsFailed) _host.Animating = _state.Marker == SceneMarker.Pulsar || Director.IsEasing;
+        if (_host is not null && !IsFailed) _host.Animating = _state.Marker == SceneMarker.Pulsar || (Director.IsEasing && _frozenUnitCm is null);
     }
 
     /// <summary>Each frame: hands the director the wall time since the last frame and the framing radius, then the labels follow.</summary>
