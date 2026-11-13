@@ -30,14 +30,15 @@ uniform float u_shockRatio;       // s_m (ParticleKinematics.ShockedSpeedRatio);
 
 out vec4 o_color;
 
-// ParticleKinematics.FreeRadiusCm: the free-expansion radius of the debris drawn at radius r (identity without shocks).
+// ParticleKinematics.FreeRadiusCm: the free-expansion radius of the debris drawn at radius r (identity without shocks). Above
+// s_m the drawn radius is min(confined line, free line) (ruling R-P2-33's clamp), so the inverse is the larger of the two inverses.
 float freeRadius(float r)
 {
     float sm = u_shockRatio;
     if (u_shockWeight <= 0.0 || u_freeScale <= 0.0 || sm >= 1.0) return r;
-    float first = (1.0 - u_shockWeight) * sm * u_freeScale + u_shockWeight * u_reverse;   // r(s_m+)
+    float first = (1.0 - u_shockWeight) * sm * u_freeScale + u_shockWeight * u_reverse;   // the confined line at s_m+, unclamped
     float slope = (1.0 - u_shockWeight) * u_freeScale + u_shockWeight * (u_contact - u_reverse) / (1.0 - sm);
-    if (r >= first && slope > 0.0) return (sm + (r - first) / slope) * u_freeScale;
+    if (slope > 0.0 && r >= min(first, sm * u_freeScale)) return max(r / u_freeScale, sm + (r - first) / slope) * u_freeScale;
     return min(r / u_freeScale, sm) * u_freeScale;
 }
 

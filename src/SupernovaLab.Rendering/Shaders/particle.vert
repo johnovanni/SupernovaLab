@@ -33,7 +33,8 @@ void main()
     // Mirrors ParticleKinematics.RadiusCm (C#, plan ruling P4), with s = v / v_max and a_velocity = s * direction:
     //   free: r = R* * s + v * (t - t_bo) = s * K, K = R* + v_max * (t - t_bo).
     //   shocked (s > s_m, the reverse shock's running-minimum Lagrangian speed over v_max, ruling R-P2-24):
-    //   r_conf = R_r + (R_c - R_r)(s - s_m)/(1 - s_m), weighted in: r = r_free + w (r_conf - r_free) (ruling R-P2-4).
+    //   r_conf = R_r + (R_c - R_r)(s - s_m)/(1 - s_m), weighted in: r = r_free + w (r_conf - r_free) (ruling R-P2-4),
+    //   then clamped to the free radius, r = min(r, r_free) (ruling R-P2-33: confinement never pushes debris ahead).
     float s = length(a_velocity);
     float k = u_starRadius + u_expansion;
     float r = s * k;
@@ -44,7 +45,7 @@ void main()
         if (sm < 1.0 && s > sm)
         {
             float confined = u_reverse + (u_contact - u_reverse) * min(1.0, (s - sm) / (1.0 - sm));
-            r += u_shockWeight * (confined - r);
+            r = min(r + u_shockWeight * (confined - r), r);
             v_shocked = u_shockWeight;
         }
     }

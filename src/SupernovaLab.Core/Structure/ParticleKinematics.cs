@@ -11,9 +11,14 @@ namespace SupernovaLab.Core.Structure;
 /// so s_m = v_m / v_max. (For radii built by hand, with no running minimum, s_m = R_r / K: the particles whose free radius lies
 /// beyond R_r.) A shocked particle goes to</para>
 /// <code>r_conf = R_r + (R_c − R_r)·(s − s_m)/(1 − s_m)</code>
-/// <para>and ruling R-P2-4 weights it in: r = r_free + w (r_conf − r_free), w = <see cref="ShockRadii.ConfinementWeight"/>.</para>
+/// <para>and ruling R-P2-4 weights it in: r = r_free + w (r_conf − r_free), w = <see cref="ShockRadii.ConfinementWeight"/>.
+/// Ruling R-P2-33 (final review I9): confinement only holds debris back, never pushes them ahead of free expansion, so the
+/// result is clamped to the free radius, r = min(r, r_free). (Where the running-minimum v_m has frozen the shocked set while the
+/// joined fits carry R_r outward, R_r can lie beyond a shocked particle's free radius: SN 1987A's 18 fastest particles of 200,000
+/// were drawn up to ×1.72 ahead at 10 yr before the clamp; inconsistency #44.)</para>
 /// The 3D view's vertex shader (<c>particle.vert</c>) mirrors this function exactly, given s_m from
-/// <see cref="ShockedSpeedRatio"/>: change one, change the other.
+/// <see cref="ShockedSpeedRatio"/>, and the cut faces' <c>freeRadius</c> (<c>cutface.frag</c>) mirrors <see cref="FreeRadiusCm"/>,
+/// its inverse: change one, change the others.
 /// </summary>
 public static class ParticleKinematics
 {
@@ -30,7 +35,7 @@ public static class ParticleKinematics
         if (shocks is null || !(ratio > sm)) return free;
         double w = Math.Clamp(shocks.ConfinementWeight, 0, 1);
         double confined = shocks.ReverseCm + (shocks.ContactCm - shocks.ReverseCm) * Math.Min(1, (ratio - sm) / (1 - sm));
-        return free + w * (confined - free);
+        return Math.Min(free + w * (confined - free), free);   // ruling R-P2-33: never ahead of free expansion
     }
 
     /// <summary>
@@ -66,8 +71,10 @@ public static class ParticleKinematics
     /// <summary>
     /// The inverse of <see cref="RadiusCm"/> along a direction: the free-expansion radius s·K of the particle now drawn at
     /// <paramref name="radiusCm"/> (so the density profile's speed v = s·v_max is readable from a drawn radius; the cut faces use
-    /// it). Above s_m the map is linear in s, r = r(s_m⁺) + (s − s_m)·slope, so it inverts exactly; a radius between the last
-    /// unshocked particle (s_m K) and the first shocked one is given s_m. Identity without shocks.
+    /// it). Above s_m the map is the smaller of two lines in s, the confined one r = first + (s − s_m)·slope (first = the unclamped
+    /// r(s_m⁺)) and the free one r = s·K (ruling R-P2-33's clamp); both rise, so the inverse is the larger of their inverses,
+    /// s = max(r / K, s_m + (r − first) / slope), from the first shocked particle's radius min(first, s_m K) up. Below that radius
+    /// the debris are unshocked (s = r / K, at most s_m). Identity without shocks.
     /// </summary>
     public static double FreeRadiusCm(double radiusCm, double sinceBreakoutS, double starRadiusCm, double maxCmS, ShockRadii? shocks)
     {
@@ -76,9 +83,9 @@ public static class ParticleKinematics
         double sm = ShockedSpeedRatio(shocks, since, starRadiusCm, maxCmS);
         if (shocks is null || !(k > 0) || double.IsInfinity(sm)) return radiusCm;
         double w = Math.Clamp(shocks.ConfinementWeight, 0, 1);
-        double first = (1 - w) * sm * k + w * shocks.ReverseCm;   // r(s_m⁺)
+        double first = (1 - w) * sm * k + w * shocks.ReverseCm;   // the confined line at s_m⁺, before the clamp
         double slope = (1 - w) * k + w * (shocks.ContactCm - shocks.ReverseCm) / (1 - sm);
-        if (radiusCm >= first && slope > 0) return (sm + (radiusCm - first) / slope) * k;
+        if (slope > 0 && radiusCm >= Math.Min(first, sm * k)) return Math.Max(radiusCm / k, sm + (radiusCm - first) / slope) * k;
         return Math.Min(radiusCm / k, sm) * k;
     }
 }
