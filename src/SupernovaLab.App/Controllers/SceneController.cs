@@ -56,6 +56,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>The set on the GPU now (its v_max scales the shader's positions); null when there is none.</summary>
     private ParticleSet? _uploaded;
     private QualityLevel _quality = QualityLevels.Default;
+    private readonly QualityGovernor _governor = new(QualityLevels.Default);
+    private string? _qualityNote;
+    private FlashRenderer? _flash;
     private JetRenderer? _jets;
     private RemnantRenderer? _remnant;
     private RingRenderer? _rings;
@@ -110,25 +113,89 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>True when <see cref="Dispose"/> deleted the GL objects with the context current (logged by --snapshot).</summary>
     public bool GlReleased { get; private set; }
 
-    /// <summary>The particle budget (<see cref="QualityLevel"/>): 200,000, 100,000 or 50,000 debris particles. Changing it re-uploads the set at the next frame.</summary>
+    /// <summary>
+    /// The particle budget (<see cref="QualityLevel"/>): 200,000, 100,000 or 50,000 debris particles. Changing it re-uploads the set at
+    /// the next frame. Setting it is the user's choice (the View menu): it starts the <see cref="QualityGovernor"/> over at that level
+    /// and clears the "lowered automatically" note. The governor itself changes it through <see cref="ApplyQuality"/>.
+    /// </summary>
     public QualityLevel Quality
     {
         get => _quality;
         set
         {
-            if (_quality == value) return;
-            _quality = value;
-            _uploadParticles = true;
-            BuildParticles();       // the set (and so v_max) for the new count, before the state is restated
-            Restate();
+            _governor.Reset(value);
+            if (_qualityNote is not null)
+            {
+                _qualityNote = null;
+                UpdateOverlay();
+            }
+            ApplyQuality(value);
         }
+    }
+
+    private void ApplyQuality(QualityLevel value)
+    {
+        if (_quality == value) return;
+        _quality = value;
+        _uploadParticles = true;
+        BuildParticles();       // the set (and so v_max) for the new count, before the state is restated
+        Restate();
+        OnPropertyChanged(nameof(Quality));
+        OnPropertyChanged(nameof(IsQualityHigh));
+        OnPropertyChanged(nameof(IsQualityMedium));
+        OnPropertyChanged(nameof(IsQualityLow));
+    }
+
+    /// <summary>The View menu's quality items (radio-style): setting one to true chooses that level; setting it to false does nothing (it stays checked).</summary>
+    public bool IsQualityHigh { get => _quality == QualityLevel.High; set => ChooseQuality(value, QualityLevel.High, nameof(IsQualityHigh)); }
+    public bool IsQualityMedium { get => _quality == QualityLevel.Medium; set => ChooseQuality(value, QualityLevel.Medium, nameof(IsQualityMedium)); }
+    public bool IsQualityLow { get => _quality == QualityLevel.Low; set => ChooseQuality(value, QualityLevel.Low, nameof(IsQualityLow)); }
+
+    private void ChooseQuality(bool on, QualityLevel level, string property)
+    {
+        if (on) Quality = level;
+        else OnPropertyChanged(property);   // a click on the checked item: it stays checked
+    }
+
+    /// <summary>
+    /// Whether the <see cref="QualityGovernor"/> may lower the quality when the view runs below 50 fps. On by default; the --snapshot and
+    /// --bench runs switch it off so a measurement runs at the quality asked for.
+    /// </summary>
+    public bool AutoQuality { get; set; } = true;
+
+    /// <summary>A frame this long (s) is a pause between on-demand frames, not slowness: it is not counted and restarts the governor's window.</summary>
+    public const double MaxGovernedFrameS = 0.5;
+
+    /// <summary>The overlay note after the governor lowers the quality to this level.</summary>
+    public static string QualityStepDownNote(QualityLevel level)
+        => $"Quality lowered to {level} ({(int)level:N0} particles) automatically: the 3D view ran below {QualityGovernor.MinFps:0} frames per second. Choose a level in the View menu.";
+
+    /// <summary>Feeds the governor this frame's time and applies a step down (before the frame's upload, so it is drawn at the new level).</summary>
+    private void GovernQuality(double frameS)
+    {
+        if (!AutoQuality) return;
+        if (frameS > MaxGovernedFrameS) { _governor.Reset(_governor.Level); return; }
+        if (!_governor.Update(frameS)) return;
+        _qualityNote = QualityStepDownNote(_governor.Level);
+        ApplyQuality(_governor.Level);
+        UpdateOverlay();
     }
 
     /// <summary>True when the scene is drawn through the HDR target with bloom (false before the context exists, or without RGBA16F).</summary>
     public bool HdrEnabled => _hdr?.Enabled == true;
 
-    /// <summary>Tone-mapping exposure and bloom strength of the HDR pipeline.</summary>
-    private const float Exposure = 0.2f, BloomStrength = 0.5f;
+    /// <summary>
+    /// [Presentation, schematic] The bloom strength of the HDR pipeline. Kept at Task 4's 0.5 after Task 11's retune: tuned together with
+    /// the layer intensities below against these snapshots (default at 2.6 d, 23 d, 1 yr (cutaway) and 30 yr; SN 1987A at 8,000 and 12,000 d; SN 2023ixf at 5 d; SN 1998bw's burst), not against physics.
+    /// The tone-map exposure is <see cref="SceneState.Exposure"/>.
+    /// </summary>
+    private const float BloomStrength = 0.5f;
+
+    /// <summary>
+    /// The no-HDR flash quad's alpha now: <see cref="FlashLayer.NoHdrAlpha"/> of the scene's flash, min(1, intensity / 8), when the HDR
+    /// target is not in use; 0 otherwise (the flash is then scene light in the HDR target).
+    /// </summary>
+    public float FlashOverlayAlpha => HdrEnabled ? 0f : FlashLayer.NoHdrAlpha(_state.FlashIntensity);
 
     /// <summary>True once the GL context and the renderers exist.</summary>
     public bool IsReady => _star is not null;
@@ -359,7 +426,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         // Ruling R-P2-25: while shocks are drawn, a second line gives the drawn forward shock.
         if (RadiusText.Length > 0 && double.IsFinite(_state.ForwardShockCm) && _state.ForwardShockCm > 0)
             RadiusText += Environment.NewLine + $"{_state.ForwardShockLabel}: {UnitFormat.Distance(_state.ForwardShockCm)}";
-        NotesText = _modelError ?? string.Join(Environment.NewLine, IsCutaway ? _state.Notes.Append(CutawayNote) : _state.Notes);
+        var notes = IsCutaway ? _state.Notes.Append(CutawayNote) : _state.Notes;
+        if (_qualityNote is not null) notes = notes.Append(_qualityNote);
+        NotesText = _modelError ?? string.Join(Environment.NewLine, notes);
         Legend = LegendNow();
         OnPropertyChanged(nameof(ShowShockKey));
         OnPropertyChanged(nameof(ShowFingerKey));
@@ -465,6 +534,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _torusRings = new TorusRingRenderer();
         _cutFaces = new CutFaceRenderer();
         _shells = new ShellRenderer();
+        _flash = new FlashRenderer();
     }
 
     /// <summary>True when a GL version string ("4.6.0 NVIDIA 551.86", "4.1 ...") is 4.1 or later.</summary>
@@ -491,6 +561,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private void OnDraw(TimeSpan delta, Size viewportPx)
     {
         if (_disposed) return;
+        GovernQuality(delta.TotalSeconds);
         StepDirector();
         if (_star is null || _particles is null || _hdr is null || _jets is null || _remnant is null || _rings is null) return;
         FramesDrawn++;
@@ -522,7 +593,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 // The brightness is Project 1's, spread over the particle count so the picture keeps its overall level.
                 // Positions follow ParticleKinematics.RadiusCm: the shader gets R*, v_max * (t - t_bo) and the shock radii in
                 // scene units (doubles divided by the unit before they become floats).
-                float perParticle = (float)ReferenceParticleCount / _particles.Count;
+                float perParticle = ParticleGain * ReferenceParticleCount / _particles.Count;
                 double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
                 var shocks = s.Shocks;
                 var hot = ExplosionScene.HotGasColor;
@@ -536,13 +607,15 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (double.IsFinite(s.NebulaRadiusCm) && s.NebulaRadiusCm > 0 && _shells is not null)
                 _shells.Render(Camera, viewportPx, ShellKind.Ball, 0, s.NebulaRadiusCm / unit, NebulaColor, NebulaIntensity, NebulaCover);
             if (s.Shocks is { } sh && _shells is not null) DrawShells(viewportPx, sh, unit);
-            if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
+            if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit, hdr: HdrEnabled);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
             if (s.ShowRings1987A) _torusRings?.Render(Camera, viewportPx, pxPerDip, unit, s.RingBrightness);
             double phase = 2 * Math.PI * _wall.Elapsed.TotalSeconds / ExplosionScene.ShownPulsarPeriodS;
             // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
             _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
+            // The breakout flash is scene light in the HDR target, so it blooms; without the target it is drawn after the frame.
+            if (s.FlashIntensity > 0 && HdrEnabled) _flash?.RenderHdr(viewportPx, s.FlashColor, s.FlashIntensity);
             if (starCut || particleCut)
             {
                 var star = _star;
@@ -559,7 +632,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             }
         }
         GL.ColorMask(true, true, true, true);
-        _hdr.End(Exposure, BloomStrength, cutFaces);
+        _hdr.End(s.Exposure, BloomStrength, cutFaces);
+        if (FlashOverlayAlpha > 0) _flash?.RenderNoHdr(viewportPx, s.FlashColor, FlashOverlayAlpha);
         if (_readback is { } readback)
         {
             _readback = null;
@@ -642,17 +716,21 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>The pulsar wind nebula's colour (schematic): a synchrotron blue-white.</summary>
     public static readonly (float R, float G, float B) NebulaColor = (0.15f, 0.40f, 1.00f);
 
-    /// <summary>[APPROX, first guess] The nebula's HDR brightness along its brightest line of sight (through its centre).</summary>
-    public const float NebulaIntensity = 2f;
+    /// <summary>[Presentation, tuned in Task 11 (2 to 1)] The nebula's HDR brightness along its brightest line of sight (through its centre); at 2 it added to the swept-up shell's white-out.</summary>
+    public const float NebulaIntensity = 1f;
 
-    /// <summary>[APPROX, first guess] How much of the debris behind the nebula's centre it hides (0 to 1), so a blue bubble shows against bright debris.</summary>
+    /// <summary>[Presentation, kept in Task 11] How much of the debris behind the nebula's centre it hides (0 to 1), so a blue bubble shows against bright debris.</summary>
     public const float NebulaCover = 0.85f;
 
     /// <summary>The swept-up shell's colour: a pale blue-white (schematic), for gas heated by the forward shock.</summary>
     public static readonly (float R, float G, float B) ForwardShellColor = (0.80f, 0.88f, 1.00f);
 
-    /// <summary>[Schematic] HDR brightness of the brightest line of sight through the swept-up shell and the reverse-shock shell.</summary>
-    public const float ForwardShellIntensity = 1.5f, ReverseShellIntensity = 2.0f;
+    /// <summary>
+    /// [Presentation, tuned in Task 11 (1.5 to 0.45 and 2.0 to 1.0)] HDR brightness of the brightest line of sight through the swept-up shell
+    /// and the reverse-shock shell. At the first guess the swept-up shell filled the view with white from about 20 days on (the 30-year
+    /// frame's interior was a white disc); at these values the debris show through it and its limb brightening reads as a rim.
+    /// </summary>
+    public const float ForwardShellIntensity = 0.45f, ReverseShellIntensity = 1.0f;
 
     /// <summary>The reverse shock is drawn as a thin shell this fraction of its radius thick (at least <see cref="ReverseShellMinPx"/> pixels).</summary>
     public const double ReverseShellFraction = 0.015, ReverseShellMinPx = 2;
@@ -685,21 +763,21 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     public static readonly (float R, float G, float B) GlowColor = (0.85f, 0.92f, 1.00f);
 
     /// <summary>
-    /// [APPROX, first guess for Task 11's retune] The haze's HDR brightness at an impact parameter of 2 R* (the lines of sight
+    /// [Presentation, tuned in Task 11 (0.06 to 0.18, with the haze visible faintly around SN 1998bw's star and in the day-5 and day-2.6 frames)] The haze's HDR brightness at an impact parameter of 2 R* (the lines of sight
     /// nearest the star), for A_* = 10 (the lab's ordinary red-supergiant wind); the brightness elsewhere follows the column
     /// density (about 1/b). Faint, so the ejecta and shocks stay the picture.
     /// </summary>
-    public const float HazeIntensityAtTenAStar = 0.06f;
+    public const float HazeIntensityAtTenAStar = 0.18f;
 
-    /// <summary>[APPROX, first guess] The haze's brightness changes by this factor for each decade of A_* (a log scale, ∝ A_*^0.25), clamped to <see cref="HazeMinScale"/>–<see cref="HazeMaxScale"/>.</summary>
+    /// <summary>[APPROX, kept in Task 11] The haze's brightness changes by this factor for each decade of A_* (a log scale, ∝ A_*^0.25), clamped to <see cref="HazeMinScale"/>–<see cref="HazeMaxScale"/>.</summary>
     public const double HazeScalePerDecade = 0.25, HazeMinScale = 0.25, HazeMaxScale = 2.0;
 
-    /// <summary>[APPROX, first guess] The dense shell's HDR brightness at its brightest line of sight, and how much the glow adds to it (so it flares when hit).</summary>
-    public const float DenseShellIntensity = 0.12f, DenseShellFlare = 3f;
+    /// <summary>[Presentation, tuned in Task 11 (0.12 to 0.15; 0.36 turned SN 2023ixf's lit confined shell into a flat white disc)] The dense shell's HDR brightness at its brightest line of sight, and how much the glow adds to it (so it flares when hit); the flare factor is kept.</summary>
+    public const float DenseShellIntensity = 0.15f, DenseShellFlare = 3f;
 
-    /// <summary>[APPROX, first guess] The lit gas at the forward shock: a thin shell of this fraction of R_f, at most this HDR brightness (times the glow; the dense gas lights this much more).</summary>
+    /// <summary>[Presentation, tuned in Task 11 (1.2 to 0.6)] The lit gas at the forward shock: a thin shell of this fraction of R_f, at most this HDR brightness (times the glow; the dense gas lights this much more).</summary>
     public const double GlowShellFraction = 0.04;
-    public const float GlowShellIntensity = 1.2f, DenseGlowGain = 2f;
+    public const float GlowShellIntensity = 0.6f, DenseGlowGain = 2f;
 
     /// <summary>The haze's brightness scale for a wind of this A_* (1 at A_* = 10): 10^(0.25 (log10 A_* − 1)), clamped.</summary>
     public static double HazeScale(double aStar)
@@ -760,9 +838,16 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         var colors = new (float R, float G, float B)[LayerColors.Count];
         for (int i = 0; i < colors.Length; i++)
-            colors[i] = HdrEnabled ? LayerColors.FaceHdr((ElementLayer)i, Exposure) : LayerColors.For((ElementLayer)i);
+            colors[i] = HdrEnabled ? LayerColors.FaceHdr((ElementLayer)i, _state.Exposure) : LayerColors.For((ElementLayer)i);
         return colors;
     }
+
+    /// <summary>
+    /// [Presentation, tuned in Task 11 (1 to 0.5)] The debris' overall brightness against Project 1's: at 1 the core of the debris near
+    /// the light curve's peak (2.6 d) was a featureless white blob once the layered particles replaced Project 1's points; at 0.5 the
+    /// cloud's grain and its mixing fingers show while it still reads as the brightest thing in the view.
+    /// </summary>
+    public const float ParticleGain = 0.5f;
 
     /// <summary>Project 1's point count: its brightness was tuned for 50,000 points, so it is scaled by this over the count drawn.</summary>
     private const int ReferenceParticleCount = 50_000;
@@ -817,6 +902,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             {
                 GlReleased = host.Shutdown(() =>
                 {
+                    _flash?.Dispose();
                     _shells?.Dispose();
                     _cutFaces?.Dispose();
                     _torusRings?.Dispose();
@@ -834,6 +920,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 Debug.WriteLine($"SceneController: releasing the GL objects failed: {e}");
             }
         }
+        _flash = null;
         _shells = null;
         _cutFaces = null;
         _rings = null;

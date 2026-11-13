@@ -141,9 +141,10 @@ public class CircumstellarStructureTests
         Assert.Equal(SceneController.HazeMinScale, SceneController.HazeScale(1e-6));
         Assert.Equal(SceneController.HazeMaxScale, SceneController.HazeScale(1e12));
         Assert.Equal(0, SceneController.HazeScale(double.NaN));
-        // Faint: well below the shocks' own brightest lines of sight.
+        // Faint: below the swept-up shell's brightest line of sight even at its largest scale (Task 11 retuned the shell down and the
+        // haze up so the haze is faintly visible; it must still be the dimmest layer).
         Assert.True(SceneController.HazeIntensityAtTenAStar * SceneController.HazeMaxScale
-                    < SceneController.ForwardShellIntensity / 4);
+                    < SceneController.ForwardShellIntensity);
     }
 
     // ---------------------------------------------------------------- ruling R-P2-27: SN 2023ixf's pinned confined gas

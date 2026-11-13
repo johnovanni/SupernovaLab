@@ -40,6 +40,12 @@ public sealed class StarRenderer : IDisposable
     /// <summary>The wedge's angle about the scene's y axis (ruling R-P2-22), radians.</summary>
     public double WedgeAngleRad { get; set; }
 
+    /// <summary>[APPROX, Speculative] The coefficient u of the linear limb-darkening law I(mu) = 1 - u (1 - mu), mu = cos(angle from disc centre): a generic value, not this star's (Task 11; the note says "schematic").</summary>
+    public const float LimbDarkeningU = 0.6f;
+
+    /// <summary>I(mu) / I(1) for the linear law: the C# mirror of star.frag.</summary>
+    public static float LimbDarkening(float mu) => 1f - LimbDarkeningU * (1f - mu);
+
     /// <summary>The shock ring's HDR colour: hot white, bright enough to stay white after the exposure (0.2) and tone map.</summary>
     private static readonly Vector3 RingColor = new(30f, 28f, 24f);
 
@@ -66,6 +72,7 @@ public sealed class StarRenderer : IDisposable
         _program.Set("u_color", new Vector3(color.R, color.G, color.B));
         _program.Set("u_mode", mode);
         _program.Set("u_alpha", alpha);
+        _program.Set("u_limbU", LimbDarkeningU);
         _program.Set("u_cut", cut);
         _program.Set("u_pass", pass);
         WedgeUniforms.Set(_program, WedgeAngleRad);

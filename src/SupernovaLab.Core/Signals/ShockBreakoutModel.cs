@@ -215,6 +215,14 @@ public sealed class ShockBreakoutModel : ISignalModel
     /// </summary>
     public double ShockAtSurfaceS(Outcome o) => AppliesTo(o) ? SurfaceDelayS(o) : double.NaN;
 
+    /// <summary>
+    /// The flash's characteristic temperature, K: the blackbody temperature whose νL_ν peaks where the flash's spectrum does
+    /// (the <c>temp</c> channel while the flash lasts, Waxman &amp; Katz 2017's peak photon energy over Planck's peak constant). A read-only
+    /// accessor for the 3D view's flash colour; NaN when there is no modeled breakout (see <see cref="BreakoutTimeS"/>).
+    /// </summary>
+    public double FlashTemperatureK(Outcome o)
+        => Breakout.Of(o) is { } b ? b.Flash.PeakEv / (PlanckPeakX * BoltzmannEv) : double.NaN;
+
     /// <summary>Kistler et al.'s delay for an outcome the model applies to, with the envelope's polytrope.</summary>
     private static double SurfaceDelayS(Outcome o)
     {

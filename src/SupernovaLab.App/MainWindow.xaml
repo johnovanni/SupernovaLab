@@ -22,6 +22,15 @@
                 <MenuItem Header="_Cutaway" Foreground="Black" IsCheckable="True"
                           IsChecked="{Binding DataContext.IsCutaway, ElementName=SceneHost, Mode=TwoWay}"
                           ToolTip="{x:Static text:Glossary.Cutaway}"/>
+                <MenuItem Header="_Quality" Foreground="Black"
+                          ToolTip="How many debris particles the 3D view draws. It steps down by itself if the view runs below 50 frames per second; a choice here starts it over.">
+                    <MenuItem Header="_High (200,000 particles)" Foreground="Black" IsCheckable="True"
+                              IsChecked="{Binding DataContext.IsQualityHigh, ElementName=SceneHost, Mode=TwoWay}"/>
+                    <MenuItem Header="_Medium (100,000)" Foreground="Black" IsCheckable="True"
+                              IsChecked="{Binding DataContext.IsQualityMedium, ElementName=SceneHost, Mode=TwoWay}"/>
+                    <MenuItem Header="_Low (50,000)" Foreground="Black" IsCheckable="True"
+                              IsChecked="{Binding DataContext.IsQualityLow, ElementName=SceneHost, Mode=TwoWay}"/>
+                </MenuItem>
             </MenuItem>
         </Menu>
 
@@ -56,13 +65,28 @@
                     <!-- Snapshot diagnostic only: the GL frame read back with GL.ReadPixels (ruling R19). -->
                     <Image x:Name="SnapshotImage" Stretch="Fill" Visibility="Collapsed" IsHitTestVisible="False"/>
 
-                    <StackPanel Margin="10,8" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False">
-                        <TextBlock Text="{Binding TimeText}" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding RadiusText}" Margin="0,2,0,0" MaxWidth="340" TextWrapping="Wrap" HorizontalAlignment="Left"/>
-                    </StackPanel>
-                    <TextBlock Text="{Binding NotesText}" Style="{StaticResource Muted}" Margin="10,8" MaxWidth="320"
-                               HorizontalAlignment="Right" VerticalAlignment="Top" TextAlignment="Right" TextWrapping="Wrap"
-                               IsHitTestVisible="False"/>
+                    <!-- Task 11: a translucent dark backdrop keeps the readout and notes legible over bright shells. -->
+                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#96020308" HorizontalAlignment="Left"
+                            VerticalAlignment="Top" IsHitTestVisible="False">
+                        <StackPanel>
+                            <TextBlock Text="{Binding TimeText}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding RadiusText}" Margin="0,2,0,0" MaxWidth="340" TextWrapping="Wrap" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#96020308" HorizontalAlignment="Right"
+                            VerticalAlignment="Top" IsHitTestVisible="False">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding NotesText}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding NotesText}" Style="{StaticResource Muted}" MaxWidth="320"
+                                   TextAlignment="Right" TextWrapping="Wrap"/>
+                    </Border>
 
                     <!-- The distance rings' labels (plan ruling P6): WPF text placed from the GL projection, at each ring's top. -->
                     <ItemsControl ItemsSource="{Binding RingLabels}" IsHitTestVisible="False">
@@ -85,8 +109,10 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <!-- The key (bottom left): the element layers the cut faces show now, and the shock shells while they are drawn. -->
-                    <StackPanel Margin="10,8" HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="True"
-                                Visibility="{Binding ShowKey, Converter={StaticResource VisibleWhen}}">
+                    <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#96020308" HorizontalAlignment="Left"
+                            VerticalAlignment="Bottom" IsHitTestVisible="True"
+                            Visibility="{Binding ShowKey, Converter={StaticResource VisibleWhen}}">
+                    <StackPanel>
                         <StackPanel Visibility="{Binding ShowShellKey, Converter={StaticResource VisibleWhen}}" Margin="0,0,0,2">
                             <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ForwardShock}">
                                 <Border Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" BorderThickness="2"
@@ -132,6 +158,7 @@
                                    ToolTip="{x:Static text:Glossary.MixingFingers}"
                                    Visibility="{Binding ShowFingerKey, Converter={StaticResource VisibleWhen}}"/>
                     </StackPanel>
+                    </Border>
                     <StackPanel Margin="10,8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal">
                         <Button Content="Auto-frame (Home)" Click="OnAutoFrameClick" Padding="6,1" Margin="0,0,8,0"
                                 Visibility="{Binding IsAutoFraming, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>

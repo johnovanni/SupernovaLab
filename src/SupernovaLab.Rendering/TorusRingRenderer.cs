@@ -21,9 +21,9 @@ public sealed class TorusRingRenderer : IDisposable
     /// <summary>[Schematic] The tube's radius as a fraction of the ring's radius, and its least half-width in pixels.</summary>
     public const double TubeFraction = 0.04, MinTubePx = 1.2;
 
-    /// <summary>[Schematic] The rings' colour (a warm amber) and HDR brightness: the equatorial ring, then the two outer rings (dimmer).</summary>
+    /// <summary>[Schematic] The rings' colour (a warm amber) and HDR brightness (Task 11 retune: 1.6 to 1.1 and 0.7 to 0.5, so the tubes stay rings and the hotspot beads stand out against the debris at 8,000 to 12,000 d): the equatorial ring, then the two outer rings (dimmer).</summary>
     public static readonly Vector3 RingColor = new(1.00f, 0.62f, 0.38f);
-    public const float EquatorialIntensity = 1.6f, OuterIntensity = 0.7f;
+    public const float EquatorialIntensity = 1.1f, OuterIntensity = 0.5f;
 
     /// <summary>[Schematic] The hotspots: a hot yellow-white, at most this HDR brightness (times the hotspot brightness, 0 to 1) and this many device-independent pixels across.</summary>
     public static readonly Vector3 BeadColor = new(1.00f, 0.88f, 0.62f);

@@ -16,6 +16,12 @@ public sealed class JetRenderer : IDisposable
     private static readonly Vector3 JetColor = new(0.75f, 0.85f, 1f);
     public const double JetLength = 1.6;
 
+    /// <summary>Task 11: through the HDR target the jets are drawn at this multiple of their ordinary strength, so they bloom (scene light, not a fixed colour).</summary>
+    public const float HdrGain = 4f;
+
+    /// <summary>The jets' gain: <see cref="HdrGain"/> through the HDR target, 1 without it (where the colour is clamped anyway).</summary>
+    public static float GainFor(bool hdr) => hdr ? HdrGain : 1f;
+
     private readonly ShaderProgram _program = ShaderProgram.FromResources("cone.vert", "cone.frag");
     private readonly int _vao, _vbo;
 
@@ -41,10 +47,11 @@ public sealed class JetRenderer : IDisposable
     }
 
     /// <summary>The two jets along ±z, of this half-opening angle, <see cref="JetLength"/> × <paramref name="scale"/> long.</summary>
-    public void RenderJets(OrbitCamera camera, Size viewportPx, double halfAngleRad, double scale)
+    public void RenderJets(OrbitCamera camera, Size viewportPx, double halfAngleRad, double scale, bool hdr = false)
     {
+        var color = JetColor * GainFor(hdr);
         foreach (var axis in new[] { Vector3d.UnitZ, -Vector3d.UnitZ })
-            RenderCone(camera, viewportPx, axis, JetLength * scale, halfAngleRad, JetColor, 0.9f);
+            RenderCone(camera, viewportPx, axis, JetLength * scale, halfAngleRad, color, 0.9f);
     }
 
     /// <summary>One cone from the origin along <paramref name="axis"/>, additively blended.</summary>

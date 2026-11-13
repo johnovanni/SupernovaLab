@@ -245,6 +245,7 @@ public static class SnapshotRenderer
             main.Show();
             if ((main as MainWindow)?.Scene is { } quality)
             {
+                quality.AutoQuality = false;   // a snapshot or bench run measures the quality asked for
                 quality.Quality = request.Qualities[0];
                 quality.IsCutaway = request.Cutaway;
             }

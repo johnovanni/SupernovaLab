@@ -15,6 +15,7 @@ in vec2 v_corner;
 
 uniform vec3 u_color;
 uniform int u_mode;
+uniform float u_limbU;           // the limb-darkening coefficient u (StarRenderer.LimbDarkeningU)
 uniform float u_alpha;
 
 uniform int u_cut;
@@ -76,6 +77,6 @@ void main()
         }
         if (u_pass == 1) discard;
     }
-    float limb = 1.0 - 0.6 * (1.0 - mu);
+    float limb = 1.0 - u_limbU * (1.0 - mu);
     o_color = vec4(u_color * limb, a);
 }

@@ -98,6 +98,19 @@ public sealed record SceneState
     /// <summary>Whether SN 1987A's three rings are drawn (structure §S8: the outcome has the equatorial ring and the debris are drawn).</summary>
     public bool ShowRings1987A { get; init; }
 
+    /// <summary>
+    /// The breakout flash now (Task 11, spec §5): 1 + log10(L_bo / L_peak) clamped to 0..<see cref="ExplosionScene.MaxFlashIntensity"/> while the
+    /// shock breaks out of the star (L_bo the breakout model's luminosity, L_peak the light curve's peak), 0 at every other time. The
+    /// view adds it as scene light (<see cref="FlashLayer"/>); it may blow the view out briefly.
+    /// </summary>
+    public float FlashIntensity { get; init; }
+
+    /// <summary>The flash's colour: a blackbody at <see cref="ShockBreakoutModel.FlashTemperatureK"/> (saturates to blue-white); white without a flash.</summary>
+    public (float R, float G, float B) FlashColor { get; init; } = (1f, 1f, 1f);
+
+    /// <summary>The HDR tone-map exposure now: <see cref="ExplosionScene.ExposureFor"/> of <see cref="EjectaBrightness"/> (Project 1's brightness).</summary>
+    public float Exposure { get; init; } = ExplosionScene.BaseExposure;
+
     /// <summary>0 to 1: how brightly the equatorial ring's hotspot beads glow now (<see cref="Sn1987aRings.HotspotBrightness"/>).</summary>
     public float RingBrightness { get; init; }
 }
@@ -134,6 +147,29 @@ public sealed class ExplosionScene
     public const double ShownPulsarPeriodS = 2;
 
     public const string SchematicNote = "Colours schematic";
+
+    /// <summary>The flash's strongest intensity (the clamp of 1 + log10(L_bo / L_peak)) and the no-HDR quad's divisor.</summary>
+    public const float MaxFlashIntensity = 8f;
+
+    /// <summary>Shown while the breakout flash is drawn (Task 11).</summary>
+    public const string FlashNote = "Breakout flash: brightness from the breakout model, mostly UV and X-rays in reality";
+
+    /// <summary>Shown while the star is drawn (Task 11): the limb darkening is a generic law, not this star's.</summary>
+    public const string LimbDarkeningNote = "Limb darkening: a generic law (schematic)";
+
+    /// <summary>
+    /// [APPROX, presentation] The tone-map exposure at the light curve's peak (and with nothing bright drawn), and the fraction of it kept
+    /// at <see cref="MinBrightness"/>: the exposure follows Project 1's brightness so the dim remnant era does not accumulate to white.
+    /// </summary>
+    public const float BaseExposure = 0.2f, DimExposureFraction = 0.75f;
+
+    /// <summary>The HDR exposure for an ejecta brightness (<see cref="Brightness"/>, 0.25 to 1): <see cref="BaseExposure"/> at the peak, down to <see cref="DimExposureFraction"/> of it at the faintest; the base when nothing is drawn (0).</summary>
+    public static float ExposureFor(float brightness)
+    {
+        if (!(brightness > 0)) return BaseExposure;
+        float x = Math.Clamp((brightness - MinBrightness) / (1 - MinBrightness), 0f, 1f);
+        return BaseExposure * (DimExposureFraction + (1 - DimExposureFraction) * x);
+    }
 
     /// <summary>Shown while the Rayleigh-Taylor fingers are drawn (structure S3).</summary>
     public const string MixingNote = "Mixing fingers: shapes schematic; their reach is from 3D simulations (structure §S3)";
@@ -219,6 +255,7 @@ public sealed class ExplosionScene
     private readonly object _particleLock = new();
     private ParticleSet? _particles;
     private readonly double _particleStartS;
+    private readonly double _flashFromS = double.NaN, _flashToS = double.NaN, _lightCurvePeak, _flashTemperatureK = double.NaN;
     private readonly double _breakoutS, _peakLuminosity, _lightCurveEndS, _whiteDwarfS, _pulsarS, _jetsFromS, _jetsToS;
 
     /// <summary>The scene for this outcome; <paramref name="timeDilation"/> (1 + z) puts the notes' times in observer time.</summary>
@@ -254,6 +291,21 @@ public sealed class ExplosionScene
                 double l = Luminosity(start * Math.Pow(end / start, i / 200.0));
                 if (l > _peakLuminosity) _peakLuminosity = l;
             }
+
+        // The breakout flash (Task 11): the model's window from breakout to the start of shock cooling, against the light curve's own peak.
+        double flashFrom = Breakout.BreakoutTimeS(outcome);
+        if (double.IsFinite(flashFrom))
+        {
+            _flashFromS = flashFrom;
+            _flashToS = Breakout.Cooling(outcome)?.StartS ?? Breakout.ValidRange(outcome).EndS;
+            _flashTemperatureK = Breakout.FlashTemperatureK(outcome);
+            if (end > start && start > 0)
+                for (int i = 0; i <= 200; i++)
+                {
+                    double l = LightCurve.Sample(outcome, ObserverSetup.Default, start * Math.Pow(end / start, i / 200.0), "lbol");
+                    if (l > _lightCurvePeak) _lightCurvePeak = l;
+                }
+        }
 
         // A Type Ia's white dwarf is drawn while the debris are within about its own radius of it.
         double v = EjectaKinematics.OuterVelocityCmS(outcome);
@@ -327,6 +379,35 @@ public sealed class ExplosionScene
 
     /// <summary>The view at this source time (s after bounce, or ignition for a Type Ia).</summary>
     public SceneState At(double sourceTimeS)
+    {
+        var state = AtCore(sourceTimeS);
+        // Task 11: the exposure follows the brightness; the flash while the shock breaks out; the limb darkening's note with the star.
+        var notes = state.Notes.ToList();
+        float flash = FlashAt(sourceTimeS);
+        if (flash > 0) notes.Insert(Math.Max(0, notes.Count - 1), FlashNote);
+        if (state.ShowStar) notes.Insert(Math.Max(0, notes.Count - 1), LimbDarkeningNote);
+        return state with
+        {
+            Exposure = ExposureFor(state.ShowEjecta || state.ShowParticles ? state.EjectaBrightness : 0f),
+            FlashIntensity = flash,
+            FlashColor = flash > 0 ? BlackbodyColor.FromTemperature(_flashTemperatureK) : (1f, 1f, 1f),
+            Notes = notes,
+        };
+    }
+
+    /// <summary>
+    /// 1 + log10(L_bo / L_peak), clamped to 0..<see cref="MaxFlashIntensity"/>, from breakout until the shock-cooling phase begins (the
+    /// flash and the bridge to it); 0 at other times, for an outcome without a modeled breakout, and without a light curve to compare with.
+    /// </summary>
+    private float FlashAt(double t)
+    {
+        if (!(t >= _flashFromS && t < _flashToS) || !(_lightCurvePeak > 0)) return 0f;
+        double lbo = Breakout.Sample(Outcome, ObserverSetup.Default, t, "lum");
+        if (!(lbo > 0)) return 0f;
+        return (float)Math.Clamp(1 + Math.Log10(lbo / _lightCurvePeak), 0, MaxFlashIntensity);
+    }
+
+    private SceneState AtCore(double sourceTimeS)
     {
         double t = sourceTimeS;
         var notes = new List<string>();
