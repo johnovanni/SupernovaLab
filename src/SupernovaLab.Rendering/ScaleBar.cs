@@ -49,7 +49,24 @@ public static class ScaleBar
         return (m >= 5 - 1e-9 ? 5 : m >= 2 - 1e-9 ? 2 : 1) * decade;
     }
 
-    private static string Label(double value, string unit) => unit switch
+    /// <summary>The unit (its size in cm and name) used for a view spanning this many cm: the thresholds <see cref="Choose"/> uses.</summary>
+    public static (double UnitCm, string Name) UnitFor(double spanCm)
+    {
+        foreach (var (unitCm, fromCm, name) in Units)
+            if (spanCm >= fromCm) return (unitCm, name);
+        return (Units[^1].Cm, Units[^1].Name);
+    }
+
+    /// <summary>The size in cm of a unit given its name ("pc", "light-year", "AU" or "km").</summary>
+    internal static double UnitCmOf(string name)
+    {
+        foreach (var (unitCm, _, n) in Units)
+            if (n == name) return unitCm;
+        throw new ArgumentException($"Unknown unit '{name}'.", nameof(name));
+    }
+
+    /// <summary>A value in a unit as text, e.g. "5,000 AU", "20 million km", "0.5 light-years".</summary>
+    public static string Label(double value, string unit) => unit switch
     {
         "km" when value >= 1e6 => $"{Number(value / 1e6)} million km",
         "light-year" => $"{Number(value)} {(value == 1 ? "light-year" : "light-years")}",
