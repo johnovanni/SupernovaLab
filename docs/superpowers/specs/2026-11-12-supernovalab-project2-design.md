@@ -61,10 +61,12 @@ Plus a **guided tour** for every explosion, alongside free play.
   where the growth is seen.
 - **Step:** when the framing diameter reaches 90%, the camera eases back over about 0.3 s of real time until it is at
   about 22% again: a step of about 4×. The step lands so that the outermost ring is a 1-2-5 value.
-- **Why these numbers:** Project 1's default playback covers 13.5 decades of time in 20 s. While the debris coast, the
-  radius grows in proportion to time, so a 4× step takes about 0.9 s of playback; a 0.3 s ease leaves the camera still
-  for about two-thirds of each cycle (success criterion 1). Slower playback, and the tour's slow-downs, give longer
-  holds. The exact values are tuned from `--snapshot` series against criterion 1.
+- **Why these numbers:** Project 1's default playback speed is 1/3 decade of time per second
+  (`TimelineViewModel.DefaultDecadesPerSecond`; corrected 2026-11-12 from an earlier "13.5 decades in 20 s", which was
+  the `--bench` speed). While the debris coast, the radius grows in proportion to time, so a 4–5× step takes about
+  1.8–2.1 s of playback; a 0.3 s ease leaves the camera still for over 80% of each cycle, and about two-thirds even at
+  the bench's 0.675 decades per second (success criterion 1). Slower playback, and the tour's slow-downs, give longer
+  holds. The exact values are tuned against criterion 1.
 - **Backwards:** scrubbing back steps in the same way, with hysteresis so the camera does not flicker at a boundary.
 - **Jumps:** a click on the timeline, a new preset or a new outcome re-frames at once, without easing.
 - **Taking over:** the wheel zooms and freezes the scale, as in Project 1, so the debris can run off-screen; dragging
