@@ -350,7 +350,7 @@ public static class Glossary
         "The three glowing rings of gas around SN 1987A: an equatorial ring, the size of 0.665 light-years, and two larger ones " +
         "above and below it, shed by the star about 20,000 years before it exploded. Their size and tilt are measured (Sugerman et " +
         "al. 2005), not predicted by the lab. The south ring is in front of the equatorial ring and the north ring behind it. " +
-        "The bright beads are hotspots, where the blast wave strikes dense lumps of the ring; they appeared from about 1995 and faded after 2009.";
+        "The bright beads are hotspots, where the blast wave strikes dense lumps of the ring. Their rise follows the ring's soft X-ray light curve (from about day 3,000, 1995, to a plateau near day 10,000); the optical ring peaked about 2009. The fade drawn after day 10,000 is a schematic straight line to 2035, a guess.";
 
     // ---------------------------------------------------------------- instrument panels' views (spec §5.1)
 

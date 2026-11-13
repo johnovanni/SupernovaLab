@@ -159,6 +159,18 @@ public sealed class ExplosionScene
     /// </summary>
     public const double RingsNoteMinFrameFraction = 0.15;
 
+    /// <summary>Shown while the ring's hotspots are lit ({0}: the day the drawn spherical shock reaches the ring; inconsistency #48).</summary>
+    public const string HotspotTimingNoteFormat =
+        "The hotspots' timing is observed (X-ray), not the drawn spherical shock's arrival, which reaches the ring only at day {0} (scientific inconsistency #48)";
+
+    /// <summary>Shown while the hotspots' brightness is in its schematic decline (after day 10,000).</summary>
+    public const string HotspotFadeNote =
+        "The hotspots' fade after day 10,000 is a schematic straight line to 2035 (the research gives no rate)";
+
+    /// <summary>Ruling R-P2-29: the Crab's drawn forward-shock shell is the predicted outer shell (inconsistency #31).</summary>
+    public const string CrabShellNote =
+        "The Crab's outer shell (drawn) is predicted but has never been detected (scientific inconsistency #31)";
+
     /// <summary>The note when the extent is from a source ({0}: its citation).</summary>
     public const string GasNoteFormat = "Gas around the star: extent from {0}";
 
@@ -379,6 +391,25 @@ public sealed class ExplosionScene
         return WithRings(state, notes, t);
     }
 
+    private double? _ringDay;
+
+    /// <summary>The day (after bounce) the drawn forward shock reaches the equatorial ring's radius; NaN if it does not within 100 yr.</summary>
+    private double ShockReachesRingDay()
+    {
+        if (_ringDay is { } cached) return cached;
+        double lo = 100 * PhysicalConstants.Day, hi = 100 * PhysicalConstants.Year, ring = Sn1987aRings.EquatorialRadiusCm;
+        double Forward(double t) => ShockStructureModel.At(Outcome, t)?.ForwardCm ?? 0;
+        double result = double.NaN;
+        if (Forward(hi) >= ring)
+        {
+            if (Forward(lo) >= ring) hi = lo;
+            for (int i = 0; i < 60 && hi > lo; i++) { double mid = 0.5 * (lo + hi); if (Forward(mid) >= ring) hi = mid; else lo = mid; }
+            result = hi / PhysicalConstants.Day;
+        }
+        _ringDay = result;
+        return result;
+    }
+
     /// <summary>The pulsar wind nebula (structure §S9): its radius and, once it is more than a speck, its note. Inside the debris, so it never drives the framing.</summary>
     private SceneState WithNebula(SceneState state, List<string> notes, double t)
     {
@@ -387,6 +418,9 @@ public sealed class ExplosionScene
         if (!(radius > 0)) return state;
         if (radius >= NebulaNoteMinFrameFraction * state.FrameRadiusCm)
             notes.Insert(Math.Max(0, notes.Count - 1), PulsarWindNebulaModel.Note);
+        // Ruling R-P2-29: the Crab (the preset with a measured pulsar) has its forward-shock shell drawn; it is the undetected outer shell.
+        if (Outcome.PulsarRadioLuminosityMjyKpc2 is not null && state.Shocks is not null)
+            notes.Insert(Math.Max(0, notes.Count - 1), CrabShellNote);
         return state with { NebulaRadiusCm = radius };
     }
 
@@ -398,7 +432,18 @@ public sealed class ExplosionScene
     {
         if (!Outcome.HasEquatorialRing) return state;
         if (state.FrameRadiusCm >= RingsNoteMinFrameFraction * Sn1987aRings.EquatorialRadiusCm)
+        {
             notes.Insert(Math.Max(0, notes.Count - 1), Sn1987aRings.Note);
+            if (Sn1987aRings.HotspotBrightness(t) > 0)
+            {
+                double day = ShockReachesRingDay();
+                if (double.IsFinite(day))
+                    notes.Insert(Math.Max(0, notes.Count - 1), string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        HotspotTimingNoteFormat, Math.Round(day / 10) * 10));
+                if (t / PhysicalConstants.Day > Sn1987aRings.FadeStartDays)
+                    notes.Insert(Math.Max(0, notes.Count - 1), HotspotFadeNote);
+            }
+        }
         return state with { ShowRings1987A = true, RingBrightness = Sn1987aRings.HotspotBrightness(t) };
     }
 

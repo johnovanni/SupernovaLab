@@ -145,7 +145,7 @@ public class Sn1987aRingsTests
     }
 
     [Fact]
-    public void Rings_HotspotsRiseFromDay3000_PeakNearDay8000()
+    public void Rings_HotspotsRiseFromDay3000_PlateauByDay10000_ThenFadeToZeroBy2035()
     {
         Assert.Equal(0f, Sn1987aRings.HotspotBrightness(2999 * Day));
         Assert.Equal(0f, Sn1987aRings.HotspotBrightness(1000 * Day));
@@ -203,5 +203,35 @@ public class Sn1987aRingsTests
         Assert.Equal(Sn1987aRings.HotspotBrightness(8000 * Day), scene.At(8000 * Day).RingBrightness);
         Assert.True(scene.At(8000 * Day).RingBrightness > 0.85f);
         Assert.Equal(24, Sn1987aRings.HotspotCount);
+    }
+
+    [Fact]
+    public void Notes_DiscloseTheHotspotTiming_AndTheSchematicFade()
+    {
+        var scene = new ExplosionScene(Sn1987a());
+        Assert.DoesNotContain(scene.At(1000 * Day).Notes, n => n.StartsWith("The hotspots'", StringComparison.Ordinal));
+        var at3000 = scene.At(3000 * Day).Notes;
+        var timing = Assert.Single(at3000, n => n.StartsWith("The hotspots' timing is observed", StringComparison.Ordinal));
+        Assert.Contains("#48", timing);
+        Assert.DoesNotContain(ExplosionScene.HotspotFadeNote, at3000);
+        // The day it names is where the drawn forward shock reaches the ring (about 6,280).
+        var day = double.Parse(System.Text.RegularExpressions.Regex.Match(timing, @"day (\d+)").Groups[1].Value);
+        Assert.InRange(day, 6200, 6350);
+        double ring = Sn1987aRings.EquatorialRadiusCm;
+        Assert.True(ShockStructureModel.At(Sn1987a(), (day - 20) * Day)!.ForwardCm < ring);
+        Assert.True(ShockStructureModel.At(Sn1987a(), (day + 20) * Day)!.ForwardCm > ring);
+        Assert.DoesNotContain(ExplosionScene.HotspotFadeNote, scene.At(9000 * Day).Notes);
+        Assert.Contains(ExplosionScene.HotspotFadeNote, scene.At(12_000 * Day).Notes);
+    }
+
+    [Fact]
+    public void CrabNote_SaysTheDrawnOuterShellIsPredictedButNeverDetected()
+    {
+        var crab = PresetCatalog.Get("sn1054");
+        var o = TestOutcomes.Engine.Compute(crab.Inputs, crab.Pins);
+        Assert.Contains(ExplosionScene.CrabShellNote, new ExplosionScene(o).At(954 * PhysicalConstants.Year).Notes);
+        Assert.Contains("#31", ExplosionScene.CrabShellNote);
+        Assert.DoesNotContain(ExplosionScene.CrabShellNote, new ExplosionScene(Sn1987a()).At(954 * PhysicalConstants.Year).Notes);
+        Assert.DoesNotContain(ExplosionScene.CrabShellNote, new ExplosionScene(TestOutcomes.Star(15)).At(954 * PhysicalConstants.Year).Notes);
     }
 }
