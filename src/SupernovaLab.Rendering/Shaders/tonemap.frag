@@ -17,8 +17,10 @@ vec3 aces(vec3 x)
 
 void main()
 {
-    vec3 hdr = texture(u_scene, v_uv).rgb;
-    if (u_bloomStrength > 0.0) hdr += texture(u_bloom, v_uv).rgb * u_bloomStrength;
+    vec4 scene = texture(u_scene, v_uv);
+    vec3 hdr = scene.rgb;
+    // The scene's alpha is the cutaway's face mask (1 on a cut face): no bloom over a face, so it keeps its element colour.
+    if (u_bloomStrength > 0.0) hdr += texture(u_bloom, v_uv).rgb * u_bloomStrength * (1.0 - clamp(scene.a, 0.0, 1.0));
     vec3 mapped = aces(hdr * u_exposure);
     o_color = vec4(pow(mapped, vec3(1.0 / 2.2)), 1.0);
 }

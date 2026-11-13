@@ -25,7 +25,7 @@ public sealed class HdrPipeline : IDisposable
 
     private readonly ShaderProgram? _down, _up, _tonemap;
     private readonly int _vao;
-    private int _sceneFbo, _sceneTex, _width, _height;
+    private int _sceneFbo, _sceneTex, _depthRb, _width, _height;
     private int[] _levelFbo = Array.Empty<int>(), _levelTex = Array.Empty<int>();
     private BloomLevel[] _levels = Array.Empty<BloomLevel>();
     private int _previousFbo;
@@ -111,8 +111,12 @@ public sealed class HdrPipeline : IDisposable
         }
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, _sceneFbo);
         GL.Viewport(0, 0, w, h);
-        GL.ClearColor(Background.R, Background.G, Background.B, 1f);
-        GL.Clear(ClearBufferMask.ColorBufferBit);
+        // The scene's alpha is the cut faces' mask (ruling R-P2-21): 0 everywhere, 1 where a face is drawn; the tone map keeps
+        // the bloom off the faces. The depth buffer lets the faces hide the debris behind them.
+        GL.ColorMask(true, true, true, true);
+        GL.DepthMask(true);
+        GL.ClearColor(Background.R, Background.G, Background.B, 0f);
+        GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
         _active = true;
     }
 
@@ -131,6 +135,8 @@ public sealed class HdrPipeline : IDisposable
             return;
         }
         _active = false;
+        GL.ColorMask(true, true, true, true);
+        GL.DepthMask(true);
         GL.Disable(EnableCap.DepthTest);
         GL.BindVertexArray(_vao);
         bool bloom = bloomStrength > 0 && _levels.Length > 0;
@@ -201,6 +207,12 @@ public sealed class HdrPipeline : IDisposable
         _levels = BloomLevels(w, h);
         bool ok;
         (_sceneFbo, _sceneTex, ok) = MakeTarget(w, h);
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, _sceneFbo);
+        _depthRb = GL.GenRenderbuffer();
+        GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _depthRb);
+        GL.RenderbufferStorage(RenderbufferTarget.Renderbuffer, RenderbufferStorage.DepthComponent24, w, h);
+        GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, RenderbufferTarget.Renderbuffer, _depthRb);
+        ok &= GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer) == FramebufferErrorCode.FramebufferComplete;
         _levelFbo = new int[_levels.Length];
         _levelTex = new int[_levels.Length];
         for (int i = 0; i < _levels.Length; i++)
@@ -235,9 +247,10 @@ public sealed class HdrPipeline : IDisposable
     {
         if (_sceneFbo != 0) GL.DeleteFramebuffer(_sceneFbo);
         if (_sceneTex != 0) GL.DeleteTexture(_sceneTex);
+        if (_depthRb != 0) GL.DeleteRenderbuffer(_depthRb);
         foreach (int f in _levelFbo) GL.DeleteFramebuffer(f);
         foreach (int t in _levelTex) GL.DeleteTexture(t);
-        _sceneFbo = _sceneTex = _width = _height = 0;
+        _sceneFbo = _sceneTex = _depthRb = _width = _height = 0;
         _levelFbo = Array.Empty<int>();
         _levelTex = Array.Empty<int>();
         _levels = Array.Empty<BloomLevel>();

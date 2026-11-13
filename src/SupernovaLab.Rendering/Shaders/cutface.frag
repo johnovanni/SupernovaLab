@@ -1,0 +1,44 @@
+#version 410 core
+// The cut faces' colour (ruling R-P2-21), per pixel: the radius on the face selects the element layer (the particle set's
+// layer boundaries), then the finger cones: hydrogen fingers from u_hydrogenMin outward, nickel fingers out to u_nickelMax
+// (nickel wins). Mirrors CutFaceModel.LayerAt (C#): change one, change the other. Schematic.
+
+in vec3 v_world;
+
+uniform float u_extent;          // the debris' outer radius, scene units: nothing is drawn beyond it
+uniform int u_layerCount;
+uniform float u_layerOuter[6];   // outer radius of each layer, centre outward, scene units
+uniform vec3 u_layerColor[6];    // HDR colours, in the same order
+uniform vec3 u_nickelColor;
+uniform vec3 u_hydrogenColor;
+uniform float u_nickelMax;       // radius of the nickel finger tips; negative: no nickel fingers
+uniform float u_hydrogenMin;     // radius the hydrogen fingers reach inward to; negative: none
+uniform int u_coneCount;
+uniform vec3 u_coneAxis[10];
+uniform float u_coneCos;
+
+out vec4 o_color;
+
+void main()
+{
+    float rho = length(v_world);
+    float edge = max(fwidth(rho), 1e-6);
+    float a = 1.0 - smoothstep(u_extent - edge, u_extent, rho);
+    if (a <= 0.01) discard;
+    vec3 c = u_layerColor[u_layerCount - 1];
+    for (int k = 0; k < u_layerCount; k++)
+        if (rho <= u_layerOuter[k]) { c = u_layerColor[k]; break; }
+    if (u_coneCount > 0)
+    {
+        vec3 d = v_world / max(rho, 1e-9);
+        bool inCone = false;
+        for (int k = 0; k < u_coneCount; k++)
+            if (dot(d, u_coneAxis[k]) >= u_coneCos) inCone = true;
+        if (inCone)
+        {
+            if (u_nickelMax > 0.0 && rho <= u_nickelMax) c = u_nickelColor;
+            else if (u_hydrogenMin > 0.0 && rho >= u_hydrogenMin) c = u_hydrogenColor;
+        }
+    }
+    o_color = vec4(c, a);   // alpha 1 also writes the face mask the tone map reads
+}

@@ -153,7 +153,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     /// <summary>The overlay note while the cutaway is on.</summary>
-    public const string CutawayNote = "Cutaway: colours show elements (schematic)";
+    public const string CutawayNote =
+        "Cutaway: colours show elements (schematic); the cut faces' layers and mixing fingers are drawn analytically, not from the particles";
 
     partial void OnIsCutawayChanged(bool value)
     {
@@ -418,6 +419,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _jets = new JetRenderer();
         _remnant = new RemnantRenderer(_jets);
         _rings = new RingRenderer();
+        _cutFaces = new CutFaceRenderer();
     }
 
     /// <summary>True when a GL version string ("4.6.0 NVIDIA 551.86", "4.1 ...") is 4.1 or later.</summary>
@@ -450,30 +452,30 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (_uploadParticles) UploadParticles();
         var s = _state;
         _hdr.Begin(viewportPx);
+        GL.ColorMask(true, true, true, false);   // alpha is the cut faces' mask for the tone map: only the faces write it
         Action? cutFaces = null;
         double unit = UnitCm;
         if (unit > 0 && double.IsFinite(unit) && viewportPx.Width > 0 && viewportPx.Height > 0)
         {
             double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
-            // The wedge (plan ruling P7): the star shows its layers on the cut faces; the particles' cut faces are the 3% of the framing radius around the cut planes.
+            // The wedge. Debris: the two cut faces first (opaque, writing depth), then the particles behind them are hidden
+            // (ruling R-P2-21). Star: its cut faces are painted after the bloom (below).
             bool starCut = IsCutaway && s.ShowStar && s.StarLayers.Count > 0 && s.StarRadiusCm > 0;
-            bool particleCut = IsCutaway && s.ShowParticles && _uploaded is not null && double.IsFinite(s.FrameRadiusCm);
+            bool particleCut = IsCutaway && s.ShowParticles && _uploaded is not null;
             var faceColors = starCut || particleCut ? FaceColors() : Array.Empty<(float R, float G, float B)>();
+            if (particleCut) DrawCutFaces(viewportPx, s, _uploaded!, unit, faceColors);
             if (s.ShowGas) _star.RenderGas(Camera, viewportPx, s.GasRadiusCm / unit);
             if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor, starCut);
-            ParticleUniforms? particleUniforms = null;
             if (s.ShowParticles && _uploaded is { } set)
             {
                 // The brightness is Project 1's, spread over the particle count so the picture keeps its overall level.
                 // Positions follow ParticleKinematics.RadiusCm: the shader gets R* and v_max * (t - t_bo) in scene units.
                 float perParticle = (float)ReferenceParticleCount / _particles.Count;
                 double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
-                float cutHalf = particleCut ? ParticleUniforms.CutFraction * (float)(s.FrameRadiusCm / unit) : 0;
-                var u = new ParticleUniforms((float)(starCm / unit), (float)(set.MaxCmS * s.SinceBreakoutS / unit),
+                _particles.Render(Camera, viewportPx, pxPerDip, new ParticleUniforms((float)(starCm / unit),
+                    (float)(set.MaxCmS * s.SinceBreakoutS / unit),
                     new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle,
-                    cutHalf);
-                particleUniforms = u;
-                _particles.Render(Camera, viewportPx, pxPerDip, u);
+                    particleCut));
             }
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
@@ -481,29 +483,57 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
             _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
-            if (starCut || (particleCut && particleUniforms is not null))
+            if (starCut)
             {
                 var star = _star;
-                var particles = _particles;
                 cutFaces = () =>
                 {
-                    if (starCut)
-                    {
-                        var layers = s.StarLayers.Select(l => ((float)(l.OuterRadiusCm / s.StarRadiusCm), ToVector(faceColors[(int)l.Layer]))).ToList();
-                        float shock = double.IsFinite(s.ShockInStarRadiusCm) ? (float)(s.ShockInStarRadiusCm / s.StarRadiusCm) : float.NaN;
-                        star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, new StarCutaway(layers, shock));
-                    }
-                    if (particleCut && particleUniforms is { } pu)
-                        particles.RenderCutFaces(Camera, viewportPx, pxPerDip, pu, faceColors.SelectMany(c => new[] { c.R, c.G, c.B }).ToArray());
+                    GL.ColorMask(true, true, true, true);
+                    var layers = s.StarLayers.Select(l => ((float)(l.OuterRadiusCm / s.StarRadiusCm), ToVector(faceColors[(int)l.Layer]))).ToList();
+                    float shock = double.IsFinite(s.ShockInStarRadiusCm) ? (float)(s.ShockInStarRadiusCm / s.StarRadiusCm) : float.NaN;
+                    star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, new StarCutaway(layers, shock));
                 };
             }
         }
+        GL.ColorMask(true, true, true, true);
         _hdr.End(Exposure, BloomStrength, cutFaces);
         if (_readback is { } readback)
         {
             _readback = null;
             readback.TrySetResult(ReadPixels(viewportPx));
         }
+    }
+
+    private CutFaceRenderer? _cutFaces;
+    private EjectaStructure? _conesFor;
+    private FingerCones _cones = FingerCones.Empty;
+
+    /// <summary>The finger cones of the structure's particle set (cached: they are the sampler's, one set of axes per outcome).</summary>
+    private FingerCones ConesFor(EjectaStructure structure)
+    {
+        if (!ReferenceEquals(_conesFor, structure))
+        {
+            _cones = MixingModel.Cones(structure.Mixing, ParticleSampler.DefaultSeed);
+            _conesFor = structure;
+        }
+        return _cones;
+    }
+
+    /// <summary>The debris' two cut faces (ruling R-P2-21), drawn before the particles; mask alpha is written here only.</summary>
+    private void DrawCutFaces(Size viewportPx, SceneState s, ParticleSet set, double unit, (float R, float G, float B)[] colors)
+    {
+        if (_scene?.Structure is not { } structure || _cutFaces is null) return;
+        double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
+        var model = CutFaceModel.Build(structure, ConesFor(structure), s.SinceBreakoutS, starCm, set.MaxCmS);
+        if (model is null) return;
+        var layers = model.Layers.Select(l => ((float)(l.OuterRadiusCm / unit), ToVector(colors[(int)l.Layer]))).ToList();
+        var axes = model.Cones.Axes.Select(a => new OpenTK.Mathematics.Vector3((float)a.X, (float)a.Y, (float)a.Z)).ToList();
+        var uniforms = new CutFaceUniforms(layers, (float)(model.NickelMaxRadiusCm / unit), (float)(model.HydrogenMinRadiusCm / unit),
+            ToVector(colors[(int)ElementLayer.NickelIron]), ToVector(colors[(int)ElementLayer.Hydrogen]), axes,
+            (float)(Math.Cos(model.Cones.HalfAngleRad) - FingerCones.RimToleranceCos));
+        GL.ColorMask(true, true, true, true);
+        _cutFaces.Render(Camera, viewportPx, (float)(model.OuterRadiusCm / unit), uniforms);
+        GL.ColorMask(true, true, true, false);
     }
 
     private static OpenTK.Mathematics.Vector3 ToVector((float R, float G, float B) c) => new(c.R, c.G, c.B);
@@ -573,6 +603,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             {
                 GlReleased = host.Shutdown(() =>
                 {
+                    _cutFaces?.Dispose();
                     _rings?.Dispose();
                     _remnant?.Dispose();
                     _jets?.Dispose();
@@ -587,6 +618,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 Debug.WriteLine($"SceneController: releasing the GL objects failed: {e}");
             }
         }
+        _cutFaces = null;
         _rings = null;
         _remnant = null;
         _jets = null;
