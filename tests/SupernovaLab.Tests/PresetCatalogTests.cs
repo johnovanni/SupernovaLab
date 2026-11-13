@@ -89,9 +89,9 @@ public class PresetCatalogTests
             Assert.False(string.IsNullOrWhiteSpace(l.Text));
             Assert.False(string.IsNullOrWhiteSpace(l.Source.Citation));
             Assert.StartsWith("presets", l.Source.ResearchRef);
-            Assert.Equal(l.Source.Citation.Contains("[R"), l.Recalled); // [R] in the source <=> shown as (recalled)
+            Assert.Equal(l.Source.Citation.Contains("[R:") || l.Source.Citation.Contains("[R]"), l.Recalled); // [R] in the source <=> shown as (recalled)
             // Every line says either that a paper was checked ([V], [SOURCE], verified, ATNF/Hamuy...) or that it was recalled [R].
-            Assert.True(l.Source.Citation.Contains("[R") || l.Source.Citation.Contains("[V") || l.Source.Citation.Contains("[SOURCE")
+            Assert.True(l.Source.Citation.Contains("[R:") || l.Source.Citation.Contains("[R]") || l.Source.Citation.Contains("[V") || l.Source.Citation.Contains("[SOURCE")
                         || l.Source.ResearchRef.Contains("presets-verification"), $"{id}: '{l.Text}' has no confidence tag");
         }
     }

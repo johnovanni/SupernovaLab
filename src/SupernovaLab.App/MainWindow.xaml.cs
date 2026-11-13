@@ -44,12 +44,13 @@ public partial class MainWindow : Window
         if (Scene is not null || DataContext is not MainViewModel vm) return;
         Scene = new SceneController(vm, () => _glHost = new GlHost(GlControl));
         SceneHost.DataContext = Scene;
+        vm.Tour.AttachScene(Scene);
         Scene.SetViewSize(new Size(SceneGrid.ActualWidth, SceneGrid.ActualHeight));
         SceneGrid.SizeChanged += OnSceneSizeChanged;
-        GlControl.MouseDown += OnMouseDown;
-        GlControl.MouseMove += OnMouseMove;
-        GlControl.MouseUp += OnMouseUp;
-        GlControl.MouseWheel += OnMouseWheel;
+        SceneGrid.MouseDown += OnMouseDown;
+        SceneGrid.MouseMove += OnMouseMove;
+        SceneGrid.MouseUp += OnMouseUp;
+        SceneGrid.MouseWheel += OnMouseWheel;
         SceneHost.KeyDown += OnSceneKeyDown;
         Scene.Start();
     }
@@ -57,11 +58,12 @@ public partial class MainWindow : Window
     private void DisposeScene()
     {
         if (Scene is null) return;
+        (DataContext as MainViewModel)?.Tour.AttachScene(null);
         SceneGrid.SizeChanged -= OnSceneSizeChanged;
-        GlControl.MouseDown -= OnMouseDown;
-        GlControl.MouseMove -= OnMouseMove;
-        GlControl.MouseUp -= OnMouseUp;
-        GlControl.MouseWheel -= OnMouseWheel;
+        SceneGrid.MouseDown -= OnMouseDown;
+        SceneGrid.MouseMove -= OnMouseMove;
+        SceneGrid.MouseUp -= OnMouseUp;
+        SceneGrid.MouseWheel -= OnMouseWheel;
         SceneHost.KeyDown -= OnSceneKeyDown;
         Scene.Dispose();
         Scene = null;
@@ -91,6 +93,9 @@ public partial class MainWindow : Window
 
     private void OnSceneSizeChanged(object sender, SizeChangedEventArgs e) => Scene?.SetViewSize(e.NewSize);
 
+    /// <summary>A press on the tour caption is not the start of a drag of the 3D view.</summary>
+    private void OnTourPanelMouseDown(object sender, MouseButtonEventArgs e) => e.Handled = true;
+
     private void OnAutoFrameClick(object sender, RoutedEventArgs e) => Scene?.Home();
 
     private void OnSceneKeyDown(object sender, KeyEventArgs e)
@@ -105,15 +110,15 @@ public partial class MainWindow : Window
         if (e.ChangedButton != MouseButton.Left) return;
         _pressed = true;
         _dragged = false;
-        _downAt = _lastMouse = e.GetPosition(GlControl);
-        GlControl.CaptureMouse();
+        _downAt = _lastMouse = e.GetPosition(SceneGrid);
+        SceneGrid.CaptureMouse();
         GlControl.Focus();
     }
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
         if (!_pressed) return;
-        var p = e.GetPosition(GlControl);
+        var p = e.GetPosition(SceneGrid);
         if (!_dragged && (p - _downAt).Length < DragSlopDip) return;
         _dragged = true;
         Scene?.Rotate(p.X - _lastMouse.X, p.Y - _lastMouse.Y);
@@ -124,7 +129,7 @@ public partial class MainWindow : Window
     {
         if (e.ChangedButton != MouseButton.Left || !_pressed) return;
         _pressed = false;
-        GlControl.ReleaseMouseCapture();
+        SceneGrid.ReleaseMouseCapture();
     }
 
     private void OnMouseWheel(object sender, MouseWheelEventArgs e)

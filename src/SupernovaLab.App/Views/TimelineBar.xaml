@@ -17,16 +17,21 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <Button Content="{Binding PlayPauseText}" Command="{Binding PlayPauseCommand}" Width="64" Margin="0,0,10,0"/>
-                <TextBlock Grid.Column="1" Text="{Binding ObserverTimeText}" FontSize="15" FontWeight="SemiBold"
+                <!-- Task 13: the guided tour (this bar's DataContext is the timeline; the tour is the main window's). -->
+                <Button Grid.Column="1" Content="Tour" Width="56" Margin="0,0,10,0"
+                        Command="{Binding DataContext.Tour.TourCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        ToolTip="{x:Static text:Glossary.GuidedTour}"/>
+                <TextBlock Grid.Column="2" Text="{Binding ObserverTimeText}" FontSize="15" FontWeight="SemiBold"
                            VerticalAlignment="Center" ToolTip="{x:Static text:Glossary.ObserverTime}"/>
-                <TextBlock Grid.Column="2" Text="{Binding LightLeftText}" Style="{StaticResource Muted}" FontSize="12"
+                <TextBlock Grid.Column="3" Text="{Binding LightLeftText}" Style="{StaticResource Muted}" FontSize="12"
                            VerticalAlignment="Center" Margin="16,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                            ToolTip="{x:Static text:Glossary.LightTravelTime}"/>
-                <StackPanel Grid.Column="3" Orientation="Horizontal" ToolTip="{x:Static text:Glossary.PlaybackSpeed}">
+                <StackPanel Grid.Column="4" Orientation="Horizontal" ToolTip="{x:Static text:Glossary.PlaybackSpeed}">
                     <TextBlock Text="Speed" Style="{StaticResource FieldLabel}" Margin="0,0,6,0"/>
                     <Slider Width="120" Minimum="0.1" Maximum="3" Value="{Binding DecadesPerSecond}" VerticalAlignment="Center"
                             SmallChange="0.05" LargeChange="0.25"/>

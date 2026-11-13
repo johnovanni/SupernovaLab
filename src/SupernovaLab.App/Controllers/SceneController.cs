@@ -332,6 +332,21 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         Camera.Rotate(dxDip, dyDip);
         RequestRender();
+        UserInteracted?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Raised when the user moves the camera (Rotate, Zoom, Home). The guided tour pauses on it. The tour's own orbit
+    /// (<see cref="Orbit"/>) does not raise it.
+    /// </summary>
+    public event EventHandler? UserInteracted;
+
+    /// <summary>The guided tour's orbit: turns the camera about the vertical axis by this many degrees (not user input).</summary>
+    public void Orbit(double yawDeg)
+    {
+        if (yawDeg == 0) return;
+        Camera.YawDeg = ((Camera.YawDeg + yawDeg) % 360 + 360) % 360;
+        RequestRender();
     }
 
     /// <summary>Wheel: zooms (positive notches move closer) and freezes the physical scale until <see cref="Home"/>.</summary>
@@ -344,6 +359,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         UpdateAnimating();   // a zoom freezes the scale: an ease in progress no longer needs frames
         UpdateRings();
         RequestRender();
+        UserInteracted?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Home: auto-framing again.</summary>
@@ -358,6 +374,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         UpdateAnimating();
         UpdateRings();
         RequestRender();
+        UserInteracted?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -453,6 +470,26 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         NotesToggleText = lines.Length <= 1 ? "" : IsNotesExpanded ? HideNotesText : MoreNotesText(lines.Length - 1);
     }
 
+    /// <summary>The notes that describe what is on screen now (the breakout flash, the cutaway, SN 1987A's rings): shown first after a quality note.</summary>
+    private static readonly HashSet<string> EventNotes = new(StringComparer.Ordinal)
+    {
+        ExplosionScene.FlashNote, CutawayNote, Sn1987aRings.Note,
+    };
+
+    /// <summary>
+    /// The notes in the order the collapsed overlay needs, since it shows the first one only: a "quality lowered" note, then the
+    /// notes of what is on screen now (<see cref="EventNotes"/>), then the rest, each group in its own order.
+    /// </summary>
+    public static IReadOnlyList<string> OrderNotes(IEnumerable<string> notes, string? qualityNote)
+    {
+        var list = notes.ToList();
+        var ordered = new List<string>();
+        if (qualityNote is not null) ordered.Add(qualityNote);
+        ordered.AddRange(list.Where(EventNotes.Contains));
+        ordered.AddRange(list.Where(n => !EventNotes.Contains(n)));
+        return ordered;
+    }
+
     private void UpdateOverlay()
     {
         TimeText = _vm.Timeline.ObserverTimeText;
@@ -463,8 +500,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (RadiusText.Length > 0 && double.IsFinite(_state.ForwardShockCm) && _state.ForwardShockCm > 0)
             RadiusText += Environment.NewLine + $"{_state.ForwardShockLabel}: {UnitFormat.Distance(_state.ForwardShockCm)}";
         var notes = IsCutaway ? _state.Notes.Append(CutawayNote) : _state.Notes;
-        if (_qualityNote is not null) notes = notes.Append(_qualityNote);
-        var all = _modelError is not null ? new List<string> { _modelError } : notes.ToList();
+        var all = _modelError is not null ? new List<string> { _modelError } : OrderNotes(notes, _qualityNote).ToList();
         NotesText = string.Join(Environment.NewLine, all);
         UpdateNotesDisplay();
         Legend = LegendNow();

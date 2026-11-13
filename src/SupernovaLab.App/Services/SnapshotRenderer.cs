@@ -29,7 +29,7 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
-/// [--window main|instruments|details|presetinfo] [--cutaway]</c>. <c>--cutaway</c> (a flag) turns on the 3D view's wedge cutaway for
+/// [--window main|instruments|details|presetinfo] [--cutaway] [--tour &lt;stop&gt;[,…]]</c>. <c>--cutaway</c> (a flag) turns on the 3D view's wedge cutaway for
 /// every capture (Task 7); a preset entry ending in "+cutaway" turns it on for that entry only (Task 8). To batch captures into one launch, <c>--preset</c>,
 /// <c>--size</c> and <c>--window</c> may be repeated or given comma-separated lists: every requested window is captured
 /// for each preset in turn; a preset may carry its own time as "id@seconds", and "default@seconds" is the lab as launched (list it before any preset). Sizes apply to the main window (its outer size, as a user would set it); the other windows
@@ -42,8 +42,19 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 /// </summary>
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
-    int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false)
+    int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false,
+    IReadOnlyList<int>? TourStopList = null)
 {
+    /// <summary>The guided-tour stops asked for with <c>--tour</c> (comma-separated or repeated; "last" is <see cref="LastStop"/>);
+    /// the windows are captured at each stop in turn, for every preset. Empty without <c>--tour</c>.</summary>
+    public IReadOnlyList<int> TourStops => TourStopList ?? Array.Empty<int>();
+
+    /// <summary>Stands for the tour's last stop in <see cref="TourStops"/>.</summary>
+    public const int LastStop = int.MaxValue;
+
+    /// <summary>The file-name suffix of a tour stop's captures: "-tour3", or "-tourlast".</summary>
+    public static string TourSuffix(int stop) => stop == LastStop ? "-tourlast" : $"-tour{stop}";
+
     /// <summary>The particle quality levels asked for with <c>--quality high|medium|low</c> (comma-separated for several; the
     /// bench then runs each at every size); just the app's default when not given.</summary>
     public IReadOnlyList<QualityLevel> Qualities => QualityLevelList is { Count: > 0 } q ? q : new[] { QualityLevels.Default };
@@ -71,6 +82,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         int? sweep = null;
         var qualities = new List<QualityLevel>();
         bool cutaway = false;
+        var tourStops = new List<int>();
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -112,6 +124,14 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                         throw new ArgumentException($"--sweep needs a number of steps between 2 and {MaxSweepSteps}, not '{value}'.");
                     sweep = steps;
                     break;
+                case "--tour":
+                    foreach (string stop in value.Split(',', StringSplitOptions.TrimEntries))
+                    {
+                        if (string.Equals(stop, "last", StringComparison.OrdinalIgnoreCase)) tourStops.Add(LastStop);
+                        else if (int.TryParse(stop, NumberStyles.None, CultureInfo.InvariantCulture, out int k) && k < LastStop) tourStops.Add(k);
+                        else throw new ArgumentException($"--tour needs stop numbers from 0 (or 'last'), comma-separated, not '{stop}'.");
+                    }
+                    break;
                 case "--quality":
                     foreach (string q in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                         qualities.Add(QualityLevels.Parse(q) ?? throw new ArgumentException($"--quality needs high, medium or low, not '{q}'."));
@@ -122,7 +142,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway);
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -258,7 +278,12 @@ public static class SnapshotRenderer
                 if ((main as MainWindow)?.Scene is { } scene) scene.IsCutaway = request.Cutaway || SnapshotRequest.WantsCutaway(entry);
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = SnapshotRequest.FileSuffix(entry);
-                await Capture(request, main, windows, suffix, log);
+                if (request.TourStops.Count == 0)
+                {
+                    await Capture(request, main, windows, suffix, log);
+                    continue;
+                }
+                await CaptureTour(request, main, vm, windows, suffix, log);
             }
             if (await RunSweep(request, main, vm, windows, log) > 0) exitCode = 1;
             await RunBench(request, main, vm, windows, log);
@@ -294,6 +319,32 @@ public static class SnapshotRenderer
         {
             log.Add($"3D view: closing the main window failed: {e.Message}");
         }
+    }
+
+    /// <summary>
+    /// <c>--tour</c>: starts the guided tour of the current explosion (nothing ticks it here) and captures the requested windows at
+    /// each requested stop: the caption, the cutaway, the instrument highlight and the time of that stop.
+    /// </summary>
+    private static async Task CaptureTour(SnapshotRequest request, Window main, MainViewModel vm, WindowService windows, string suffix, List<string> log)
+    {
+        var director = vm.Tour.Director;
+        director.Start();
+        int count = director.Stops.Count;
+        log.Add($"tour{suffix}: {count} stops: " + string.Join("; ", director.Stops.Select((s, i) =>
+            $"{i}: {UnitFormat.Time(s.ObserverTimeS)}{(s.Cutaway ? " cutaway" : "")}{(s.Highlight is { } h ? " " + h : "")}")));
+        foreach (int requested in request.TourStops)
+        {
+            int stop = requested == SnapshotRequest.LastStop ? count - 1 : requested;
+            if (stop >= count)
+            {
+                log.Add($"tour{suffix}: stop {requested} does not exist (the tour has {count} stops)");
+                continue;
+            }
+            director.GoTo(stop);
+            log.Add($"tour{suffix}: stop {stop} at {UnitFormat.Time(director.Current!.ObserverTimeS)}: {vm.Tour.Caption}");
+            await Capture(request, main, windows, suffix + SnapshotRequest.TourSuffix(stop), log);
+        }
+        director.Exit();
     }
 
     /// <summary>The requested windows for the current preset: the main window at each size, the others top and end.</summary>

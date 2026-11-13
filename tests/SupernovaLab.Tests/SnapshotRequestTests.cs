@@ -195,4 +195,21 @@ public class SnapshotRequestTests
         Assert.Equal("", SnapshotRequest.FileSuffix("default"));
         Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "default@soon" }));
     }
+
+    [Fact]
+    public void SnapshotRequest_ParsesTour()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "sn1987a", "--tour", "0,3, last", "--tour", "5" })!;
+        Assert.Equal(new[] { 0, 3, SnapshotRequest.LastStop, 5 }, r.TourStops);
+        Assert.Empty(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.TourStops);
+        Assert.Equal("-tour3", SnapshotRequest.TourSuffix(3));
+        Assert.Equal("-tourlast", SnapshotRequest.TourSuffix(SnapshotRequest.LastStop));
+    }
+
+    [Theory]
+    [InlineData("--tour", "soon")]
+    [InlineData("--tour", "-1")]
+    [InlineData("--tour", "")]
+    public void BadTourStops_Throw(params string[] tour)
+        => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out" }.Concat(tour).ToArray()));
 }

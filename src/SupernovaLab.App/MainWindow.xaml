@@ -176,12 +176,50 @@
                                    Visibility="{Binding ShowFingerKey, Converter={StaticResource VisibleWhen}}"/>
                     </StackPanel>
                     </Border>
-                    <StackPanel Margin="10,8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal">
-                        <Button Content="Auto-frame (Home)" Click="OnAutoFrameClick" Padding="6,1" Margin="0,0,8,0"
-                                Visibility="{Binding IsAutoFraming, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
-                        <TextBlock Text="Drag to turn · wheel to zoom" Style="{StaticResource Muted}" VerticalAlignment="Center"
-                                   IsHitTestVisible="False"/>
-                    </StackPanel>
+                    <!-- The hint and Home button share the notes' backdrop, so they stay legible over bright debris. -->
+                    <Border Margin="6,4" Padding="6,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Auto-frame (Home)" Click="OnAutoFrameClick" Padding="6,1" Margin="0,0,8,0"
+                                    Visibility="{Binding IsAutoFraming, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+                            <TextBlock Text="Drag to turn · wheel to zoom" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                                       IsHitTestVisible="False"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Task 13: the guided tour's caption, bottom centre (nudged right of the colour key at the bottom left). Hover shows the source and confidence of each sentence.
+                         DataContext: the main view model's Tour. A press on the panel does not start a drag of the view. -->
+                    <Border DataContext="{Binding DataContext.Tour, RelativeSource={RelativeSource AncestorType=Window}}"
+                            Visibility="{Binding IsActive, Converter={StaticResource VisibleWhen}}"
+                            HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="175,8,8,34" MaxWidth="400" Padding="10,7"
+                            CornerRadius="6" Background="#E6020308" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                            MouseDown="OnTourPanelMouseDown" ToolTipService.IsEnabled="{Binding HasSources}"
+                            ToolTipService.ShowDuration="60000">
+                        <Border.ToolTip>
+                            <ToolTip>
+                                <TextBlock Text="{Binding PlacementTarget.DataContext.SourceText, RelativeSource={RelativeSource AncestorType=ToolTip}}"
+                                           MaxWidth="520" TextWrapping="Wrap"/>
+                            </ToolTip>
+                        </Border.ToolTip>
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,4">
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding CounterText}" Style="{StaticResource Muted}" FontSize="11.5"/>
+                                <TextBlock Text="Guided tour" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"
+                                           ToolTip="{x:Static text:Glossary.GuidedTour}"/>
+                            </DockPanel>
+                            <TextBlock Text="{Binding Caption}" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                <Button Content="Previous" Command="{Binding PreviousCommand}" Padding="8,1" Margin="0,0,6,0"/>
+                                <Button Content="Pause" Command="{Binding PauseCommand}" Padding="8,1" Margin="0,0,6,0"
+                                        Visibility="{Binding ShowResume, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
+                                <Button Content="Resume tour" Command="{Binding ResumeCommand}" Padding="8,1" Margin="0,0,6,0"
+                                        Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold"
+                                        Visibility="{Binding ShowResume, Converter={StaticResource VisibleWhen}}"/>
+                                <Button Content="Next" Command="{Binding NextCommand}" Padding="8,1" Margin="0,0,6,0"/>
+                                <Button Content="Exit" Command="{Binding ExitCommand}" Padding="8,1"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
 
                     <Border Visibility="{Binding IsFailed, Converter={StaticResource VisibleWhen}}" MaxWidth="420" Padding="14,10"
                             HorizontalAlignment="Center" VerticalAlignment="Center" Background="{StaticResource PanelBrush}"

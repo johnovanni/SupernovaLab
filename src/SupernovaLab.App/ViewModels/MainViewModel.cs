@@ -46,6 +46,8 @@ public sealed partial class MainViewModel : ObservableObject
         Tiles = Panels.Select(p => new InstrumentTileViewModel(p, ShowInstrumentsCommand)).ToList();
         UpdatePanels();
 
+        Tour = new TourViewModel(new SupernovaLab.App.Tour.TourDirector(this, null));
+
         Lab.Changed += OnLabChanged;
         Timeline.PropertyChanged += (_, e) =>
         {
@@ -78,6 +80,9 @@ public sealed partial class MainViewModel : ObservableObject
     public LabViewModel Lab { get; }
     public OutcomeViewModel Outcome { get; }
     public TimelineViewModel Timeline { get; }
+
+    /// <summary>The guided tour (Task 13): the Tour button and the caption panel. The window attaches the 3D view to it.</summary>
+    public TourViewModel Tour { get; }
 
     /// <summary>
     /// Raised once after each recompute, when an input edit or a preset changed the outcome or the observer. Panels

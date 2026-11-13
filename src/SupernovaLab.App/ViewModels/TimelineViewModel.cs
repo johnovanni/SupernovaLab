@@ -47,12 +47,37 @@ public sealed partial class TimelineViewModel : ObservableObject
         set
         {
             double t = double.IsNaN(value) ? TimeAxis.MinS : Math.Clamp(value, TimeAxis.MinS, TimeAxis.MaxS);
+            double before = _observerTimeS;
             if (SetProperty(ref _observerTimeS, t))
             {
                 OnPropertyChanged(nameof(ScrubFraction));
                 OnPropertyChanged(nameof(ObserverTimeText));
+                // Playback and the tour director move the time themselves; anything else (scrubber, marker, Explode, a
+                // preset's time) is the user's, and the guided tour pauses on it. A rounding-sized change is not input.
+                if (!IsPlaybackStep && !_directed && Math.Abs(t - before) > 1e-9 * before) UserInteracted?.Invoke(this, EventArgs.Empty);
             }
         }
+    }
+
+    private bool _directed;
+
+    /// <summary>
+    /// Raised when the user changes the timeline: a scrub, a marker click, Play/Pause, or any other write that is neither
+    /// playback (<see cref="Tick"/>) nor the tour director's (<see cref="DirectTo"/>). The guided tour pauses on it.
+    /// </summary>
+    public event EventHandler? UserInteracted;
+
+    /// <summary>
+    /// The tour director's write of the time. A <paramref name="playbackStep"/> is flagged like a <see cref="Tick"/> step
+    /// (<see cref="IsPlaybackStep"/>), so the 3D camera eases; otherwise it is a jump (a Next or Previous skip). Neither is
+    /// user input.
+    /// </summary>
+    public void DirectTo(double observerTimeS, bool playbackStep)
+    {
+        _directed = true;
+        IsPlaybackStep = playbackStep;
+        try { ObserverTimeS = observerTimeS; }
+        finally { IsPlaybackStep = false; _directed = false; }
     }
 
     /// <summary>
@@ -182,10 +207,13 @@ public sealed partial class TimelineViewModel : ObservableObject
         {
             if (!IsPlaying && ObserverTimeS >= TimeAxis.MaxS) ObserverTimeS = TimeAxis.MinS;
             IsPlaying = !IsPlaying;
+            UserInteracted?.Invoke(this, EventArgs.Empty);
         });
         JumpToMarkerCommand = new RelayCommand<EventMarker>(m =>
         {
-            if (m is not null) ObserverTimeS = m.ObserverTimeS;
+            if (m is null) return;
+            ObserverTimeS = m.ObserverTimeS;
+            UserInteracted?.Invoke(this, EventArgs.Empty);   // a click on the marker already under the time changes nothing else
         });
     }
 

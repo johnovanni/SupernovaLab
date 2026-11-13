@@ -22,7 +22,12 @@ public static class TourCaptions
         => o.Type is SupernovaType.Ia or SupernovaType.Ia91T or SupernovaType.Ia91bg or SupernovaType.Iax;
 
     /// <summary>"In the lab, the shock ...": a sentence from the lab's model, marked as such so it is not read as observed.</summary>
-    public static string InTheLab(string sentence) => "In the lab, " + char.ToLowerInvariant(sentence[0]) + sentence[1..];
+    public static string InTheLab(string sentence)
+    {
+        // Keep an acronym's capitals ("GRB"): lower-case the first letter only when the second is not upper case.
+        bool acronym = sentence.Length > 1 && char.IsUpper(sentence[1]);
+        return "In the lab, " + (acronym ? sentence[0] : char.ToLowerInvariant(sentence[0])) + sentence[1..];
+    }
 
     /// <summary>"Observed: ... (recalled)." for a history line; a recalled ([R]) fact says so before its full stop.</summary>
     public static string Observed(string text, bool recalled)

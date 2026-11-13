@@ -20,7 +20,7 @@ public sealed record TourSourceNote(TourSourceKind Kind, Source Source)
     public string KindText => Kind switch
     {
         TourSourceKind.LabModel => "In the lab (model)",
-        TourSourceKind.ObservedChecked => "Observed (checked against the paper)",
+        TourSourceKind.ObservedChecked => "Observed (checked; see source)",
         _ => "Observed (recalled, not re-checked)",
     };
 }

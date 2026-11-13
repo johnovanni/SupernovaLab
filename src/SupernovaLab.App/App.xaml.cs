@@ -44,6 +44,7 @@ public partial class App : Application
         // logged and reported instead of ending the app without a word.
         DispatcherUnhandledException += OnUnhandledException;
         new PlaybackClock(vm.Timeline).Start();
+        new TourClock(vm.Tour.Director).Start();
         main.Show();
     }
 

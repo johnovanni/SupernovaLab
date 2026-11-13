@@ -260,7 +260,7 @@ public class TourBuilderTests
         Assert.Contains("Observed (recalled, not re-checked)", photos.SourceText);
         var neutrinos = Assert.Single(tour, s => s.Caption.Contains("24 neutrinos"));
         Assert.DoesNotContain("(recalled)", neutrinos.Caption);
-        Assert.Contains("checked against the paper", neutrinos.SourceText);
+        Assert.Contains("checked; see source", neutrinos.SourceText);
         // Model sentences say they are the lab's.
         Assert.StartsWith("In the lab,", Assert.Single(tour, s => s.Caption.Contains("breaks out")).Caption);
     }
@@ -301,5 +301,20 @@ public class TourBuilderTests
             if (new ObserverSetup(mid, 0, true).Redshift < z) lo = mid; else hi = mid;
         }
         return Math.Sqrt(lo * hi);
+    }
+
+    [Theory]
+    [InlineData("The shock reaches the surface.", "In the lab, the shock reaches the surface.")]
+    [InlineData("GRB jets are drawn.", "In the lab, GRB jets are drawn.")]   // an acronym keeps its capitals
+    [InlineData("A neutron star forms.", "In the lab, a neutron star forms.")]
+    [InlineData("X", "In the lab, x")]
+    public void InTheLab_LowercasesOnlyAWordsFirstLetter(string sentence, string expected)
+        => Assert.Equal(expected, TourCaptions.InTheLab(sentence));
+
+    [Fact]
+    public void CheckedSources_AreNotSaidToBeAllPrimaryPapers()
+    {
+        var note = new TourSourceNote(TourSourceKind.ObservedChecked, new Source("c", "presets §1"));
+        Assert.Equal("Observed (checked; see source)", note.KindText);
     }
 }

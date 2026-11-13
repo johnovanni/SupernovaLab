@@ -67,7 +67,7 @@ Ruling numbers (R…) refer to the build ledger's global constraints.
 |---|---|---|
 | 25 | **Red-supergiant breakout energy.** The research says "about 3e46 erg", but its own Waxman & Katz formula gives about 2e48 bolometric (signals §3.2). | Annotated |
 | 26 | **GRB afterglow normalization.** The research's 3.5e32 is per z = 1 observer day; read at z ≈ 0 it is 1.41× too bright (signals §9.3). | Annotated (R39) |
-| 50 | **SN 1054's "653 days".** presets.md §2 says the guest star was visible at night "for 653 days until 1056 Apr 6", but 1054 Jul 4 to 1056 Apr 6 is 642 days (Julian calendar, 1056 a leap year) [D], 11 days fewer. The 653 days may come from the Chinese calendar or a different start date; the cited papers were not re-opened. | The research file disagrees with its own dates. | Annotated in place (presets.md §2, Task 12 fix round 1): 642 days [D] from its own dates; the guided tour uses neither number |
+| 50 | **SN 1054's "653 days".** presets.md §2 says the guest star was visible at night "for 653 days until 1056 Apr 6", but 1054 Jul 4 to 1056 Apr 6 is 642 days (Julian calendar, 1056 a leap year) [D], 11 days fewer. The 653 days may come from the Chinese calendar or a different start date; the cited papers were not re-opened. | Annotated in place (presets.md §2, Task 12 fix round 1): 642 days [D] from its own dates; the guided tour uses neither number |
 
 ## Model structure
 
