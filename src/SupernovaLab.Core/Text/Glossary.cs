@@ -342,6 +342,16 @@ public static class Glossary
         "brighter. It takes seconds to days to reach the surface, and its position over time is a schematic estimate from the " +
         "research's breakout calculation.";
 
+    public const string PulsarWindNebula =
+        "A bubble of charged particles and magnetic field blown by a young pulsar's wind, glowing blue-white (synchrotron light) " +
+        "inside the expanding debris. It grows as a power of the age (about the 1.25th) and is bounded by the debris. The Crab " +
+        "Nebula is the best-known one; the lab's model comes out smaller than the real Crab, whose mean radius is about 1.7 parsecs.";
+    public const string Sn1987aRings =
+        "The three glowing rings of gas around SN 1987A: an equatorial ring, the size of 0.665 light-years, and two larger ones " +
+        "above and below it, shed by the star about 20,000 years before it exploded. Their size and tilt are measured (Sugerman et " +
+        "al. 2005), not predicted by the lab. The south ring is in front of the equatorial ring and the north ring behind it. " +
+        "The bright beads are hotspots, where the blast wave strikes dense lumps of the ring; they appeared from about 1995 and faded after 2009.";
+
     // ---------------------------------------------------------------- instrument panels' views (spec §5.1)
 
     public const string Strain =

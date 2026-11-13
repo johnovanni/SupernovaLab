@@ -88,6 +88,18 @@ public sealed record SceneState
     /// </summary>
     public double ForwardShockCm { get; init; } = double.NaN;
     public string ForwardShockLabel { get; init; } = "";
+
+    /// <summary>
+    /// The pulsar wind nebula's radius now, cm (<see cref="PulsarWindNebulaModel.RadiusCm"/>, structure §S9): a bubble inside the debris;
+    /// NaN when the outcome has none or the debris are not drawn yet.
+    /// </summary>
+    public double NebulaRadiusCm { get; init; } = double.NaN;
+
+    /// <summary>Whether SN 1987A's three rings are drawn (structure §S8: the outcome has the equatorial ring and the debris are drawn).</summary>
+    public bool ShowRings1987A { get; init; }
+
+    /// <summary>0 to 1: how brightly the equatorial ring's hotspot beads glow now (<see cref="Sn1987aRings.HotspotBrightness"/>).</summary>
+    public float RingBrightness { get; init; }
 }
 
 /// <summary>
@@ -137,6 +149,16 @@ public sealed class ExplosionScene
     /// <summary>The haze's note is shown only while the view is no wider than this many stellar radii (the haze is then in view).</summary>
     public const double HazeNoteMaxFrameRadii = 100;
 
+    /// <summary>The pulsar wind nebula's note is shown while it is at least this fraction of the framing radius (otherwise it is a speck).</summary>
+    public const double NebulaNoteMinFrameFraction = 0.01;
+
+    /// <summary>
+    /// SN 1987A's rings' note is shown once the framing radius is at least this fraction of the equatorial ring's radius: from there the
+    /// director's view (half-height H of at least frame / 0.54, rungs of 1-2-5) can contain the ring, which the 3D view draws once
+    /// H &gt; 0.35 R (<c>TorusRingRenderer.Visibility</c>). For SN 1987A that is day 1,880 (5 yr). The rings never drive the framing.
+    /// </summary>
+    public const double RingsNoteMinFrameFraction = 0.15;
+
     /// <summary>The note when the extent is from a source ({0}: its citation).</summary>
     public const string GasNoteFormat = "Gas around the star: extent from {0}";
 
@@ -179,6 +201,7 @@ public sealed class ExplosionScene
     private static readonly ShockBreakoutModel Breakout = new();
 
     private readonly double _z1;
+    private readonly bool _nebula;
     private readonly bool _ejecta, _thermonuclear, _lowLuminosityGrb, _pinnedGrb;
     private readonly CircumstellarStructure? _surroundings;
     private readonly object _particleLock = new();
@@ -196,6 +219,7 @@ public sealed class ExplosionScene
         _breakoutS = EjectaKinematics.BreakoutTimeS(outcome);
         _pulsarS = Pulsar.Applies(outcome) ? Pulsar.EmergenceTimeS(outcome) : double.NaN;
         _surroundings = CircumstellarStructureModel.For(outcome);
+        _nebula = PulsarWindNebulaModel.Applies(outcome);
 
         // Review I3: the jets are drawn while the GRB model covers the burst: burst and afterglow for a classical burst;
         // for a pinned low-luminosity burst (ruling R39) the prompt burst only, since the model draws no afterglow for it.
@@ -350,7 +374,32 @@ public sealed class ExplosionScene
         state = WithParticles(state, t, double.IsNaN(r0) ? 0 : r0);
         if (state.ShowParticles) AddStructureNotes(notes, beforeLast: true);
         state = WithShockFrame(state, t);
-        return WithSurroundings(state, notes, t, r);
+        state = WithNebula(state, notes, t);
+        state = WithSurroundings(state, notes, t, r);
+        return WithRings(state, notes, t);
+    }
+
+    /// <summary>The pulsar wind nebula (structure §S9): its radius and, once it is more than a speck, its note. Inside the debris, so it never drives the framing.</summary>
+    private SceneState WithNebula(SceneState state, List<string> notes, double t)
+    {
+        if (!_nebula) return state;
+        double radius = PulsarWindNebulaModel.RadiusCm(Outcome, t);
+        if (!(radius > 0)) return state;
+        if (radius >= NebulaNoteMinFrameFraction * state.FrameRadiusCm)
+            notes.Insert(Math.Max(0, notes.Count - 1), PulsarWindNebulaModel.Note);
+        return state with { NebulaRadiusCm = radius };
+    }
+
+    /// <summary>
+    /// SN 1987A's rings (structure §S8): drawn while the debris are, with the hotspots' brightness. The rings are far outside the debris
+    /// for years, so they are never part of the framing; the note appears once the view can reach them.
+    /// </summary>
+    private SceneState WithRings(SceneState state, List<string> notes, double t)
+    {
+        if (!Outcome.HasEquatorialRing) return state;
+        if (state.FrameRadiusCm >= RingsNoteMinFrameFraction * Sn1987aRings.EquatorialRadiusCm)
+            notes.Insert(Math.Max(0, notes.Count - 1), Sn1987aRings.Note);
+        return state with { ShowRings1987A = true, RingBrightness = Sn1987aRings.HotspotBrightness(t) };
     }
 
     /// <summary>

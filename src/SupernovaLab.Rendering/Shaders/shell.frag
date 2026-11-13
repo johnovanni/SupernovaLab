@@ -21,6 +21,7 @@ uniform float u_rOut;
 uniform float u_peak;         // the largest column (ColumnDensity.Peak), so the brightest line of sight gives u_intensity
 uniform vec3 u_color;
 uniform float u_intensity;
+uniform float u_cover;        // 0 = purely additive glow; above 0 the shell also hides what is behind it by u_cover * column / u_peak (blend One, OneMinusSrcAlpha)
 uniform int u_cut;
 uniform vec3 u_wedgeX;        // the wedge frame (WedgeOrientation)
 uniform vec3 u_wedgeZ;
@@ -73,5 +74,5 @@ void main()
         column -= segment(b, lo, hi);
     }
     if (column <= 0.0) discard;
-    o_color = vec4(u_color * (u_intensity * column / u_peak), 0.0);
+    o_color = vec4(u_color * (u_intensity * column / u_peak), min(u_cover * column / u_peak, 1.0));
 }

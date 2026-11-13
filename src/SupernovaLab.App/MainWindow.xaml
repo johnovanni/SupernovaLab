@@ -103,6 +103,16 @@
                                 <TextBlock Text="Reverse shock; debris behind it drawn hot" Style="{StaticResource Muted}"/>
                             </StackPanel>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.PulsarWindNebula}"
+                                    Visibility="{Binding ShowNebulaKey, Converter={StaticResource VisibleWhen}}">
+                            <Border Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" Background="{Binding NebulaHex}"/>
+                            <TextBlock Text="Pulsar wind nebula" Style="{StaticResource Muted}"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.Sn1987aRings}"
+                                    Visibility="{Binding ShowSn1987aRingsKey, Converter={StaticResource VisibleWhen}}">
+                            <Border Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" BorderThickness="2" BorderBrush="{Binding Sn1987aRingsHex}"/>
+                            <TextBlock Text="SN 1987A's rings (observed)" Style="{StaticResource Muted}"/>
+                        </StackPanel>
                         <ItemsControl ItemsSource="{Binding Legend}" ToolTip="{x:Static text:Glossary.Cutaway}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>

@@ -59,6 +59,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private JetRenderer? _jets;
     private RemnantRenderer? _remnant;
     private RingRenderer? _rings;
+    private TorusRingRenderer? _torusRings;
     private double? _frozenUnitCm;
     private Size _viewDip;
     private TaskCompletionSource<BitmapSource?>? _readback;
@@ -185,8 +186,20 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>Whether the key explains the shock shells (they are drawn now: structure §S4).</summary>
     public bool ShowShellKey => _state.Shocks is not null;
 
-    /// <summary>Whether the bottom-left key is shown at all: the cutaway's colours, or the shock shells.</summary>
-    public bool ShowKey => Legend.Count > 0 || ShowShellKey;
+    /// <summary>Whether the key explains the pulsar wind nebula (it is drawn now: structure §S9).</summary>
+    public bool ShowNebulaKey => _state.Notes.Any(n => n.StartsWith("Pulsar wind nebula", StringComparison.Ordinal));
+
+    /// <summary>Whether the key explains SN 1987A's rings (they are drawn and the view is wide enough to reach them: structure §S8).</summary>
+    public bool ShowSn1987aRingsKey => _state.ShowRings1987A && _state.Notes.Contains(Sn1987aRings.Note);
+
+    /// <summary>The nebula's key colour, "#RRGGBB" (the synchrotron blue-white).</summary>
+    public string NebulaHex => Hex(NebulaColor);
+
+    /// <summary>The rings' key colour, "#RRGGBB".</summary>
+    public string Sn1987aRingsHex => Hex((TorusRingRenderer.RingColor.X, TorusRingRenderer.RingColor.Y, TorusRingRenderer.RingColor.Z));
+
+    /// <summary>Whether the bottom-left key is shown at all: the cutaway's colours, the shock shells, the nebula or the rings.</summary>
+    public bool ShowKey => Legend.Count > 0 || ShowShellKey || ShowNebulaKey || ShowSn1987aRingsKey;
 
     /// <summary>The swept-up shell's key colour, "#RRGGBB".</summary>
     public string ForwardShellHex => Hex(ForwardShellColor);
@@ -351,6 +364,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowShockKey));
         OnPropertyChanged(nameof(ShowFingerKey));
         OnPropertyChanged(nameof(ShowShellKey));
+        OnPropertyChanged(nameof(ShowNebulaKey));
+        OnPropertyChanged(nameof(ShowSn1987aRingsKey));
         OnPropertyChanged(nameof(ShowKey));
         UpdateRings();
     }
@@ -447,6 +462,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _jets = new JetRenderer();
         _remnant = new RemnantRenderer(_jets);
         _rings = new RingRenderer();
+        _torusRings = new TorusRingRenderer();
         _cutFaces = new CutFaceRenderer();
         _shells = new ShellRenderer();
     }
@@ -517,9 +533,12 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                     (float)(shocks?.ConfinementWeight ?? 0), new OpenTK.Mathematics.Vector3(hot.R, hot.G, hot.B),
                     (float)ParticleKinematics.ShockedSpeedRatio(shocks, s.SinceBreakoutS, starCm, set.MaxCmS)));
             }
+            if (double.IsFinite(s.NebulaRadiusCm) && s.NebulaRadiusCm > 0 && _shells is not null)
+                _shells.Render(Camera, viewportPx, ShellKind.Ball, 0, s.NebulaRadiusCm / unit, NebulaColor, NebulaIntensity, NebulaCover);
             if (s.Shocks is { } sh && _shells is not null) DrawShells(viewportPx, sh, unit);
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
+            if (s.ShowRings1987A) _torusRings?.Render(Camera, viewportPx, pxPerDip, unit, s.RingBrightness);
             double phase = 2 * Math.PI * _wall.Elapsed.TotalSeconds / ExplosionScene.ShownPulsarPeriodS;
             // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
@@ -549,7 +568,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     /// <summary>The camera's default direction (yaw 30, pitch 20 deg), as seen from the wedge: the notch faces the viewer.</summary>
-    private const double DefaultYawDeg = 30, DefaultPitchDeg = 20;
+    private const double DefaultYawDeg = SkyFrame.DefaultYawDeg, DefaultPitchDeg = SkyFrame.DefaultPitchDeg;
 
     private double _wedgeAngleRad, _defaultYawDeg = DefaultYawDeg, _defaultPitchDeg = DefaultPitchDeg;
 
@@ -619,6 +638,15 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     private static OpenTK.Mathematics.Vector3 ToVector((float R, float G, float B) c) => new(c.R, c.G, c.B);
+
+    /// <summary>The pulsar wind nebula's colour (schematic): a synchrotron blue-white.</summary>
+    public static readonly (float R, float G, float B) NebulaColor = (0.15f, 0.40f, 1.00f);
+
+    /// <summary>[APPROX, first guess] The nebula's HDR brightness along its brightest line of sight (through its centre).</summary>
+    public const float NebulaIntensity = 2f;
+
+    /// <summary>[APPROX, first guess] How much of the debris behind the nebula's centre it hides (0 to 1), so a blue bubble shows against bright debris.</summary>
+    public const float NebulaCover = 0.85f;
 
     /// <summary>The swept-up shell's colour: a pale blue-white (schematic), for gas heated by the forward shock.</summary>
     public static readonly (float R, float G, float B) ForwardShellColor = (0.80f, 0.88f, 1.00f);
@@ -791,6 +819,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 {
                     _shells?.Dispose();
                     _cutFaces?.Dispose();
+                    _torusRings?.Dispose();
                     _rings?.Dispose();
                     _remnant?.Dispose();
                     _jets?.Dispose();
@@ -808,6 +837,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _shells = null;
         _cutFaces = null;
         _rings = null;
+        _torusRings = null;
         _remnant = null;
         _jets = null;
         _particles = null;

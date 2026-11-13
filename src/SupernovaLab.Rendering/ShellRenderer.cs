@@ -38,9 +38,11 @@ public sealed class ShellRenderer : IDisposable
     /// <summary>
     /// Draws one shell centred on the origin: <paramref name="kind"/> between <paramref name="rInUnits"/> and
     /// <paramref name="rOutUnits"/> (scene units), in this colour, the brightest line of sight at <paramref name="intensity"/> (HDR).
+    /// With <paramref name="cover"/> above 0 the shell also hides what is already drawn behind it, by cover times its relative column
+    /// (0 to 1; the pulsar wind nebula uses it to stand out against the bright debris); 0 is a purely additive glow.
     /// </summary>
     public void Render(OrbitCamera cam, Size viewportPx, ShellKind kind, double rInUnits, double rOutUnits,
-        (float R, float G, float B) color, float intensity)
+        (float R, float G, float B) color, float intensity, float cover = 0f)
     {
         if (!(rOutUnits > 0) || !(intensity > 0) || !(viewportPx.Height > 0)) return;
         double rIn = Math.Clamp(double.IsFinite(rInUnits) ? rInUnits : 0, 0, rOutUnits);
@@ -63,10 +65,11 @@ public sealed class ShellRenderer : IDisposable
         _program.Set("u_peak", (float)peak);
         _program.Set("u_color", new Vector3(color.R, color.G, color.B));
         _program.Set("u_intensity", intensity);
+        _program.Set("u_cover", Math.Clamp(cover, 0f, 1f));
         _program.Set("u_cut", Cutaway ? 1 : 0);
         WedgeUniforms.Set(_program, WedgeAngleRad);
         GL.Enable(EnableCap.Blend);
-        GL.BlendFunc(BlendingFactor.One, BlendingFactor.One);
+        GL.BlendFunc(BlendingFactor.One, cover > 0 ? BlendingFactor.OneMinusSrcAlpha : BlendingFactor.One);
         GL.BindVertexArray(_vao);
         GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
         GL.BindVertexArray(0);

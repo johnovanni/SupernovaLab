@@ -248,8 +248,12 @@ public sealed class PulsarModel : ISignalModel
         return obs.TimeDilation * (o.PulsarRadioLuminosityMjyKpc2?.Value ?? MedianLuminosityMjyKpc2) / (dKpc * dKpc);
     }
 
-    /// <summary>The n = 3 spin-down of one remnant: birth period P0 (s) and spin-down time τ0 (s).</summary>
-    private readonly record struct Spin(double P0, double Tau0)
+    /// <summary>
+    /// The n = 3 spin-down of one remnant: birth period P0 (s) and spin-down time τ0 (s). Public and read-only so the 3D view's
+    /// pulsar wind nebula (structure §S9) uses the very spin-down the pulsar model does; <see cref="Of"/> needs
+    /// <see cref="Applies"/> to hold.
+    /// </summary>
+    public readonly record struct Spin(double P0, double Tau0)
     {
         public static Spin Of(Outcome o)
         {
