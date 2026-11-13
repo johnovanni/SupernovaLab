@@ -368,9 +368,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private bool _isTourOrbiting;
 
     /// <summary>
-    /// True while the guided tour's camera orbits (its stop's orbit speed is above 0 and the tour is travelling or dwelling): the view
-    /// then animates every frame (ruling R-P2-32), rather than drawing one on-demand frame per orbit step. The tour sets it and
-    /// clears it on Pause, Exit and a stop without an orbit.
+    /// True while the guided tour's camera orbits (its stop sways and the tour is travelling or dwelling): the view
+    /// then animates every frame (ruling R-P2-32), rather than drawing one on-demand frame per sway step. The tour sets it and
+    /// clears it on Pause, Exit and a stop that does not sway.
     /// </summary>
     public bool IsTourOrbiting
     {
@@ -397,21 +397,25 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// The largest sway amplitude (deg), at most <paramref name="wantedDeg"/>, that keeps both cut faces facing the eye over the whole
-    /// sway about this centre yaw at the camera's pitch (Task 15: "the cut faces and core are never seen from behind"). A face seen exactly
-    /// edge-on at an extreme counts as exposed. Without the cutaway, or with no wedge turn, it is <paramref name="wantedDeg"/>; the
-    /// wedge turns about the scene's y axis while the sway turns about the vertical, so with a turned wedge it can be less than 60 deg.
+    /// The largest sway amplitudes (deg), each at most <paramref name="wantedDeg"/>, on the two sides of this centre yaw (Plus: yaw above
+    /// the centre; Minus: below it) that keep both cut faces facing the eye over the whole sway at the camera's pitch (Task 15, ruling
+    /// R-P2-34: "the cut faces and core are never seen from behind"). A face seen exactly edge-on at an extreme counts as exposed.
+    /// Without the cutaway, or with no wedge turn, both are <paramref name="wantedDeg"/>; the wedge turns about the scene's y axis while the sway
+    /// turns about the vertical, so with a turned wedge the room is unequal: the full amount on one side, less on the tight one.
     /// </summary>
-    public double SwayAmplitudeFor(double centreYawDeg, double wantedDeg)
+    public (double Plus, double Minus) SwayAmplitudesFor(double centreYawDeg, double wantedDeg)
+        => (SideAmplitude(centreYawDeg, wantedDeg, +1), SideAmplitude(centreYawDeg, wantedDeg, -1));
+
+    private double SideAmplitude(double centreYawDeg, double wantedDeg, int sign)
     {
         if (!IsCutaway) return wantedDeg;
         var cam = new OrbitCamera { PitchDeg = Camera.PitchDeg };
         for (double a = wantedDeg; a > 0; a = Math.Ceiling(a) - 1)
         {
             bool ok = true;
-            for (double off = -a; off <= a + 1e-9 && ok; off += 1)
+            for (double off = 0; off <= a + 1e-9 && ok; off += 1)
             {
-                cam.YawDeg = centreYawDeg + Math.Min(off, a);
+                cam.YawDeg = centreYawDeg + sign * Math.Min(off, a);
                 var e = cam.Backward;
                 var w = WedgeOrientation.ToWedge(_wedgeAngleRad, e.X, e.Y, e.Z);
                 ok = w.X >= -1e-9 && w.Z >= -1e-9;

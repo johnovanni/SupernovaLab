@@ -162,14 +162,14 @@ public class TourDirectorTests
         d.Start();
         var first = d.Stops[0];
         Assert.True(first.Cutaway);
-        Assert.True(first.OrbitDegPerS > 0);
+        Assert.True(first.Sways);
         Assert.True(scene.IsCutaway);
 
         // Task 15: the orbit became a sway about the notch-facing yaw: 60 deg * sin(2 pi t / 12 s), so +60 deg after a quarter period.
         double centre = scene.NotchFacingYawDeg;
         Assert.Equal(centre, scene.Camera.YawDeg, 6);
         for (int i = 0; i < 180; i++) d.Tick(Frame);   // ticks of 1/60 s (rounded to TimeSpan ticks) for 3 s: sin = 1
-        Assert.Equal(centre + d.CurrentSwayAmplitudeDeg, scene.Camera.YawDeg, 3);
+        Assert.Equal(centre + d.CurrentSwayAmplitudesDeg.Plus, scene.Camera.YawDeg, 3);
 
         // The neutrino stop highlights the neutrino panel and its tile, and no other.
         int n = d.Stops.ToList().FindIndex(s => s.Highlight == Messenger.Neutrinos);

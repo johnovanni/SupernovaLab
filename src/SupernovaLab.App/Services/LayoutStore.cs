@@ -57,7 +57,18 @@ public sealed class LayoutStore
         try
         {
             Directory.CreateDirectory(Folder);
-            File.WriteAllText(Path, JsonSerializer.Serialize(settings, Options));
+            // Atomic: write a temporary file beside the real one, then move it over, so a crash or a second instance never
+            // leaves a half-written layout.json.
+            string temp = Path + "." + Environment.ProcessId + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, JsonSerializer.Serialize(settings, Options));
+                File.Move(temp, Path, overwrite: true);
+            }
+            finally
+            {
+                if (File.Exists(temp)) File.Delete(temp);
+            }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {

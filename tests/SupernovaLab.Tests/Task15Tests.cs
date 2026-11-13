@@ -103,27 +103,27 @@ public class Task15Tests
     {
         var (_, scene, d) = Rig();
         d.Start();
-        Assert.True(d.Current!.Cutaway && d.Current.OrbitDegPerS != 0);
+        Assert.True(d.Current!.Cutaway && d.Current.Sways);
         double centre = scene.NotchFacingYawDeg;
         Assert.Equal(centre, scene.Camera.YawDeg, 6);   // enters at the centre
 
-        double amp = d.CurrentSwayAmplitudeDeg;
-        Assert.InRange(amp, 45, 60);   // 60 deg, less where the turned wedge needs it (the face test below)
+        var (plus, minus) = d.CurrentSwayAmplitudesDeg;
+        Assert.Equal(60, Math.Max(plus, minus));   // the roomy side reaches the full 60 deg (ruling R-P2-34)
         double min = double.MaxValue, max = double.MinValue;
         double t = 0;
         for (int i = 0; i < 12 * 60; i++)
         {
             d.Tick(Frame);
             t += Frame.TotalSeconds;
-            double want = Norm(centre + amp * Math.Sin(2 * Math.PI * t / 12));
+            double want = Norm(TourDirector.SwayYawDeg(centre, plus, minus, t));
             Assert.Equal(want, scene.Camera.YawDeg, 4);
             double off = Norm(scene.Camera.YawDeg - centre + 180) - 180;
             min = Math.Min(min, off);
             max = Math.Max(max, off);
             Assert.True(d.Current!.Cutaway);   // the first two stops are cutaways; the sway runs on through the change of stop
         }
-        Assert.InRange(max, amp - 1, amp + 0.0001);
-        Assert.InRange(min, -amp - 0.0001, -amp + 1);
+        Assert.InRange(max, plus - 1, plus + 0.0001);
+        Assert.InRange(min, -minus - 0.0001, -minus + 1);
     }
 
     private static double Norm(double deg) => ((deg % 360) + 360) % 360;
@@ -157,17 +157,29 @@ public class Task15Tests
         var (_, scene, _) = Rig(id);
         scene.IsCutaway = true;
         double phi = scene.WedgeAngleRad, centre = scene.NotchFacingYawDeg, pitch = scene.Camera.PitchDeg;
-        double amp = scene.SwayAmplitudeFor(centre, TourDirector.SwayAmplitudeDeg);
-        Assert.InRange(amp, 45, 60);   // a turned wedge costs at most 15 deg of the 60 (the worst preset, sn1998bw, keeps 45)
-        if (phi == 0) Assert.Equal(60, amp);
+        var (plus, minus) = scene.SwayAmplitudesFor(centre, TourDirector.SwayAmplitudeDeg);
+        Assert.Equal(60, Math.Max(plus, minus));   // the roomy side reaches the full 60 deg (ruling R-P2-34)
+        if (phi == 0) Assert.Equal((60.0, 60.0), (plus, minus));
+        // Each side is the largest whole degree <= 60 that keeps both faces exposed: one more degree on a capped side would not.
+        Assert.True(plus == 60 || !BothExposed(scene, centre + plus + 1), $"{id}: plus side {plus} is not the largest");
+        Assert.True(minus == 60 || !BothExposed(scene, centre - minus - 1), $"{id}: minus side {minus} is not the largest");
         var camera = new OrbitCamera { PitchDeg = pitch };
         for (int i = 0; i <= 1200; i++)
         {
-            camera.YawDeg = TourDirector.SwayYawDeg(centre, amp, 12.0 * i / 1200);
+            camera.YawDeg = TourDirector.SwayYawDeg(centre, plus, minus, 12.0 * i / 1200);
             var eye = camera.Backward;
             Assert.True(WedgeOrientation.FaceExposed(0, phi, eye.X, eye.Y, eye.Z) || AtEdge(0, phi, eye), $"{id}: face 0 at step {i}");
             Assert.True(WedgeOrientation.FaceExposed(1, phi, eye.X, eye.Y, eye.Z) || AtEdge(1, phi, eye), $"{id}: face 1 at step {i}");
         }
+    }
+
+    private static bool BothExposed(SceneController scene, double yawDeg)
+    {
+        var camera = new OrbitCamera { PitchDeg = scene.Camera.PitchDeg, YawDeg = yawDeg };
+        var eye = camera.Backward;
+        double phi = scene.WedgeAngleRad;
+        return (WedgeOrientation.FaceExposed(0, phi, eye.X, eye.Y, eye.Z) || AtEdge(0, phi, eye))
+            && (WedgeOrientation.FaceExposed(1, phi, eye.X, eye.Y, eye.Z) || AtEdge(1, phi, eye));
     }
 
     /// <summary>The eye is exactly edge-on to the face (w = 0 to rounding): the extreme instant of the sway, not a view from behind.</summary>
@@ -193,11 +205,11 @@ public class Task15Tests
 
         d.Tick(Frame);
         // The centre is now the user's yaw, the phase restarts: a first step of 60 deg * sin(2 pi / 12 / 60) from it.
-        double amp = d.CurrentSwayAmplitudeDeg;
+        var (plus, minus) = d.CurrentSwayAmplitudesDeg;
         double dt = Frame.TotalSeconds;
-        Assert.Equal(Norm(userYaw + amp * Math.Sin(2 * Math.PI * dt / 12)), scene.Camera.YawDeg, 4);
+        Assert.Equal(Norm(TourDirector.SwayYawDeg(userYaw, plus, minus, dt)), scene.Camera.YawDeg, 4);
         for (int i = 0; i < 179; i++) d.Tick(Frame);   // a quarter period later
-        Assert.Equal(Norm(userYaw + amp * Math.Sin(2 * Math.PI * 180 * dt / 12)), scene.Camera.YawDeg, 4);
+        Assert.Equal(Norm(TourDirector.SwayYawDeg(userYaw, plus, minus, 180 * dt)), scene.Camera.YawDeg, 4);
         Assert.NotEqual(TourState.Paused, d.State);
     }
 
@@ -213,8 +225,8 @@ public class Task15Tests
         scene.Home();
         Assert.Equal(scene.NotchFacingYawDeg, scene.Camera.YawDeg, 6);
         d.Tick(Frame);
-        Assert.Equal(Norm(scene.NotchFacingYawDeg + d.CurrentSwayAmplitudeDeg * Math.Sin(2 * Math.PI * Frame.TotalSeconds / 12)),
-            scene.Camera.YawDeg, 4);
+        var (plus, minus) = d.CurrentSwayAmplitudesDeg;
+        Assert.Equal(Norm(TourDirector.SwayYawDeg(scene.NotchFacingYawDeg, plus, minus, Frame.TotalSeconds)), scene.Camera.YawDeg, 4);
         Assert.NotEqual(TourState.Paused, d.State);
     }
 
@@ -281,7 +293,7 @@ public class Task15Tests
     public void FoldingTheLabPanelAndTheOutcomeColumn_LeavesAThinStrip()
     {
         var layout = new LayoutViewModel();
-        Assert.Equal(new GridLength(320), layout.LabColumnWidth);
+        Assert.Equal(new GridLength(300), layout.LabColumnWidth);
         Assert.True(layout.ShowLabPanel);
         Assert.Equal("Hide the lab panel", layout.LabToggleToolTip);
         Assert.Equal("◂", layout.LabToggleText);
@@ -367,6 +379,17 @@ public class Task15Tests
                 Assert.False(LayoutViewModel.FocusShortcutApplies(new System.Windows.Controls.ComboBox()));
                 Assert.False(LayoutViewModel.FocusShortcutApplies(new System.Windows.Controls.PasswordBox()));
                 Assert.True(LayoutViewModel.FocusShortcutApplies(new System.Windows.Controls.Button()));
+                // An open drop-down list's focus is a ComboBoxItem; anything inside a popup, a menu item and a context menu count too.
+                Assert.False(LayoutViewModel.FocusShortcutApplies(new System.Windows.Controls.ComboBoxItem()));
+                Assert.False(LayoutViewModel.FocusShortcutApplies(new System.Windows.Controls.MenuItem()));
+                var popup = new System.Windows.Controls.Primitives.Popup();
+                var inPopup = new System.Windows.Controls.Button();
+                popup.Child = inPopup;
+                Assert.False(LayoutViewModel.FocusShortcutApplies(inPopup));
+                var combo = new System.Windows.Controls.ComboBox();
+                var inCombo = new System.Windows.Controls.TextBlock();
+                combo.Items.Add(inCombo);
+                Assert.False(LayoutViewModel.FocusShortcutApplies(inCombo));
             }
             catch (Exception e)
             {
@@ -394,6 +417,7 @@ public class Task15Tests
             first.Layout.IsKeyFolded = true;
             first.Layout.IsNotesExpanded = true;
             first.Tour.ToggleCaptionCommand.Execute(null);
+            first.Layout.Flush();   // what the window does on close
             Assert.True(File.Exists(Path.Combine(dir, "layout.json")));
 
             var second = new MainViewModel(TestOutcomes.Engine, new FakeWindowService(), new LayoutStore(dir));
@@ -444,6 +468,40 @@ public class Task15Tests
         var blocked = new LayoutStore(Path.Combine(file, "sub"));
         blocked.Save(new LayoutSettings { FocusView = true });
         Assert.Equal(new LayoutSettings(), blocked.Load());
+    }
+
+    [Fact]
+    public void TheLayoutIsSavedAtMostOncePer500ms_AndFlushWritesTheLastChange_Atomically()
+    {
+        string dir = TempFolder();
+        try
+        {
+            var now = TimeSpan.FromSeconds(100);
+            var store = new LayoutStore(dir);
+            var layout = new LayoutViewModel(store, clock: () => now);
+            string file = Path.Combine(dir, "layout.json");
+
+            layout.IsLabFolded = true;                    // the first change is written at once
+            Assert.True(store.Load().LabPanelFolded);
+            now += TimeSpan.FromMilliseconds(100);
+            layout.IsOutcomeFolded = true;                // inside the interval: waits
+            layout.IsKeyFolded = true;
+            Assert.False(store.Load().OutcomeColumnFolded);
+            layout.Flush();                               // the window closing
+            var saved = store.Load();
+            Assert.True(saved.LabPanelFolded && saved.OutcomeColumnFolded && saved.KeyFolded);
+
+            now += TimeSpan.FromMilliseconds(600);
+            layout.IsFocusView = true;                    // after the interval: written at once again
+            Assert.True(store.Load().FocusView);
+
+            Assert.Equal(new[] { file }, Directory.GetFiles(dir));   // no temporary file left behind
+            layout.Flush();
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     [Fact]

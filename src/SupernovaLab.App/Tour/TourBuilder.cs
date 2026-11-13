@@ -16,7 +16,7 @@ namespace SupernovaLab.App.Tour;
 /// <list type="bullet">
 /// <item>The first stop is at 1 ms (<see cref="TimeAxis.MinS"/>): "Core collapse", "Ignition" for a Type Ia, or the star's
 /// own fate when there is no explosion.</item>
-/// <item>Each event marker is a stop. A stop before the shock breakout is a cutaway whose camera sways (Task 15; the 10 in <see cref="CutawayOrbitDegPerS"/> is now only a flag). The breakout
+/// <item>Each event marker is a stop. A stop before the shock breakout is a cutaway whose camera sways (Task 15). The breakout
 /// highlights X-rays/UV, the neutrino burst the neutrinos, peak light the visible light (the gravitational waves, gamma-ray
 /// burst and lines, radio peak and pulsar highlight their own panels). A peak-light marker before the breakout is left out
 /// (ruling R-P2-33, final review I10: Project 1's IIn light curve peaks before its shock reaches the surface, inconsistency #51).</item>
@@ -33,7 +33,6 @@ namespace SupernovaLab.App.Tour;
 public static class TourBuilder
 {
     public const double DwellS = 4;
-    public const double CutawayOrbitDegPerS = 10;
 
     /// <summary>Two stops closer than this many decades (log10 of the time ratio) are one stop.</summary>
     public const double MergeDecades = 0.05;
@@ -101,7 +100,7 @@ public static class TourBuilder
 
             bool cutaway = anchor.TimeS >= TimeAxis.MinS && hasBreakout && anchor.TimeS < breakout || group.Any(g => g.Cutaway);
             stops.Add(new TourStop(anchor.TimeS, string.Join(" ", group.Select(g => g.Caption)), cutaway, DwellS,
-                cutaway ? CutawayOrbitDegPerS : 0, group.Select(g => g.Highlight).FirstOrDefault(h => h is not null))
+                cutaway, group.Select(g => g.Highlight).FirstOrDefault(h => h is not null))
             {
                 Notes = group.Where(g => g.Note is not null).Select(g => g.Note!).ToList(),
             });

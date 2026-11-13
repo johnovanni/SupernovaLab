@@ -69,7 +69,7 @@ public class TourBuilderTests
                 Assert.True(Math.Log10(s.ObserverTimeS / tour[i - 1].ObserverTimeS) >= TourBuilder.MergeDecades - 1e-12,
                     $"{what}: stops {i - 1} and {i} are closer than {TourBuilder.MergeDecades} decades");
             }
-            Assert.Equal(s.Cutaway ? 10 : 0, s.OrbitDegPerS);
+            Assert.Equal(s.Cutaway, s.Sways);
         }
     }
 
@@ -102,7 +102,7 @@ public class TourBuilderTests
 
         Assert.Equal("Core collapse", tour[0].Caption);
         Assert.True(tour[0].Cutaway); // 1 ms is between bounce and breakout
-        Assert.Equal(10, tour[0].OrbitDegPerS);
+        Assert.True(tour[0].Sways);
 
         var neutrino = Assert.Single(tour, s => s.Highlight == Messenger.Neutrinos);
         Assert.Equal(EventMarkers.NeutrinoAndGwTimeS, neutrino.ObserverTimeS);
@@ -111,14 +111,14 @@ public class TourBuilderTests
         var bo = Assert.Single(tour, s => s.Highlight == Messenger.XRaysUv);
         Assert.Equal(breakout, bo.ObserverTimeS);
         Assert.False(bo.Cutaway); // at breakout the star is gone: not "between"
-        Assert.Equal(0, bo.OrbitDegPerS);
+        Assert.False(bo.Sways);
 
         // Ruling R-P2-33 (I7): the default star's debris have mixing fingers, so the peak-light stop is cut away with the orbit and
         // says what the slice shows; every other post-breakout stop is not.
         var peak = Assert.Single(tour, s => s.Highlight == Messenger.VisibleLight);
         Assert.True(peak.ObserverTimeS > breakout);
         Assert.True(peak.Cutaway);
-        Assert.Equal(10, peak.OrbitDegPerS);
+        Assert.True(peak.Sways);
         Assert.Contains("In the lab, a slice through the debris shows the mixing fingers", peak.Caption);
         Assert.All(tour, s => Assert.Equal(s.ObserverTimeS < breakout || ReferenceEquals(s, peak), s.Cutaway));
     }

@@ -29,7 +29,7 @@ public partial class MainWindow : Window
         // GLWpfControl releases its GL context in its own Unloaded handler, which runs before any handler of ours on
         // the window's Unloaded or Closed. Closing comes first, while the control is still loaded and its context alive,
         // so the scene's GL objects are deleted there with the context current (Closed is a no-op fallback).
-        Closing += (_, _) => DisposeScene();
+        Closing += (_, _) => { (DataContext as MainViewModel)?.Layout.Flush(); DisposeScene(); };
         Closed += (_, _) => DisposeScene();
     }
 

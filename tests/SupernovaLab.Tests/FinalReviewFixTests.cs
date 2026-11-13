@@ -139,8 +139,8 @@ public class FinalReviewFixTests
         d.Scene = scene;
         Assert.False(host.Animating);
 
-        d.Start();   // stop 0: 1 ms, a cutaway with the 10 deg/s orbit
-        Assert.Equal(10, d.Current!.OrbitDegPerS);
+        d.Start();   // stop 0: 1 ms, a cutaway with the sway
+        Assert.True(d.Current!.Sways);
         Assert.True(scene.IsTourOrbiting);
         Assert.True(host.Animating);
 
@@ -150,12 +150,12 @@ public class FinalReviewFixTests
         d.Resume();
         Assert.True(scene.IsTourOrbiting);
 
-        int still = d.Stops.ToList().FindIndex(s => s.OrbitDegPerS == 0);
+        int still = d.Stops.ToList().FindIndex(s => !s.Sways);
         Assert.True(still > 0);
         d.GoTo(still);
         Assert.False(scene.IsTourOrbiting);
 
-        int orbit = d.Stops.ToList().FindIndex(still, s => s.OrbitDegPerS > 0);   // the mixing stop (I7)
+        int orbit = d.Stops.ToList().FindIndex(still, s => s.Sways);   // the mixing stop (I7)
         Assert.True(orbit > still);
         d.GoTo(orbit);
         Assert.True(scene.IsTourOrbiting);
@@ -357,7 +357,7 @@ public class FinalReviewFixTests
         var mixing = Assert.Single(tour, s => s.Caption.Contains("a slice through the debris shows the mixing fingers", StringComparison.Ordinal));
         Assert.True(mixing.ObserverTimeS > breakout);
         Assert.True(mixing.Cutaway);
-        Assert.Equal(TourBuilder.CutawayOrbitDegPerS, mixing.OrbitDegPerS);
+        Assert.True(mixing.Sways);
         double peak = new LightCurveModel().PeakTimeS(o) * obs.TimeDilation;
         // At peak light: the stop is the peak's own merged group (SN 1987A's anchor is the observed peak line, 84.5 d, 0.009 decades earlier).
         Assert.True(Math.Abs(Math.Log10(mixing.ObserverTimeS / peak)) < TourBuilder.MergeDecades, $"{mixing.ObserverTimeS} s vs peak {peak} s");

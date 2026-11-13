@@ -54,9 +54,9 @@
             <!-- Task 15: the two side columns fold to a 20 px strip (or vanish in the Focus view); the code-behind sets their widths
                  from the layout view model (a ColumnDefinition is not in the visual tree, so it cannot bind to the data context). -->
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="LabColumn" Width="320"/>
+                <ColumnDefinition x:Name="LabColumn" Width="300"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition x:Name="OutcomeColumn" Width="320"/>
+                <ColumnDefinition x:Name="OutcomeColumn" Width="300"/>
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0" ClipToBounds="True">
@@ -214,12 +214,12 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
-                        <Grid Grid.Row="4">
-                            <!-- The key (bottom left): the element layers the cut faces show now, and the shock shells while they are drawn. -->
-                            <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
+                            <!-- The key (bottom left, in the row above the caption so nothing overlaps it; its list scrolls when the view is short): the element layers the cut faces show now, and the shock shells while they are drawn. -->
+                            <Border Grid.Row="2" Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left" MaxWidth="330"
                                     VerticalAlignment="Bottom" IsHitTestVisible="True"
                                     Visibility="{Binding ShowKey, Converter={StaticResource VisibleWhen}}">
-                            <StackPanel>
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                                 <!-- Task 15: the key folds to this "Key" tab, as the notes fold to "{n} more notes". -->
                                 <TextBlock Text="{Binding DataContext.Layout.KeyToggleText, RelativeSource={RelativeSource AncestorType=Window}}" Foreground="{StaticResource AccentBrush}" FontSize="11.5" Cursor="Hand"
                                            ToolTip="Fold or unfold the colour key" Margin="0,0,0,1">
@@ -227,58 +227,59 @@
                                         <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.Layout.ToggleKeyCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                     </TextBlock.InputBindings>
                                 </TextBlock>
-                            <StackPanel Visibility="{Binding DataContext.Layout.IsKeyFolded, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}">
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Visibility="{Binding DataContext.Layout.IsKeyFolded, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}">
+<StackPanel>
                                 <StackPanel Visibility="{Binding ShowShellKey, Converter={StaticResource VisibleWhen}}" Margin="0,0,0,2">
-                                    <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ForwardShock}">
-                                        <Border Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" BorderThickness="2"
+                                    <DockPanel Margin="0,1" ToolTip="{x:Static text:Glossary.ForwardShock}">
+<Border DockPanel.Dock="Left" Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" BorderThickness="2"
                                                 BorderBrush="{Binding ForwardShellHex}"/>
-                                        <TextBlock Text="Swept-up gas; forward shock at its edge" Style="{StaticResource Muted}"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ContactSurface}">
-                                        <Border Width="12" Height="12" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Contact surface: the shell's inner edge" Style="{StaticResource Muted}"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ReverseShock}">
-                                        <Border Width="12" Height="3" Margin="0,0,6,0" VerticalAlignment="Center"
+<TextBlock TextWrapping="Wrap" Text="Swept-up gas; forward shock at its edge" Style="{StaticResource Muted}"/>
+</DockPanel>
+                                    <DockPanel Margin="0,1" ToolTip="{x:Static text:Glossary.ContactSurface}">
+<Border DockPanel.Dock="Left" Width="12" Height="12" Margin="0,0,6,0"/>
+<TextBlock TextWrapping="Wrap" Text="Contact surface: the shell's inner edge" Style="{StaticResource Muted}"/>
+</DockPanel>
+                                    <DockPanel Margin="0,1" ToolTip="{x:Static text:Glossary.ReverseShock}">
+<Border DockPanel.Dock="Left" Width="12" Height="3" Margin="0,0,6,0" VerticalAlignment="Center"
                                                 Background="{Binding ReverseShellHex}"/>
-                                        <TextBlock Text="Reverse shock; debris behind it drawn hot" Style="{StaticResource Muted}"/>
-                                    </StackPanel>
+<TextBlock TextWrapping="Wrap" Text="Reverse shock; debris behind it drawn hot" Style="{StaticResource Muted}"/>
+</DockPanel>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.PulsarWindNebula}"
+                                <DockPanel Margin="0,1" ToolTip="{x:Static text:Glossary.PulsarWindNebula}"
                                             Visibility="{Binding ShowNebulaKey, Converter={StaticResource VisibleWhen}}">
-                                    <Border Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" Background="{Binding NebulaHex}"/>
-                                    <TextBlock Text="Pulsar wind nebula" Style="{StaticResource Muted}"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.Sn1987aRings}"
+<Border DockPanel.Dock="Left" Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" Background="{Binding NebulaHex}"/>
+<TextBlock TextWrapping="Wrap" Text="Pulsar wind nebula" Style="{StaticResource Muted}"/>
+</DockPanel>
+                                <DockPanel Margin="0,1" ToolTip="{x:Static text:Glossary.Sn1987aRings}"
                                             Visibility="{Binding ShowSn1987aRingsKey, Converter={StaticResource VisibleWhen}}">
-                                    <Border Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" BorderThickness="2" BorderBrush="{Binding Sn1987aRingsHex}"/>
-                                    <TextBlock Text="SN 1987A's rings (observed)" Style="{StaticResource Muted}"/>
-                                </StackPanel>
+<Border DockPanel.Dock="Left" Width="12" Height="12" CornerRadius="6" Margin="0,0,6,0" BorderThickness="2" BorderBrush="{Binding Sn1987aRingsHex}"/>
+<TextBlock TextWrapping="Wrap" Text="SN 1987A's rings (observed)" Style="{StaticResource Muted}"/>
+</DockPanel>
                                 <ItemsControl ItemsSource="{Binding Legend}" ToolTip="{x:Static text:Glossary.Cutaway}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <StackPanel Orientation="Horizontal" Margin="0,1">
-                                                <Border Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0" Background="{Binding ColorHex}"/>
-                                                <TextBlock Text="{Binding Name}" Style="{StaticResource Muted}"/>
-                                            </StackPanel>
+                                            <DockPanel Margin="0,1">
+<Border DockPanel.Dock="Left" Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0" Background="{Binding ColorHex}"/>
+<TextBlock TextWrapping="Wrap" Text="{Binding Name}" Style="{StaticResource Muted}"/>
+</DockPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <StackPanel Orientation="Horizontal" Margin="0,1" ToolTip="{x:Static text:Glossary.ShockInStar}"
+                                <DockPanel Margin="0,1" ToolTip="{x:Static text:Glossary.ShockInStar}"
                                             Visibility="{Binding ShowShockKey, Converter={StaticResource VisibleWhen}}">
-                                    <Border Width="12" Height="3" Margin="0,0,6,0" Background="White" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Shock front" Style="{StaticResource Muted}"/>
-                                </StackPanel>
+<Border DockPanel.Dock="Left" Width="12" Height="3" Margin="0,0,6,0" Background="White" VerticalAlignment="Center"/>
+<TextBlock TextWrapping="Wrap" Text="Shock front" Style="{StaticResource Muted}"/>
+</DockPanel>
                                 <TextBlock Text="Fingers: mixing from the core" Style="{StaticResource Muted}" Margin="0,1"
                                            ToolTip="{x:Static text:Glossary.MixingFingers}"
                                            Visibility="{Binding ShowFingerKey, Converter={StaticResource VisibleWhen}}"/>
-                            </StackPanel>
-                            </StackPanel>
+                            </StackPanel></ScrollViewer>
+                            </Grid>
                             </Border>
                             <!-- The hint and Home button share the notes' backdrop, so they stay legible over bright debris. -->
-                            <Border Margin="6,4" Padding="6,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right"
+                            <Border Grid.Row="4" Margin="6,4" Padding="6,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right" MaxWidth="260"
                                     VerticalAlignment="Bottom">
-                                <StackPanel Orientation="Horizontal">
+                                <WrapPanel>
                                     <Button Content="Auto-frame (Home)" Click="OnAutoFrameClick" Padding="6,1" Margin="0,0,8,0"
                                             Visibility="{Binding IsAutoFraming, Converter={StaticResource VisibleWhen}, ConverterParameter=Invert}"/>
                                     <!-- Task 15: the Focus view (key F) hides the side columns and the instrument strip. -->
@@ -287,9 +288,8 @@
                                             Command="{Binding DataContext.Layout.ToggleFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                     <TextBlock Text="Drag to turn · wheel to zoom" Style="{StaticResource Muted}" VerticalAlignment="Center"
                                                IsHitTestVisible="False"/>
-                                </StackPanel>
+                                </WrapPanel>
                             </Border>
-                        </Grid>
                     </Grid>
 
                     <Border Visibility="{Binding IsFailed, Converter={StaticResource VisibleWhen}}" MaxWidth="420" Padding="14,10"

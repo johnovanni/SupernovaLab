@@ -410,7 +410,7 @@ public static class SnapshotRenderer
                 continue;
             }
             director.GoTo(stop);
-            // Nothing ticks the tour here, so its orbit never turns: keep the 3D view on demand while capturing (the tour's orbit sets
+            // Nothing ticks the tour here, so its sway never moves: keep the 3D view on demand while capturing (the tour's sway sets
             // it animating, ruling R-P2-32; the final fix wave's first tour capture drew a stale caption layout while it was).
             if ((main as MainWindow)?.Scene is { } scene) scene.IsTourOrbiting = false;
             log.Add($"tour{suffix}: stop {stop} at {UnitFormat.Time(director.Current!.ObserverTimeS)}: {vm.Tour.Caption}");

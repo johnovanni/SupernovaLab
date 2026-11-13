@@ -20,14 +20,25 @@ public sealed partial class LayoutViewModel : ObservableObject
     public const double StripWidth = 20;
 
     /// <summary>The width (DIP) of the lab panel and of the outcome column when open.</summary>
-    public const double PanelWidth = 300;
+    public const double PanelWidth = 280;
+
+    /// <summary>The least time between two writes of layout.json; changes inside it are coalesced into one later write.</summary>
+    public static readonly TimeSpan SaveInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly LayoutStore? _store;
+    private readonly Func<TimeSpan> _clock;
+    private readonly object _saveLock = new();
+    private System.Threading.Timer? _saveTimer;
+    private LayoutSettings? _pending;
+    private TimeSpan _lastSave = TimeSpan.MinValue;
     private bool _loading;
 
-    public LayoutViewModel(LayoutStore? store = null, LayoutSettings? settings = null)
+    /// <param name="clock">Monotonic time, for the write interval (tests pass a fake one); null = the system's.</param>
+    public LayoutViewModel(LayoutStore? store = null, LayoutSettings? settings = null, Func<TimeSpan>? clock = null)
     {
         _store = store;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        _clock = clock ?? (() => watch.Elapsed);
         Apply(settings ?? store?.Load() ?? new LayoutSettings());
         ToggleLabCommand = new RelayCommand(() => IsLabFolded = !IsLabFolded);
         ToggleOutcomeCommand = new RelayCommand(() => IsOutcomeFolded = !IsOutcomeFolded);
@@ -121,7 +132,47 @@ public sealed partial class LayoutViewModel : ObservableObject
         }
         if (!_loading && (e.PropertyName is nameof(IsLabFolded) or nameof(IsOutcomeFolded) or nameof(IsFocusView) or nameof(IsKeyFolded)
                 or nameof(IsNotesExpanded) or nameof(IsCaptionCollapsed)))
-            _store?.Save(Settings);
+            RequestSave();
+    }
+
+    /// <summary>
+    /// Saves the layout now, unless one was written less than <see cref="SaveInterval"/> ago: then the newest state waits for a one-shot
+    /// timer that writes it (off the UI thread) when the interval is over. <see cref="Flush"/> writes what is waiting.
+    /// </summary>
+    private void RequestSave()
+    {
+        if (_store is null) return;
+        var settings = Settings;
+        lock (_saveLock)
+        {
+            var wait = _lastSave == TimeSpan.MinValue ? TimeSpan.Zero : _lastSave + SaveInterval - _clock();
+            if (wait <= TimeSpan.Zero)
+            {
+                _pending = null;
+                _saveTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                _lastSave = _clock();
+                _store.Save(settings);
+                return;
+            }
+            _pending = settings;
+            _saveTimer ??= new System.Threading.Timer(_ => Flush(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            _saveTimer.Change(wait, System.Threading.Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    /// <summary>Writes any change still waiting (the window calls this on close) and stops the timer.</summary>
+    public void Flush()
+    {
+        lock (_saveLock)
+        {
+            _saveTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            if (_pending is { } p)
+            {
+                _pending = null;
+                _lastSave = _clock();
+                _store?.Save(p);
+            }
+        }
     }
 
     private void Raise(params string[] names)
@@ -130,8 +181,19 @@ public sealed partial class LayoutViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Whether the F key should toggle the Focus view while this element has the keyboard focus: not while a text box or combo box
-    /// (or a password box) is being typed in.
+    /// Whether the F key should toggle the Focus view while this element has the keyboard focus: not while a text box, combo box
+    /// (or its open drop-down list, whose focus is a ComboBoxItem inside a popup), password box or menu item has it.
     /// </summary>
-    public static bool FocusShortcutApplies(object? focused) => focused is not (TextBoxBase or ComboBox or PasswordBox);
+    public static bool FocusShortcutApplies(object? focused)
+    {
+        if (focused is TextBoxBase or ComboBox or ComboBoxItem or PasswordBox or MenuItem) return false;
+        for (var d = focused as DependencyObject; d is not null; d = ParentOf(d))
+            if (d is ComboBox or ComboBoxItem or Popup or MenuItem or ContextMenu || d.GetType().Name == "PopupRoot") return false;
+        return true;
+    }
+
+    private static DependencyObject? ParentOf(DependencyObject d)
+        => d is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+            ? System.Windows.Media.VisualTreeHelper.GetParent(d) ?? LogicalTreeHelper.GetParent(d)
+            : LogicalTreeHelper.GetParent(d);
 }
