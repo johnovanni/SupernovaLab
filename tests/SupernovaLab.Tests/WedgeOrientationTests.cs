@@ -11,7 +11,7 @@ public class WedgeOrientationTests
     private static FingerCones ConesOf(EjectaStructure s) => MixingModel.Cones(s.Mixing, ParticleSampler.DefaultSeed);
 
     public static IEnumerable<object[]> Names() => new[] { new object[] { "red supergiant" }, new object[] { "blue supergiant" },
-        new object[] { "stripped" }, new object[] { "SN 1987A preset" } };
+        new object[] { "stripped" }, new object[] { "SN 1987A preset" }, new object[] { "Cas A preset" }, new object[] { "the lab as launched" } };
 
     private static EjectaStructure Structure(string name)
     {
@@ -22,7 +22,7 @@ public class WedgeOrientationTests
             case "stripped": return EjectaStructureModel.For(TestOutcomes.Custom(SupernovaType.Ib, 1e51, 3, 0.07, 1e11))!;
             default:
                 var vm = new MainViewModel(TestOutcomes.Engine, new FakeWindowService());
-                vm.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");
+                if (name != "the lab as launched") vm.Lab.SelectedPreset = PresetCatalog.Get(name == "Cas A preset" ? "casa" : "sn1987a");
                 return EjectaStructureModel.For(vm.CurrentOutcome)!;
         }
     }
@@ -117,5 +117,55 @@ public class WedgeOrientationTests
         Assert.True(WedgeOrientation.FaceExposed(0, phi, x.X + 0.1 * z.X, 0, x.Z + 0.1 * z.Z));
         Assert.True(WedgeOrientation.FaceExposed(1, phi, x.X + 0.1 * z.X, 0, x.Z + 0.1 * z.Z));
         Assert.False(WedgeOrientation.FaceExposed(1, phi, x.X - 0.1 * z.X, 0, x.Z - 0.1 * z.Z));
+    }
+
+    /// <summary>A unit axis in scene coordinates at <paramref name="offPlane"/> radians from face <paramref name="plane"/>'s plane,
+    /// its in-plane part at face angle <paramref name="psi"/> (from the face's outward edge towards +y).</summary>
+    internal static (double X, double Y, double Z) AxisOffFace(int plane, double phi, double psi, double offPlane)
+    {
+        double inPlane = Math.Cos(offPlane), a = inPlane * Math.Sin(psi), b = inPlane * Math.Cos(psi), n = Math.Sin(offPlane);
+        // Plane 0: normal = BasisX, outward = BasisZ; plane 1: normal = BasisZ, outward = BasisX.
+        var (wx, wz) = plane == 0 ? (n, b) : (b, n);
+        return WedgeOrientation.FromWedge(phi, wx, a, wz);
+    }
+
+    [Fact]
+    public void ConeOnFace_GivesTheChordsCentreAndHalfWidth_AndNothingForAGrazingCone()
+    {
+        // Task 16: a cone whose axis lies in the face plane crosses it with its full half-angle; one tilted by delta from the
+        // plane crosses it in a chord of half-width acos(cos theta / cos delta); beyond 2/3 of theta it only grazes: no crossing.
+        const double theta = 0.3, phi = 0.4;
+        for (int plane = 0; plane < 2; plane++)
+        {
+            var full = WedgeOrientation.ConeOnFace(plane, phi, AxisOffFace(plane, phi, 0.5, 0), theta);
+            Assert.NotNull(full);
+            Assert.Equal(0.5, full!.Value.CentreRad, 12);
+            Assert.Equal(theta, full.Value.HalfWidthRad, 7);
+            Assert.Equal(0, full.Value.OffPlaneRad, 7);
+
+            var tilted = WedgeOrientation.ConeOnFace(plane, phi, AxisOffFace(plane, phi, -0.2, 0.5 * theta), theta);
+            Assert.NotNull(tilted);
+            Assert.Equal(-0.2, tilted!.Value.CentreRad, 12);
+            Assert.Equal(Math.Acos(Math.Cos(theta) / Math.Cos(0.5 * theta)), tilted.Value.HalfWidthRad, 9);
+            Assert.Equal(0.5 * theta, tilted.Value.OffPlaneRad, 9);
+
+            Assert.NotNull(WedgeOrientation.ConeOnFace(plane, phi, AxisOffFace(plane, phi, 0.1, 0.66 * theta), theta));
+            Assert.Null(WedgeOrientation.ConeOnFace(plane, phi, AxisOffFace(plane, phi, 0.1, 0.68 * theta), theta));
+            Assert.Null(WedgeOrientation.ConeOnFace(plane, phi, AxisOffFace(plane, phi, 0.1, 0.95 * theta), theta));
+            Assert.Null(WedgeOrientation.ConeOnFace(plane, phi, AxisOffFace(plane, phi, 0.1, -0.95 * theta), theta));
+        }
+    }
+
+    [Fact]
+    public void CrossingCount_CountsOnlySubstantialCrossings_OnTheDrawnHalfOfAFace()
+    {
+        const double theta = 0.3, phi = 1.1;
+        // Grazing: the old test (angle to the half-plane at most theta) says it crosses; the count does not take it.
+        var grazing = AxisOffFace(0, phi, 0.3, 0.9 * theta);
+        Assert.True(WedgeOrientation.CrossesFace(phi, grazing, theta));
+        Assert.Equal(0, WedgeOrientation.CrossingCount(phi, new FingerCones(new[] { grazing }, theta)));
+        // Squarely across the drawn half (|psi| <= 90 deg): counted. On the plane's other half (psi = 150 deg): not.
+        Assert.Equal(1, WedgeOrientation.CrossingCount(phi, new FingerCones(new[] { AxisOffFace(1, phi, -0.7, 0.2 * theta) }, theta)));
+        Assert.Equal(0, WedgeOrientation.CrossingCount(phi, new FingerCones(new[] { AxisOffFace(1, phi, 150 * Math.PI / 180, 0) }, theta)));
     }
 }
