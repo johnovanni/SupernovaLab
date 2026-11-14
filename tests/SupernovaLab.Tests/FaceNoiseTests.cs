@@ -105,21 +105,26 @@ public class FaceNoiseTests
         return new System.IO.StreamReader(stream).ReadToEnd();
     }
 
+
     [Fact]
     public void TheShader_DeclaresCutFaceModelsConstants_WithTheSameValues()
     {
         string text = Frag();
         var pairs = new (string Glsl, float Value)[]
         {
-            ("STALK_NARROW", CutFaceModel.StalkNarrow), ("BASE_BOOST", CutFaceModel.BaseBoost), ("BASE_LENGTH", CutFaceModel.BaseLength),
+            ("FINGER_ASPECT", CutFaceModel.FingerAspect), ("FINGER_HEAD", CutFaceModel.FingerHead), ("FINGER_HEAD_HEIGHT", CutFaceModel.FingerHeadHeight),
+            ("FINGER_NARROW", CutFaceModel.FingerNarrow), ("FINGER_LEAN", CutFaceModel.FingerLean), ("FINGER_GAP", CutFaceModel.FingerGap),
+            ("FINGER_JITTER", CutFaceModel.FingerJitter), ("BAND", CutFaceModel.Band),
+            ("STALK_NARROW", CutFaceModel.StalkNarrow), ("STALK_ROOT", CutFaceModel.StalkRoot), ("BASE_LENGTH", CutFaceModel.BaseLength),
             ("CAP_WIDTH", CutFaceModel.CapWidth), ("CAP_HEIGHT", CutFaceModel.CapHeight), ("CAP_DROOP0", CutFaceModel.CapDroop0),
             ("CAP_DROOP", CutFaceModel.CapDroop), ("MEANDER_AMP", CutFaceModel.MeanderAmp), ("MEANDER_FREQ", CutFaceModel.MeanderFreq),
             ("RIM_OXYGEN", CutFaceModel.RimOxygen), ("RIM_HELIUM", CutFaceModel.RimHelium), ("TONGUE_MEANDER", CutFaceModel.TongueMeander),
             ("EDGE_LOW_FREQ", CutFaceModel.EdgeLowFreq), ("EDGE_LOW_AMP", CutFaceModel.EdgeLowAmp),
             ("EDGE_HIGH_FREQ", CutFaceModel.EdgeHighFreq), ("EDGE_HIGH_AMP", CutFaceModel.EdgeHighAmp),
-            ("BOUNDARY_FREQ", CutFaceModel.BoundaryFreq), ("BOUNDARY_GAIN", CutFaceModel.BoundaryGain), ("BOUNDARY_OUT", CutFaceModel.BoundaryOut), ("BOUNDARY_IN", CutFaceModel.BoundaryIn),
-            ("BOUNDARY_FALLOFF", CutFaceModel.BoundaryFalloff), ("CLUMP_FREQ", CutFaceModel.ClumpFreq), ("CLUMP_LEVEL", CutFaceModel.ClumpLevel),
-            ("CLUMP_FROM", CutFaceModel.ClumpFrom), ("CLUMP_TO", CutFaceModel.ClumpTo), ("CLUMP_SOLID_FROM", CutFaceModel.ClumpSolidFrom), ("CLUMP_SOLID_TO", CutFaceModel.ClumpSolidTo),
+            ("BOUNDARY_FREQ", CutFaceModel.BoundaryFreq), ("BOUNDARY_GAIN", CutFaceModel.BoundaryGain), ("BOUNDARY_OUT", CutFaceModel.BoundaryOut),
+            ("BOUNDARY_IN", CutFaceModel.BoundaryIn), ("BOUNDARY_FALLOFF", CutFaceModel.BoundaryFalloff),
+            ("CLUMP_FREQ", CutFaceModel.ClumpFreq), ("CLUMP_LEVEL", CutFaceModel.ClumpLevel), ("CLUMP_FROM", CutFaceModel.ClumpFrom),
+            ("CLUMP_TO", CutFaceModel.ClumpTo), ("CLUMP_SOLID_FROM", CutFaceModel.ClumpSolidFrom), ("CLUMP_SOLID_TO", CutFaceModel.ClumpSolidTo),
         };
         foreach (var (name, value) in pairs)
         {
@@ -130,23 +135,34 @@ public class FaceNoiseTests
         Assert.Contains($"const uint EDGE_SEED = {CutFaceModel.EdgeSeed}u;", text);
         Assert.Contains($"const uint BOUNDARY_SEED = {CutFaceModel.BoundarySeed}u;", text);
         Assert.Contains($"const uint CLUMP_SEED = {CutFaceModel.ClumpSeed}u;", text);
-        // The per-pixel rules, line for line with CutFaceModel.At / InPlume / InHead / InTongue.
+        Assert.Contains($"const uint BOUNDARY_FINGER_SEED = 0x{CutFaceModel.BoundaryFingerSeed:x8}u;", text);
+        // The per-pixel rules, line for line with CutFaceModel.At / InsideBoundary / InBoundaryFinger / InPlume / InHead / InTongue.
         foreach (string needle in new[] {
+            "float nn = clamp(BOUNDARY_GAIN * fbm1(BOUNDARY_SEED + uint(k), psi * BOUNDARY_FREQ, 3), -1.0, 1.0);",
+            "float rb = b.x * (1.0 + (nn >= 0.0 ? hi : lo) * nn);", "float u = psi / b.w + b2.z;",
+            "uint s = hash(BOUNDARY_FINGER_SEED + uint(k) * 7919u + uint(int(cell)));",
+            "float x = (u - cell - 0.5 - FINGER_JITTER * (2.0 * unit(s + 1u) - 1.0)) * b.w * b.x;",
+            "uint s2 = hash(BOUNDARY_FINGER_SEED + 0x8000u + uint(k) * 7919u + uint(int(j)));",
+            "return !inBoundaryFinger(x2, rb - r, b.z, s2, rag);",
+            "if (!(len > 0.0) || unit(s + 4u) < FINGER_GAP) return false;", "float l = len * (0.5 + 0.5 * unit(s));",
+            "float h = l / (2.0 * FINGER_ASPECT) * (0.8 + 0.25 * unit(s + 2u));",
+            "x = abs(x - FINGER_LEAN * (2.0 * unit(s + 3u) - 1.0) * y);",
+            "if (y <= capC && x <= h * (1.0 - FINGER_NARROW * y / l) * rag) return true;",
             "float centre = f.x + MEANDER_AMP * w * s * value1(uint(f.w), s * MEANDER_FREQ);",
             "float arc = abs(psi - centre) * r;", "float stalk = f.z * (1.0 - STALK_NARROW * s) * rag;",
-            "float hw = stalk * (1.0 + BASE_BOOST * (1.0 - sstep(0.0, BASE_LENGTH, s)));",
+            "float hw = stalk * (STALK_ROOT + (1.0 - STALK_ROOT) * sstep(0.0, BASE_LENGTH, s));",
             "float capR = CAP_HEIGHT * CAP_WIDTH * f.z;", "bool dense = clump > -2.0 + (CLUMP_LEVEL + 2.0) * clumpy;",
             "if (r <= capC && arc <= hw + ex * r && (level > 1 || dense)) return level;",
             "if (inHead(arc, r, capW + ex * r, capR + ex * f.y, capC)) return level;",
-            "return capC - r <= R * (CAP_DROOP0 + CAP_DROOP * x * x) * sqrt(1.0 - x * x);",
+            "return capC - y <= R * (CAP_DROOP0 + CAP_DROOP * x * x) * sqrt(1.0 - x * x);",
             "float hw = t.z * (0.15 + 0.85 * s) * rag;", "return arc <= hw + rimHe * r ? 2 : 0;",
-            "if (l == 1 && off > cl.y) l = rimO > 0.0 ? 2 : 3;",
-            "float nn = clamp(BOUNDARY_GAIN * fbm1(BOUNDARY_SEED + uint(k), psi * BOUNDARY_FREQ, 3), -1.0, 1.0);",
-            "if (r <= R * (1.0 + (nn >= 0.0 ? hi : lo) * nn)) { layer = k; break; }",
-            "clump = fbm2(CLUMP_SEED + uint(u_plane), v_face.x * CLUMP_FREQ, v_face.y * CLUMP_FREQ, 2);",
-            "rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)",
+            "if (l == 1 && off > band) l = rimO > 0.0 ? 2 : 3;", "r <= u_tongueCut",
+            "int first = int(cl.z) + c, count = int(cl.w) + 1;",
+            "float rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)",
             "+ EDGE_HIGH_AMP * value2(EDGE_SEED + 8u + uint(u_plane), v_face.x * EDGE_HIGH_FREQ, v_face.y * EDGE_HIGH_FREQ);",
-            "float psi = atan(v_face.x, v_face.y);", "uniform vec4 u_cluster[10];", "uniform vec4 u_finger[30];", "uniform vec4 u_tongue[20];" })
+            "float clump = fbm2(CLUMP_SEED + uint(u_plane), v_face.x * CLUMP_FREQ, v_face.y * CLUMP_FREQ, 2);",
+            "float psi = atan(v_face.x, v_face.y);", "uniform vec4 u_cluster[10];", "uniform vec4 u_finger[20];", "uniform vec4 u_tongue[30];",
+            "uniform vec4 u_boundary[6];", "uniform vec4 u_boundary2[6];" })
             Assert.Contains(needle, text);
     }
 
@@ -160,8 +176,8 @@ public class FaceNoiseTests
             var p = CutFacePlaneArrays.Pack(faces, plane);
             Assert.Equal(clusters.Count, p.ClusterCount);
             Assert.Equal(4 * CutFaceRenderer.MaxCones, p.Clusters.Length);
-            Assert.Equal(120, p.Fingers.Length);   // u_finger[30]
-            Assert.Equal(80, p.Tongues.Length);   // u_tongue[20]
+            Assert.Equal(80, p.Fingers.Length);    // u_finger[20]
+            Assert.Equal(120, p.Tongues.Length);   // u_tongue[30]
             int first = 0;
             for (int c = 0; c < clusters.Count; c++)
             {
@@ -175,8 +191,9 @@ public class FaceNoiseTests
                     Assert.Equal(cl.Fingers[j].TipRadius, p.Fingers[4 * (first + j) + 1]);
                     Assert.Equal(cl.Fingers[j].Seed, (uint)p.Fingers[4 * (first + j) + 3]);   // 24-bit seeds are exact as floats
                 }
+                Assert.Equal(cl.Fingers.Count + 1, cl.Tongues.Count);
                 for (int j = 0; j < cl.Tongues.Count; j++)
-                    Assert.Equal(cl.Tongues[j].CentreRad, p.Tongues[4 * (first - c + j)]);
+                    Assert.Equal(cl.Tongues[j].CentreRad, p.Tongues[4 * (first + c + j)]);
                 first += cl.Fingers.Count;
             }
         }

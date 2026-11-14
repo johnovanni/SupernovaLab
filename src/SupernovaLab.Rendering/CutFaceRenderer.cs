@@ -30,9 +30,9 @@ public sealed record CutFaceUniforms(CutFaceModel Faces, IReadOnlyList<Vector3> 
 }
 
 /// <summary>
-/// One face's finger clusters packed for <c>cutface.frag</c> (Task 16): u_cluster[c] = (centre, half-width, first finger, finger
+/// One face's plume clusters packed for <c>cutface.frag</c> (Task 16): u_cluster[c] = (centre, chord half-width, first plume, plume
 /// count); u_finger[i] = (centre, tip radius, stalk half-width (arc), seed); u_tongue[i] = (centre, tip radius, root half-width (arc),
-/// seed), cluster c's tongues starting at its first finger − c (each cluster has one tongue fewer than fingers). At most
+/// seed), cluster c's tongues starting at its first plume + c (each cluster has one tongue more than plumes). At most
 /// <see cref="CutFaceRenderer.MaxCones"/> clusters (one per cone), <see cref="MaxFingersPerCluster"/> plumes each.
 /// </summary>
 public sealed record CutFacePlaneArrays(int ClusterCount, float[] Clusters, float[] Fingers, float[] Tongues)
@@ -45,7 +45,7 @@ public sealed record CutFacePlaneArrays(int ClusterCount, float[] Clusters, floa
         int n = Math.Min(list.Count, CutFaceRenderer.MaxCones);
         var clusters = new float[4 * CutFaceRenderer.MaxCones];
         var fingers = new float[4 * CutFaceRenderer.MaxCones * MaxFingersPerCluster];
-        var tongues = new float[4 * CutFaceRenderer.MaxCones * (MaxFingersPerCluster - 1)];
+        var tongues = new float[4 * CutFaceRenderer.MaxCones * (MaxFingersPerCluster + 1)];
         int first = 0;
         for (int c = 0; c < n; c++)
         {
@@ -61,10 +61,10 @@ public sealed record CutFacePlaneArrays(int ClusterCount, float[] Clusters, floa
                 int i = 4 * (first + j);
                 (fingers[i], fingers[i + 1], fingers[i + 2], fingers[i + 3]) = (f.CentreRad, f.TipRadius, f.HalfWidth, f.Seed);
             }
-            for (int j = 0; j < Math.Min(cl.Tongues.Count, count - 1); j++)
+            for (int j = 0; j < Math.Min(cl.Tongues.Count, count + 1); j++)
             {
                 var t = cl.Tongues[j];
-                int i = 4 * (first - c + j);
+                int i = 4 * (first + c + j);
                 (tongues[i], tongues[i + 1], tongues[i + 2], tongues[i + 3]) = (t.CentreRad, t.TipRadius, t.HalfWidth, t.Seed);
             }
             first += count;
@@ -110,15 +110,19 @@ public sealed class CutFaceRenderer : IDisposable
         int n = Math.Min(Math.Min(faces.Layers.Count, u.LayerColorList.Count), LayerColors.Count);
         if (n == 0 || !(extent > 0)) return;
         var outer = new float[LayerColors.Count];
-        var capUp = new float[LayerColors.Count];
-        var capDown = new float[LayerColors.Count];
+        var bnd = new float[4 * LayerColors.Count];
+        var bnd2 = new float[4 * LayerColors.Count];
         var colors = new float[3 * LayerColors.Count];
         int nickel = -1, oxygen = -1, helium = -1, hydrogen = -1;
         for (int i = 0; i < n; i++)
         {
             outer[i] = faces.NormalisedOuter[i];
-            capUp[i] = faces.BoundaryCapUp[i];
-            capDown[i] = faces.BoundaryCapDown[i];
+            if (i < faces.Boundaries.Count)
+            {
+                var bf = faces.Boundaries[i];
+                (bnd[4 * i], bnd[4 * i + 1], bnd[4 * i + 2], bnd[4 * i + 3]) = (bf.Radius, bf.LengthUp, bf.LengthDown, bf.Period);
+                (bnd2[4 * i], bnd2[4 * i + 1], bnd2[4 * i + 2], bnd2[4 * i + 3]) = (bf.UndulationUp, bf.UndulationDown, bf.Phase, 0f);
+            }
             var c = u.LayerColorList[i];
             (colors[3 * i], colors[3 * i + 1], colors[3 * i + 2]) = (c.X, c.Y, c.Z);
             if (faces.Layers[i].Layer == ElementLayer.NickelIron) nickel = i;
@@ -132,8 +136,8 @@ public sealed class CutFaceRenderer : IDisposable
         _program.Set("u_extent", extent);
         _program.Set("u_layerCount", n);
         GL.Uniform1(_program.Location("u_layerOuter"), LayerColors.Count, outer);
-        GL.Uniform1(_program.Location("u_layerCapUp"), LayerColors.Count, capUp);
-        GL.Uniform1(_program.Location("u_layerCapDown"), LayerColors.Count, capDown);
+        GL.Uniform4(_program.Location("u_boundary"), LayerColors.Count, bnd);
+        GL.Uniform4(_program.Location("u_boundary2"), LayerColors.Count, bnd2);
         GL.Uniform3(_program.Location("u_layerColor"), LayerColors.Count, colors);
         _program.Set("u_nickelLayer", nickel);
         _program.Set("u_oxygenLayer", oxygen);
@@ -143,6 +147,7 @@ public sealed class CutFaceRenderer : IDisposable
         _program.Set("u_hydrogenColor", u.HydrogenColor);
         _program.Set("u_fingerRoot", faces.FingerRootRadius);
         _program.Set("u_tongueRoot", faces.TongueRootRadius);
+        _program.Set("u_tongueCut", faces.TongueCutRadius);
         _program.Set("u_transitionRadius", u.TransitionRadius);
         _program.Set("u_densityIndex", u.DensityIndex);
         _program.Set("u_freeScale", u.FreeScale);

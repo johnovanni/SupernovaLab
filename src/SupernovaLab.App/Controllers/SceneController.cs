@@ -254,7 +254,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
 
     /// <summary>The overlay note while the cutaway is on.</summary>
     public const string CutawayNote =
-        "Cutaway: colours show elements (schematic); the cut faces' layers and mixing fingers are drawn analytically, not from the particles";
+        "Cutaway: colours show elements (schematic); the cut faces' layers and mixing fingers are drawn analytically, not from the particles; " +
+        "the small fingers along every layer boundary are schematic: their size is not from the lab's model";
 
     partial void OnIsCutawayChanged(bool value)
     {
