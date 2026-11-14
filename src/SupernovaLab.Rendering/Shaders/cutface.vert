@@ -15,6 +15,7 @@ uniform vec3 u_wedgeX;   // the wedge frame (WedgeOrientation)
 uniform vec3 u_wedgeZ;
 
 out vec3 v_world;
+out vec2 v_face;   // (a, b): the face coordinates over the debris' outer radius (CutFaceModel.At)
 
 void main()
 {
@@ -26,4 +27,5 @@ void main()
     precise vec3 rel = world - u_eyeHigh - u_eyeLow;
     gl_Position = exposed ? u_viewProj * vec4(rel, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
     v_world = world;
+    v_face = a_pos;
 }

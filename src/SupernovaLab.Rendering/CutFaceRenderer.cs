@@ -6,14 +6,15 @@ using SupernovaLab.Core.Structure;
 namespace SupernovaLab.Rendering;
 
 /// <summary>
-/// What <see cref="CutFaceRenderer"/> needs, in scene units (cm divided by the view's unit on the CPU): the layers' outer
-/// radii with their HDR colours (centre outward), the finger tips' radii (NaN or 0 for none), and the finger cones. Once there
-/// are shocks (Task 8) the radii are confined as the particles are, and <see cref="FreeScale"/> (R* + v_max (t − t_bo)),
+/// What <see cref="CutFaceRenderer"/> needs: the faces' model (<see cref="CutFaceModel"/>: layers, boundaries, finger clusters,
+/// all in face coordinates over the outer radius), the layers' HDR colours (centre outward, as the model's layers), the nickel and
+/// hydrogen colours, and, in scene units (cm divided by the view's unit on the CPU), v_t's radius for the opacity. Once there are
+/// shocks (Task 8) the radii are confined as the particles are, and <see cref="FreeScale"/> (R* + v_max (t − t_bo)),
 /// <see cref="Reverse"/>, <see cref="Contact"/> and <see cref="ShockWeight"/> let the shader read the speed back for the opacity
 /// (<see cref="CutFaceModel.FreeRadiusCm"/>); ShockWeight 0 means no shocks.
 /// </summary>
-public sealed record CutFaceUniforms(IReadOnlyList<(float OuterRadius, Vector3 Color)> Layers, float NickelInnerRadius, float NickelMaxRadius, float HydrogenMinRadius, float HydrogenInnerRadius,
-    Vector3 NickelColor, Vector3 HydrogenColor, IReadOnlyList<Vector3> ConeAxes, float ConeCos, float TransitionRadius, float DensityIndex)
+public sealed record CutFaceUniforms(CutFaceModel Faces, IReadOnlyList<Vector3> LayerColorList, Vector3 NickelColor, Vector3 HydrogenColor,
+    float TransitionRadius, float DensityIndex)
 {
     public float FreeScale { get; init; }
     public float Reverse { get; init; }
@@ -21,12 +22,61 @@ public sealed record CutFaceUniforms(IReadOnlyList<(float OuterRadius, Vector3 C
     public float ShockWeight { get; init; }
     /// <summary>s_m (<c>ParticleKinematics.ShockedSpeedRatio</c>); 1 or more: nothing shocked.</summary>
     public float ShockRatio { get; init; } = 2;
+
+    private readonly CutFacePlaneArrays?[] _planes = new CutFacePlaneArrays?[2];
+
+    /// <summary>The face's cluster, finger and tongue arrays as the shader reads them (packed once per face).</summary>
+    public CutFacePlaneArrays Plane(int plane) => _planes[plane] ??= CutFacePlaneArrays.Pack(Faces, plane);
+}
+
+/// <summary>
+/// One face's finger clusters packed for <c>cutface.frag</c> (Task 16): u_cluster[c] = (centre, half-width, first finger, finger
+/// count); u_finger[i] = (centre, tip radius, widest stalk half-width, seed); u_tongue[i] = (centre, tip radius, root half-width,
+/// seed), cluster c's tongues starting at its first finger − c (each cluster has one tongue fewer than fingers). At most
+/// <see cref="CutFaceRenderer.MaxCones"/> clusters (one per cone), <see cref="MaxFingersPerCluster"/> fingers each.
+/// </summary>
+public sealed record CutFacePlaneArrays(int ClusterCount, float[] Clusters, float[] Fingers, float[] Tongues)
+{
+    public const int MaxFingersPerCluster = 5;
+
+    public static CutFacePlaneArrays Pack(CutFaceModel faces, int plane)
+    {
+        var list = faces.ClustersOn(plane);
+        int n = Math.Min(list.Count, CutFaceRenderer.MaxCones);
+        var clusters = new float[4 * CutFaceRenderer.MaxCones];
+        var fingers = new float[4 * CutFaceRenderer.MaxCones * MaxFingersPerCluster];
+        var tongues = new float[4 * CutFaceRenderer.MaxCones * (MaxFingersPerCluster - 1)];
+        int first = 0;
+        for (int c = 0; c < n; c++)
+        {
+            var cl = list[c];
+            int count = Math.Min(cl.Fingers.Count, MaxFingersPerCluster);
+            clusters[4 * c] = cl.CentreRad;
+            clusters[4 * c + 1] = cl.HalfWidthRad;
+            clusters[4 * c + 2] = first;
+            clusters[4 * c + 3] = count;
+            for (int j = 0; j < count; j++)
+            {
+                var f = cl.Fingers[j];
+                int i = 4 * (first + j);
+                (fingers[i], fingers[i + 1], fingers[i + 2], fingers[i + 3]) = (f.CentreRad, f.TipRadius, f.HalfWidth, f.Seed);
+            }
+            for (int j = 0; j < Math.Min(cl.Tongues.Count, count - 1); j++)
+            {
+                var t = cl.Tongues[j];
+                int i = 4 * (first - c + j);
+                (tongues[i], tongues[i + 1], tongues[i + 2], tongues[i + 3]) = (t.CentreRad, t.TipRadius, t.HalfWidth, t.Seed);
+            }
+            first += count;
+        }
+        return new CutFacePlaneArrays(n, clusters, fingers, tongues);
+    }
 }
 
 /// <summary>
 /// The debris cutaway's cut faces (ruling R-P2-21): the two quarter planes bounding the removed quarter, x &gt; 0 and
 /// z &gt; 0 in the wedge frame, drawn as quads shaded per pixel (<c>cutface.frag</c>, mirroring
-/// <see cref="CutFaceModel.LayerAt"/>). Draw them after the bloom is built (<see cref="HdrPipeline.End"/>'s hook): they are translucent where the cloud is thin
+/// <see cref="CutFaceModel.At"/>). Draw them after the bloom is built (<see cref="HdrPipeline.End"/>'s hook): they are translucent where the cloud is thin
 /// (<see cref="CutFaceModel.Opacity"/>, ruling R-P2-23), so they dim the glow behind them and add none of their own. Alpha is also the tone map's bloom mask.
 /// </summary>
 public sealed class CutFaceRenderer : IDisposable
@@ -56,24 +106,21 @@ public sealed class CutFaceRenderer : IDisposable
     /// <summary>Draws both faces out to <paramref name="extent"/> scene units (the debris' outer radius).</summary>
     public void Render(OrbitCamera cam, Size viewportPx, float extent, CutFaceUniforms u)
     {
-        int n = Math.Min(u.Layers.Count, LayerColors.Count);
+        var faces = u.Faces;
+        int n = Math.Min(Math.Min(faces.Layers.Count, u.LayerColorList.Count), LayerColors.Count);
         if (n == 0 || !(extent > 0)) return;
         var outer = new float[LayerColors.Count];
+        var cap = new float[LayerColors.Count];
         var colors = new float[3 * LayerColors.Count];
+        int nickel = -1, hydrogen = -1;
         for (int i = 0; i < n; i++)
         {
-            outer[i] = u.Layers[i].OuterRadius;
-            colors[3 * i] = u.Layers[i].Color.X;
-            colors[3 * i + 1] = u.Layers[i].Color.Y;
-            colors[3 * i + 2] = u.Layers[i].Color.Z;
-        }
-        int cones = Math.Min(u.ConeAxes.Count, MaxCones);
-        var axes = new float[3 * MaxCones];
-        for (int i = 0; i < cones; i++)
-        {
-            axes[3 * i] = u.ConeAxes[i].X;
-            axes[3 * i + 1] = u.ConeAxes[i].Y;
-            axes[3 * i + 2] = u.ConeAxes[i].Z;
+            outer[i] = faces.NormalisedOuter[i];
+            cap[i] = faces.BoundaryCap[i];
+            var c = u.LayerColorList[i];
+            (colors[3 * i], colors[3 * i + 1], colors[3 * i + 2]) = (c.X, c.Y, c.Z);
+            if (faces.Layers[i].Layer == ElementLayer.NickelIron) nickel = i;
+            if (faces.Layers[i].Layer == ElementLayer.Hydrogen) hydrogen = i;
         }
 
         _program.Use();
@@ -81,16 +128,14 @@ public sealed class CutFaceRenderer : IDisposable
         _program.Set("u_extent", extent);
         _program.Set("u_layerCount", n);
         GL.Uniform1(_program.Location("u_layerOuter"), LayerColors.Count, outer);
+        GL.Uniform1(_program.Location("u_layerCap"), LayerColors.Count, cap);
         GL.Uniform3(_program.Location("u_layerColor"), LayerColors.Count, colors);
+        _program.Set("u_nickelLayer", nickel);
+        _program.Set("u_hydrogenLayer", hydrogen);
         _program.Set("u_nickelColor", u.NickelColor);
         _program.Set("u_hydrogenColor", u.HydrogenColor);
-        _program.Set("u_nickelMax", float.IsFinite(u.NickelMaxRadius) ? u.NickelMaxRadius : -1f);
-        _program.Set("u_nickelInner", u.NickelInnerRadius);
-        _program.Set("u_hydrogenInner", float.IsFinite(u.HydrogenInnerRadius) ? u.HydrogenInnerRadius : -1f);
-        _program.Set("u_hydrogenMin", float.IsFinite(u.HydrogenMinRadius) ? u.HydrogenMinRadius : -1f);
-        _program.Set("u_coneCount", cones);
-        GL.Uniform3(_program.Location("u_coneAxis"), MaxCones, axes);
-        _program.Set("u_coneCos", u.ConeCos);
+        _program.Set("u_fingerRoot", faces.FingerRootRadius);
+        _program.Set("u_tongueRoot", faces.TongueRootRadius);
         _program.Set("u_transitionRadius", u.TransitionRadius);
         _program.Set("u_densityIndex", u.DensityIndex);
         _program.Set("u_freeScale", u.FreeScale);
@@ -106,7 +151,12 @@ public sealed class CutFaceRenderer : IDisposable
         GL.BindVertexArray(_vao);
         for (int plane = 0; plane < 2; plane++)
         {
+            var p = u.Plane(plane);
             _program.Set("u_plane", plane);
+            _program.Set("u_clusterCount", p.ClusterCount);
+            GL.Uniform4(_program.Location("u_cluster"), p.Clusters.Length / 4, p.Clusters);
+            GL.Uniform4(_program.Location("u_finger"), p.Fingers.Length / 4, p.Fingers);
+            GL.Uniform4(_program.Location("u_tongue"), p.Tongues.Length / 4, p.Tongues);
             GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
         }
         GL.BindVertexArray(0);

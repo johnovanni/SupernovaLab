@@ -950,7 +950,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         if (_scene?.Structure is not { } structure || _cutFaces is null) return;
         var c = _faceCache;
-        if (ReferenceEquals(c.State, s) && c.Unit == unit && ReferenceEquals(c.Set, set) && ReferenceEquals(c.Colors, colors))
+        if (ReferenceEquals(c.State, s) && c.Unit == unit && ReferenceEquals(c.Set, set) && ReferenceEquals(c.Colors, colors)
+            && (c.Uniforms is null || c.Uniforms.Faces.WedgeAngleRad == _wedgeAngleRad))
         {
             if (c.Uniforms is not null) _cutFaces.Render(Camera, viewportPx, c.Extent, c.Uniforms);
             return;
@@ -965,14 +966,11 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         extent = 0;
         double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
-        var model = CutFaceModel.Build(structure, ConesFor(structure), s.SinceBreakoutS, starCm, set.MaxCmS, s.Shocks);
+        var model = CutFaceModel.Build(structure, ConesFor(structure), s.SinceBreakoutS, starCm, set.MaxCmS, s.Shocks, _wedgeAngleRad);
         if (model is null) return null;
-        var layers = model.Layers.Select(l => ((float)(l.OuterRadiusCm / unit), ToVector(colors[(int)l.Layer]))).ToList();
-        var axes = model.Cones.Axes.Select(a => new OpenTK.Mathematics.Vector3((float)a.X, (float)a.Y, (float)a.Z)).ToList();
-        var uniforms = new CutFaceUniforms(layers, (float)(model.NickelInnerRadiusCm / unit), (float)(model.NickelMaxRadiusCm / unit),
-            (float)(model.HydrogenMinRadiusCm / unit), (float)(model.HydrogenInnerRadiusCm / unit),
-            ToVector(colors[(int)ElementLayer.NickelIron]), ToVector(colors[(int)ElementLayer.Hydrogen]), axes,
-            (float)(Math.Cos(model.Cones.HalfAngleRad) - FingerCones.RimToleranceCos),
+        var layerColors = model.Layers.Select(l => ToVector(colors[(int)l.Layer])).ToList();
+        var uniforms = new CutFaceUniforms(model, layerColors,
+            ToVector(colors[(int)ElementLayer.NickelIron]), ToVector(colors[(int)ElementLayer.Hydrogen]),
             (float)(model.TransitionRadiusCm / unit), (float)model.OuterIndex)
         {
             FreeScale = (float)((starCm + set.MaxCmS * s.SinceBreakoutS) / unit),
