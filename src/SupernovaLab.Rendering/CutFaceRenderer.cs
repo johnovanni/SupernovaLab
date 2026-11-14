@@ -31,13 +31,13 @@ public sealed record CutFaceUniforms(CutFaceModel Faces, IReadOnlyList<Vector3> 
 
 /// <summary>
 /// One face's finger clusters packed for <c>cutface.frag</c> (Task 16): u_cluster[c] = (centre, half-width, first finger, finger
-/// count); u_finger[i] = (centre, tip radius, widest stalk half-width, seed); u_tongue[i] = (centre, tip radius, root half-width,
+/// count); u_finger[i] = (centre, tip radius, stalk half-width (arc), seed); u_tongue[i] = (centre, tip radius, root half-width (arc),
 /// seed), cluster c's tongues starting at its first finger − c (each cluster has one tongue fewer than fingers). At most
-/// <see cref="CutFaceRenderer.MaxCones"/> clusters (one per cone), <see cref="MaxFingersPerCluster"/> fingers each.
+/// <see cref="CutFaceRenderer.MaxCones"/> clusters (one per cone), <see cref="MaxFingersPerCluster"/> plumes each.
 /// </summary>
 public sealed record CutFacePlaneArrays(int ClusterCount, float[] Clusters, float[] Fingers, float[] Tongues)
 {
-    public const int MaxFingersPerCluster = 5;
+    public const int MaxFingersPerCluster = CutFaceModel.MaxPlumes;
 
     public static CutFacePlaneArrays Pack(CutFaceModel faces, int plane)
     {
@@ -110,16 +110,20 @@ public sealed class CutFaceRenderer : IDisposable
         int n = Math.Min(Math.Min(faces.Layers.Count, u.LayerColorList.Count), LayerColors.Count);
         if (n == 0 || !(extent > 0)) return;
         var outer = new float[LayerColors.Count];
-        var cap = new float[LayerColors.Count];
+        var capUp = new float[LayerColors.Count];
+        var capDown = new float[LayerColors.Count];
         var colors = new float[3 * LayerColors.Count];
-        int nickel = -1, hydrogen = -1;
+        int nickel = -1, oxygen = -1, helium = -1, hydrogen = -1;
         for (int i = 0; i < n; i++)
         {
             outer[i] = faces.NormalisedOuter[i];
-            cap[i] = faces.BoundaryCap[i];
+            capUp[i] = faces.BoundaryCapUp[i];
+            capDown[i] = faces.BoundaryCapDown[i];
             var c = u.LayerColorList[i];
             (colors[3 * i], colors[3 * i + 1], colors[3 * i + 2]) = (c.X, c.Y, c.Z);
             if (faces.Layers[i].Layer == ElementLayer.NickelIron) nickel = i;
+            if (faces.Layers[i].Layer == ElementLayer.CarbonOxygenCore) oxygen = i;
+            if (faces.Layers[i].Layer == ElementLayer.Helium) helium = i;
             if (faces.Layers[i].Layer == ElementLayer.Hydrogen) hydrogen = i;
         }
 
@@ -128,9 +132,12 @@ public sealed class CutFaceRenderer : IDisposable
         _program.Set("u_extent", extent);
         _program.Set("u_layerCount", n);
         GL.Uniform1(_program.Location("u_layerOuter"), LayerColors.Count, outer);
-        GL.Uniform1(_program.Location("u_layerCap"), LayerColors.Count, cap);
+        GL.Uniform1(_program.Location("u_layerCapUp"), LayerColors.Count, capUp);
+        GL.Uniform1(_program.Location("u_layerCapDown"), LayerColors.Count, capDown);
         GL.Uniform3(_program.Location("u_layerColor"), LayerColors.Count, colors);
         _program.Set("u_nickelLayer", nickel);
+        _program.Set("u_oxygenLayer", oxygen);
+        _program.Set("u_heliumLayer", helium);
         _program.Set("u_hydrogenLayer", hydrogen);
         _program.Set("u_nickelColor", u.NickelColor);
         _program.Set("u_hydrogenColor", u.HydrogenColor);

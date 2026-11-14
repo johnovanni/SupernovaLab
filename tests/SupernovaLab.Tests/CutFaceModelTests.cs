@@ -112,7 +112,7 @@ public class CutFaceModelTests
                 foreach (var c in faces.ClustersOn(plane))
                 {
                     clusters++;
-                    Assert.InRange(c.Fingers.Count, 3, 5);
+                    Assert.InRange(c.Fingers.Count, CutFaceModel.MinPlumes, CutFaceModel.MaxPlumes);
                     Assert.Equal(niMax, c.Fingers.Max(f => f.TipRadius));
                     Assert.All(c.Fingers, f => Assert.InRange(f.TipRadius, 0.7f * niMax, niMax));
                     Assert.All(c.Fingers, f => Assert.InRange(f.CentreRad, c.CentreRad - c.HalfWidthRad, c.CentreRad + c.HalfWidthRad));
@@ -169,7 +169,10 @@ public class CutFaceModelTests
                 Assert.Equal(ElementLayer.Hydrogen, p.Layer);
             }
             if (p.Material == CutFaceMaterial.NickelFinger) fingers++;
-            if (p.Material != CutFaceMaterial.Layer && r > 1e-3f)
+            // Below the nickel layer's (undulating) boundary the face is the plain core: no plume, sheath or tongue there.
+            if (p.Unmixed == ElementLayer.NickelIron)
+                Assert.True(p.Material == CutFaceMaterial.Layer && p.Layer == ElementLayer.NickelIron, $"{preset}: mixing drawn inside the core at {r}");
+            if (p.Material is CutFaceMaterial.NickelFinger or CutFaceMaterial.HydrogenTongue && r > 1e-3f)
             {
                 var d = Direction(faces, plane, a, b);
                 Assert.True(faces.Cones.Contains(d.X, d.Y, d.Z), $"{preset}: mixing pixel outside every cone at ({plane}, {a}, {b})");
@@ -193,6 +196,56 @@ public class CutFaceModelTests
                     previous = index;
                 }
             }
+    }
+
+    [Theory]
+    [MemberData(nameof(Scenes))]
+    public void PlumesRiseFromABroadBase_AndTonguesAreBroadAndVisible(string preset, double days)
+    {
+        // Fix round 1 (controller): a plume leaves the nickel layer with a base at least 25% of its chord there; a tongue's root is
+        // at least 30% of the nominal gap between its plumes; and at the default zoom (about 150 px per outer radius) a tongue shows
+        // as more than a few pixels just inside the hydrogen layer's boundary.
+        var faces = SceneFaces(preset == "default" ? null : preset, days * Day);
+        double rims = CutFaceModel.RimOxygen + CutFaceModel.RimHelium;
+        float niIn = (float)(faces.NickelInnerRadiusCm / faces.OuterRadiusCm);
+        float above = niIn * (1f + CutFaceModel.BoundaryIn) * 1.05f;   // just beyond the nickel boundary's farthest undulation
+        double widestTongue = 0;
+        for (int plane = 0; plane < 2; plane++)
+            foreach (var c in faces.ClustersOn(plane))
+            {
+                // Base: nominal half-width (stalk x (1 + BaseBoost)) against the chord, and the nickel actually drawn across the chord.
+                Assert.All(c.Fingers, f => Assert.True(2 * f.HalfWidth * (1 + CutFaceModel.BaseBoost) >= 0.25 * 2 * c.HalfWidthRad * faces.FingerRootRadius));
+                int inChord = 0, nickel = 0;
+                for (int i = -200; i <= 200; i++)
+                {
+                    float psi = c.CentreRad + c.HalfWidthRad * i / 200f;
+                    if (Math.Abs(psi) > Math.PI / 2) continue;
+                    if (faces.At(plane, above * MathF.Sin(psi), above * MathF.Cos(psi)) is not { } p) continue;
+                    inChord++;
+                    if (p.Layer == ElementLayer.NickelIron) nickel++;
+                }
+                if (inChord > 200) Assert.True(nickel >= 0.25 * inChord, $"{preset}: base covers {nickel}/{inChord} of the chord");
+
+                for (int j = 0; j < c.Tongues.Count; j++)
+                {
+                    double gap = CutFaceModel.NominalGap(c.Fingers[j], c.Fingers[j + 1], faces.TongueRootRadius, rims);
+                    Assert.True(2 * c.Tongues[j].HalfWidth >= 0.3 * gap, $"{preset}: tongue root {2 * c.Tongues[j].HalfWidth} vs gap {gap}");
+                }
+                // The widest run of tongue hydrogen just inside the hydrogen layer's inner boundary, as an arc.
+                foreach (double frac in new[] { 0.97, 0.93, 0.88 })
+                {
+                    float rr = (float)(faces.HydrogenInnerRadiusCm / faces.OuterRadiusCm * frac);
+                    int run = 0;
+                    for (int i = -400; i <= 400; i++)
+                    {
+                        float psi = c.CentreRad + c.HalfWidthRad * i / 400f;
+                        var p = faces.At(plane, rr * MathF.Sin(psi), rr * MathF.Cos(psi));
+                        run = p?.Material == CutFaceMaterial.HydrogenTongue ? run + 1 : 0;
+                        widestTongue = Math.Max(widestTongue, run * c.HalfWidthRad / 400.0 * rr);
+                    }
+                }
+            }
+        Assert.True(widestTongue >= 3.0 / 150, $"{preset}: widest tongue {widestTongue * 150:F1} px at 150 px per outer radius");
     }
 
     [Fact]
@@ -263,28 +316,40 @@ public class CutFaceModelTests
             }
             return best;
         }
-        double capWidest = longest.TipRadius * (1 - CutFaceModel.CapLength);
-        double stalkMiddle = 0.5 * (capWidest + faces.FingerRootRadius);
+        double capWidest = longest.TipRadius - CutFaceModel.CapHeight * CutFaceModel.CapWidth * longest.HalfWidth;
+        double stalkMiddle = faces.FingerRootRadius + 0.8 * (longest.TipRadius - faces.FingerRootRadius);   // solid by then (ClumpSolidTo)
         Assert.True(Run(capWidest) > 1.5 * Run(stalkMiddle), $"cap {Run(capWidest)} vs stalk {Run(stalkMiddle)}");
 
-        // A ragged boundary: the oxygen/helium boundary's radius varies along the face, by more inside the cluster than outside.
+        // An undulating boundary, more so in the cones: the oxygen/helium boundary's noise is a function of the face angle alone,
+        // the same on both faces, so at a face angle inside a chord on one face and far from every chord on the other the two
+        // excursions differ only by the amplitude (BoundaryIn, capped, against BoundaryOut).
         int k = faces.Layers.Select(l => l.Layer).ToList().IndexOf(ElementLayer.CarbonOxygenCore);
         double R = faces.Layers[k].OuterRadiusCm / faces.OuterRadiusCm;
-        double Boundary(double psi)
+        double Boundary(int face, double psi)
         {
-            for (double r = 0.9 * R; r < 1.1 * R; r += 1e-4 * R)
-                if (At(r, psi)?.Unmixed != ElementLayer.CarbonOxygenCore) return r / R;
-            return 1.1;
+            for (double r = 0.8 * R; r < 1.2 * R; r += 1e-4 * R)
+                if (faces.At(face, (float)(r * Math.Sin(psi)), (float)(r * Math.Cos(psi)))?.Unmixed != ElementLayer.CarbonOxygenCore) return r / R;
+            return 1.2;
         }
-        var inside = Enumerable.Range(0, 40).Select(i => (double)c.CentreRad - c.HalfWidthRad + i * c.HalfWidthRad / 20)
-            .Where(p => Math.Abs(p) < Math.PI / 2).Select(Boundary).ToList();
-        // Outside: face angles at least 0.3 rad beyond every cluster's chord on this face (the in-cone strength has faded by then).
-        bool Far(double p) => faces.ClustersOn(plane).All(o => Math.Abs(p - o.CentreRad) > o.HalfWidthRad + 0.3);
-        var outside = Enumerable.Range(-155, 311).Select(i => i * 0.01).Where(Far).Select(Boundary).ToList();
-        Assert.True(inside.Count >= 20 && outside.Count >= 20);
-        Assert.True(inside.Max() - inside.Min() > 0.02, "the boundary is ragged in the cone");
-        Assert.True(inside.Max() - inside.Min() > outside.Max() - outside.Min(), "and more ragged in the cone than outside");
-        Assert.True(outside.Max() - outside.Min() > 0.002, "a little ragged outside too");
+        bool Inside(int face, double p) => faces.ClustersOn(face).Any(o => Math.Abs(p - o.CentreRad) <= o.HalfWidthRad);
+        bool Far(int face, double p) => faces.ClustersOn(face).All(o => Math.Abs(p - o.CentreRad) > o.HalfWidthRad + 0.3);
+        double inSum = 0, outSum = 0, outMax = 0;
+        int pairs = 0;
+        for (int face = 0; face < 2; face++)
+            for (int i = -155; i <= 155; i++)
+            {
+                double p = i * 0.01;
+                if (!Inside(face, p) || !Far(1 - face, p)) continue;
+                double dIn = Math.Abs(Boundary(face, p) - 1), dOut = Math.Abs(Boundary(1 - face, p) - 1);
+                inSum += dIn;
+                outSum += dOut;
+                outMax = Math.Max(outMax, dOut);
+                pairs++;
+            }
+        Assert.True(pairs >= 10, $"{pairs} face angles inside a chord on one face and far from chords on the other");
+        Assert.True(inSum > 1.5 * outSum, $"more undulation in the cones: {inSum / pairs:F4} vs {outSum / pairs:F4} on average");
+        Assert.True(outMax > 0.01, "the boundary undulates outside the cones too");
+        Assert.True(outMax <= CutFaceModel.BoundaryOut + 1e-3, "by at most BoundaryOut there");
 
         // Tongues lie in the gaps: at each tongue's deepest point (just above its tip) the nearest finger centre is farther than the tongue is wide.
         Assert.Contains(Enumerable.Range(0, 400), i =>

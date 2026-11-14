@@ -2,12 +2,16 @@
 // The cut faces' colour (ruling R-P2-21; Task 16), per pixel. Mirrors CutFaceModel.At and Opacity (C#, single precision, the same
 // hash and noise as FaceNoise) operation for operation: change one, change the other. Schematic. In face coordinates (a along y,
 // b >= 0 along the face's outward axis, both over the debris' outer radius; r and psi = atan(a, b)):
-//  - layers: boundary k at R_k (1 + A_k fbm1(psi)), A_k = min(cap_k, out + (in - out) W), W = 1 inside a cluster's chord, fading
-//    beyond it: ragged, more so in the mixing cones, never past a neighbouring boundary (cap_k);
-//  - nickel fingers (each cluster = one cone's chord across this face, 3 to 5 fingers): a wavy, ragged stalk from the finger root
-//    up to a mushroom cap whose top is the tip (at most NickelMax);
-//  - hydrogen tongues in the gaps between fingers, from the tongue root down to their tips (at least HydrogenMin).
-// Nickel wins over hydrogen, which wins over the layer; a finger or tongue counts only where it intrudes into another layer.
+//  - layers: boundary k at R_k (1 + A_k N_k(psi)), N_k a stretched, clamped 1D fbm, A_k = min(cap_k, out + (in - out) W) with
+//    separate outward and inward caps, W = 1 inside a cluster's chord, fading beyond it: low-frequency undulations, larger in the
+//    mixing cones, never meeting a neighbouring boundary;
+//  - nickel plumes (each cluster = one cone's chord across this face, 2 or 3 plumes; widths are arcs): a broad base narrowing to a
+//    slowly meandering, ragged stalk that is clumpy (nickel and oxygen) at mid-length, ending in a mushroom head about
+//    twice its width whose rolled-back underside overhangs it; the top of the head is the tip (at most NickelMax). Each plume
+//    wears an oxygen/silicon then a helium sheath;
+//  - hydrogen tongues in the gaps between plumes, from the tongue root down to their tips (at least HydrogenMin), with a helium rim.
+// Precedence: nickel, a tongue's hydrogen, the plumes' sheaths, a tongue's helium rim, the layer. Nothing is mixed below the nickel
+// layer's boundary, and a plume, sheath or tongue counts only where it intrudes into another layer.
 // Once there are shocks the radii are the confined ones (as the particles), and the opacity reads the speed back through
 // ParticleKinematics.FreeRadiusCm's inverse map (freeRadius below).
 
@@ -18,18 +22,21 @@ uniform float u_extent;          // the debris' outer radius, scene units: nothi
 uniform int u_plane;
 uniform int u_layerCount;
 uniform float u_layerOuter[6];   // outer radius of each layer over the outer radius, centre outward (the last is 1)
-uniform float u_layerCap[6];     // each boundary's largest relative move
+uniform float u_layerCapUp[6];   // each boundary's largest relative move outward
+uniform float u_layerCapDown[6]; // and inward
 uniform vec3 u_layerColor[6];    // HDR colours, in the same order
-uniform int u_nickelLayer;       // index of the nickel layer (-1: none)
-uniform int u_hydrogenLayer;     // index of the hydrogen layer (-1: none)
+uniform int u_nickelLayer;       // indices of the nickel, oxygen/silicon, helium and hydrogen layers (-1: none)
+uniform int u_oxygenLayer;
+uniform int u_heliumLayer;
+uniform int u_hydrogenLayer;
 uniform vec3 u_nickelColor;
 uniform vec3 u_hydrogenColor;
-uniform float u_fingerRoot;      // where the fingers start (over the outer radius)
+uniform float u_fingerRoot;      // where the plumes start (over the outer radius)
 uniform float u_tongueRoot;      // where the tongues hang from; negative: no tongues
 uniform int u_clusterCount;      // clusters on this face
-uniform vec4 u_cluster[10];      // centre (rad), half-width (rad), first finger, finger count
-uniform vec4 u_finger[50];       // centre (rad), tip radius, widest stalk half-width (rad), seed
-uniform vec4 u_tongue[40];       // centre (rad), tip radius, root half-width (rad), seed; cluster c's start at first finger - c
+uniform vec4 u_cluster[10];      // centre (rad), half-width (rad), first plume, plume count
+uniform vec4 u_finger[30];       // centre (rad), tip radius, stalk half-width (arc), seed
+uniform vec4 u_tongue[20];       // centre (rad), tip radius, root half-width (arc), seed; cluster c's start at first plume - c
 uniform float u_transitionRadius; // radius of the profile's break speed v_t, scene units
 uniform float u_densityIndex;     // the profile's outer slope n
 uniform float u_freeScale;        // K = R* + v_max (t - t_bo), scene units: the fastest particle's free radius
@@ -41,26 +48,36 @@ uniform float u_shockRatio;       // s_m (ParticleKinematics.ShockedSpeedRatio);
 out vec4 o_color;
 
 // CutFaceModel's presentation constants (the same values).
-const float SPREAD = 0.7;
-const float STALK_ROOT = 0.25;
-const float NECK_START = 0.5;
-const float STALK_NARROW = 0.3;
-const float STALK_MAX_ANGLE = 0.42;
-const float CAP_LENGTH = 0.07;
-const float CAP_UNDER = 0.5;
-const float CAP_WIDTH = 2.4;
-const float WIGGLE_AMP = 0.1;
-const float WIGGLE_FREQ = 2.5;
-const float TONGUE_WIGGLE = 0.06;
-const float TONGUE_MAX_ANGLE = 0.7;
-const float EDGE_FREQ = 28.0;
-const float RAGGED = 0.5;
-const float BOUNDARY_FREQ = 7.0;
-const float BOUNDARY_OUT = 0.02;
-const float BOUNDARY_IN = 0.08;
-const float BOUNDARY_FALLOFF = 0.25;
+const float STALK_NARROW = 0.15;
+const float BASE_BOOST = 0.8;
+const float BASE_LENGTH = 0.35;
+const float CAP_WIDTH = 2.3;
+const float CAP_HEIGHT = 0.7;
+const float CAP_DROOP0 = 0.35;
+const float CAP_DROOP = 0.9;
+const float MEANDER_AMP = 0.25;
+const float MEANDER_FREQ = 1.3;
+const float RIM_OXYGEN = 0.016;
+const float RIM_HELIUM = 0.013;
+const float TONGUE_MEANDER = 0.05;
+const float EDGE_LOW_FREQ = 9.0;
+const float EDGE_LOW_AMP = 0.3;
+const float EDGE_HIGH_FREQ = 40.0;
+const float EDGE_HIGH_AMP = 0.1;
+const float BOUNDARY_FREQ = 3.0;
+const float BOUNDARY_GAIN = 1.6;
+const float BOUNDARY_OUT = 0.06;
+const float BOUNDARY_IN = 0.15;
+const float BOUNDARY_FALLOFF = 0.3;
+const float CLUMP_FREQ = 20.0;
+const float CLUMP_LEVEL = -0.05;
+const float CLUMP_FROM = 0.05;
+const float CLUMP_TO = 0.2;
+const float CLUMP_SOLID_FROM = 0.55;
+const float CLUMP_SOLID_TO = 0.9;
 const uint EDGE_SEED = 17u;
 const uint BOUNDARY_SEED = 101u;
+const uint CLUMP_SEED = 29u;
 
 // FaceNoise: lowbias32, 24-bit unit floats, smoothstep value noise and its fractal sums.
 uint hash(uint x)
@@ -139,37 +156,55 @@ float sstep(float e0, float e1, float x)
     return t * t * (3.0 - 2.0 * t);
 }
 
-// CutFaceModel.InFinger: f = (centre, tip, widest stalk half-width (rad), seed).
-bool inFinger(float r, float psi, vec4 f, float w, float slot, float rag)
+
+// CutFaceModel.InHead: the mushroom head, in arcs: a dome above its widest line, the rolled-back underside below it.
+bool inHead(float arc, float r, float W, float R, float capC)
 {
-    if (r > f.y || r < u_fingerRoot) return false;
-    float s = (r - u_fingerRoot) / (f.y - u_fingerRoot);
-    float centre = f.x + WIGGLE_AMP * w * value1(uint(f.w), s * WIGGLE_FREQ);
-    float d = abs(psi - centre);
-    float capR = CAP_LENGTH * f.y;
-    float capC = f.y - capR;
-    if (r >= capC - CAP_UNDER * capR)
+    float x = arc / W;
+    if (x >= 1.0) return false;
+    if (r >= capC)
     {
-        float x = d / (CAP_WIDTH * f.z * rag);
-        float y = (r - capC) / (r >= capC ? capR : CAP_UNDER * capR);
-        if (x * x + y * y <= 1.0) return true;
+        float y = (r - capC) / R;
+        return x * x + y * y <= 1.0;
     }
-    if (r > capC) return false;
-    float grow = STALK_ROOT + (1.0 - STALK_ROOT) * min(1.0, s / NECK_START);
-    float neck = 1.0 - STALK_NARROW * max(0.0, s - NECK_START) / (1.0 - NECK_START);
-    float hw = f.z * grow * neck * rag;
-    return d <= min(hw, STALK_MAX_ANGLE * slot);
+    return capC - r <= R * (CAP_DROOP0 + CAP_DROOP * x * x) * sqrt(1.0 - x * x);
 }
 
-// CutFaceModel.InTongue: t = (centre, tip, half-width at the root, seed).
-bool inTongue(float r, float psi, vec4 t, float w, float slot, float rag)
+// CutFaceModel.InPlume: f = (centre, tip, stalk half-width (arc), seed). 0 outside, 1 nickel, 2 oxygen sheath, 3 helium sheath.
+int inPlume(float r, float psi, vec4 f, float w, float rag, float clump, float rimO, float rimHe)
 {
-    if (r < t.y || r > u_tongueRoot) return false;
+    float rims = rimO + rimHe;
+    if (r < u_fingerRoot || r > f.y * (1.0 + rims)) return 0;
+    float s = clamp((r - u_fingerRoot) / (f.y - u_fingerRoot), 0.0, 1.0);
+    float centre = f.x + MEANDER_AMP * w * s * value1(uint(f.w), s * MEANDER_FREQ);
+    float arc = abs(psi - centre) * r;
+    float stalk = f.z * (1.0 - STALK_NARROW * s) * rag;
+    float hw = stalk * (1.0 + BASE_BOOST * (1.0 - sstep(0.0, BASE_LENGTH, s)));
+    float capW = CAP_WIDTH * f.z * rag;
+    float capR = CAP_HEIGHT * CAP_WIDTH * f.z;
+    float capC = f.y - capR;
+    float clumpy = sstep(CLUMP_FROM, CLUMP_TO, s) * (1.0 - sstep(CLUMP_SOLID_FROM, CLUMP_SOLID_TO, s));
+    bool dense = clump > -2.0 + (CLUMP_LEVEL + 2.0) * clumpy;
+    for (int level = 1; level <= 3; level++)
+    {
+        float ex = level == 1 ? 0.0 : level == 2 ? rimO : rims;
+        if (level > 1 && ex == (level == 2 ? 0.0 : rimO)) continue;
+        if (r <= capC && arc <= hw + ex * r && (level > 1 || dense)) return level;
+        if (inHead(arc, r, capW + ex * r, capR + ex * f.y, capC)) return level;
+    }
+    return 0;
+}
+
+// CutFaceModel.InTongue: t = (centre, tip, root half-width (arc), seed). 0 outside, 1 hydrogen, 2 its helium rim.
+int inTongue(float r, float psi, vec4 t, float w, float rag, float rimHe)
+{
+    if (r < t.y || r > u_tongueRoot) return 0;
     float s = (r - t.y) / (u_tongueRoot - t.y);
-    float centre = t.x + TONGUE_WIGGLE * w * value1(uint(t.w), s * WIGGLE_FREQ);
-    float d = abs(psi - centre);
-    float hw = t.z * (0.2 + 0.8 * s) * rag;
-    return d <= min(hw, TONGUE_MAX_ANGLE * slot);
+    float centre = t.x + TONGUE_MEANDER * w * value1(uint(t.w), s * MEANDER_FREQ);
+    float arc = abs(psi - centre) * r;
+    float hw = t.z * (0.15 + 0.85 * s) * rag;
+    if (arc <= hw) return 1;
+    return arc <= hw + rimHe * r ? 2 : 0;
 }
 
 // ParticleKinematics.FreeRadiusCm: the free-expansion radius of the debris drawn at radius r (identity without shocks). Above
@@ -184,6 +219,7 @@ float freeRadius(float r)
     return min(r / u_freeScale, sm) * u_freeScale;
 }
 
+
 void main()
 {
     float rho = length(v_world);
@@ -194,7 +230,7 @@ void main()
     float r = sqrt(v_face.x * v_face.x + v_face.y * v_face.y);
     float psi = atan(v_face.x, v_face.y);
 
-    // Smeared boundaries.
+    // Undulating boundaries.
     float weight = 0.0;
     for (int c = 0; c < u_clusterCount; c++)
         weight = max(weight, 1.0 - sstep(u_cluster[c].y, u_cluster[c].y + BOUNDARY_FALLOFF, abs(psi - u_cluster[c].x)));
@@ -202,41 +238,65 @@ void main()
     int layer = u_layerCount - 1;
     for (int k = 0; k < u_layerCount - 1; k++)
     {
-        float R = u_layerOuter[k], A = min(amp, u_layerCap[k]);
-        if (r <= R * (1.0 - A)) { layer = k; break; }
-        if (r <= R * (1.0 + A) && r <= R * (1.0 + A * fbm1(BOUNDARY_SEED + uint(k), psi * BOUNDARY_FREQ, 3))) { layer = k; break; }
+        float R = u_layerOuter[k], lo = min(amp, u_layerCapDown[k]), hi = min(amp, u_layerCapUp[k]);
+        if (r <= R * (1.0 - lo)) { layer = k; break; }
+        if (r <= R * (1.0 + hi))
+        {
+            float nn = clamp(BOUNDARY_GAIN * fbm1(BOUNDARY_SEED + uint(k), psi * BOUNDARY_FREQ, 3), -1.0, 1.0);
+            if (r <= R * (1.0 + (nn >= 0.0 ? hi : lo) * nn)) { layer = k; break; }
+        }
     }
-    vec3 color = u_layerColor[layer];
+    int drawn = layer;   // the layer whose colour is drawn (100: a plume's nickel, 101: a tongue's hydrogen)
     bool mixed = false;
 
-    // Fingers, then tongues, where they intrude into another layer; the edge noise only where a cluster covers the pixel.
     if (u_clusterCount > 0 && layer != u_nickelLayer)
     {
-        float rag = 0.0;
-        for (int c = 0; c < u_clusterCount && !mixed; c++)
+        float rimO = u_oxygenLayer >= 0 ? RIM_OXYGEN : 0.0, rimHe = u_heliumLayer >= 0 ? RIM_HELIUM : 0.0;
+        float rag = 0.0, clump = 0.0;
+        int level = 0;
+        for (int c = 0; c < u_clusterCount; c++)
         {
             vec4 cl = u_cluster[c];
-            if (abs(psi - cl.x) > cl.y) continue;
-            if (rag == 0.0) rag = 1.0 + RAGGED * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_FREQ, v_face.y * EDGE_FREQ, 2);
+            float off = abs(psi - cl.x);
+            if (off > cl.y + rimO + rimHe) continue;
+            if (rag == 0.0)
+            {
+                rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)
+                    + EDGE_HIGH_AMP * value2(EDGE_SEED + 8u + uint(u_plane), v_face.x * EDGE_HIGH_FREQ, v_face.y * EDGE_HIGH_FREQ);
+                clump = fbm2(CLUMP_SEED + uint(u_plane), v_face.x * CLUMP_FREQ, v_face.y * CLUMP_FREQ, 2);
+            }
             int first = int(cl.z), count = int(cl.w);
-            float slot = 2.0 * SPREAD * cl.y / float(count);
             for (int j = 0; j < count; j++)
-                if (inFinger(r, psi, u_finger[first + j], cl.y, slot, rag)) { color = u_nickelColor; mixed = true; break; }
+            {
+                int l = inPlume(r, psi, u_finger[first + j], cl.y, rag, clump, rimO, rimHe);
+                if (l == 1 && off > cl.y) l = rimO > 0.0 ? 2 : 3;
+                if (l > 0 && (level == 0 || l < level)) level = l;
+            }
         }
-        if (u_tongueRoot > 0.0 && layer != u_hydrogenLayer)
-            for (int c = 0; c < u_clusterCount && !mixed; c++)
+        int tongue = 0;
+        if (level != 1 && u_tongueRoot > 0.0 && layer != u_hydrogenLayer)
+            for (int c = 0; c < u_clusterCount; c++)
             {
                 vec4 cl = u_cluster[c];
                 if (abs(psi - cl.x) > cl.y) continue;
                 int first = int(cl.z) - c, count = int(cl.w) - 1;
-                float slot = 2.0 * SPREAD * cl.y / float(count + 1);
                 for (int j = 0; j < count; j++)
-                    if (inTongue(r, psi, u_tongue[first + j], cl.y, slot, rag)) { color = u_hydrogenColor; mixed = true; break; }
+                {
+                    int l = inTongue(r, psi, u_tongue[first + j], cl.y, rag, rimHe);
+                    if (l > 0 && (tongue == 0 || l < tongue)) tongue = l;
+                }
             }
+        // Nickel, then a tongue's hydrogen, then the plumes' sheaths, then a tongue's helium rim; each only where it intrudes.
+        if (level == 1) drawn = 100;
+        else if (tongue == 1) drawn = 101;
+        else if (level == 2) drawn = u_oxygenLayer;
+        else if (level == 3 || tongue == 2) drawn = u_heliumLayer;
+        mixed = drawn != layer;
     }
+    vec3 color = drawn == 100 ? u_nickelColor : drawn == 101 ? u_hydrogenColor : u_layerColor[drawn];
 
-    // Ruling R-P2-23: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (free radius ~ speed); fingers
-    // and tongues are opaque.
+    // Ruling R-P2-23: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (free radius ~ speed); plumes,
+    // sheaths and tongues are opaque.
     float free = freeRadius(rho);
     if (!mixed && free > u_transitionRadius) alpha *= clamp(pow(free / u_transitionRadius, -u_densityIndex), 0.0, 1.0);
     o_color = vec4(color, alpha);   // the alpha is also the face mask the tone map reads

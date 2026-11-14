@@ -111,29 +111,42 @@ public class FaceNoiseTests
         string text = Frag();
         var pairs = new (string Glsl, float Value)[]
         {
-            ("SPREAD", CutFaceModel.Spread), ("STALK_ROOT", CutFaceModel.StalkRoot), ("NECK_START", CutFaceModel.NeckStart), ("STALK_NARROW", CutFaceModel.StalkNarrow), ("STALK_MAX_ANGLE", CutFaceModel.StalkMaxAngle),
-            ("CAP_LENGTH", CutFaceModel.CapLength), ("CAP_UNDER", CutFaceModel.CapUnder), ("CAP_WIDTH", CutFaceModel.CapWidth),
-            ("WIGGLE_AMP", CutFaceModel.WiggleAmp), ("WIGGLE_FREQ", CutFaceModel.WiggleFreq), ("TONGUE_WIGGLE", CutFaceModel.TongueWiggle),
-            ("TONGUE_MAX_ANGLE", CutFaceModel.TongueMaxAngle), ("EDGE_FREQ", CutFaceModel.EdgeFreq), ("RAGGED", CutFaceModel.Ragged),
-            ("BOUNDARY_FREQ", CutFaceModel.BoundaryFreq), ("BOUNDARY_OUT", CutFaceModel.BoundaryOut), ("BOUNDARY_IN", CutFaceModel.BoundaryIn),
-            ("BOUNDARY_FALLOFF", CutFaceModel.BoundaryFalloff),
+            ("STALK_NARROW", CutFaceModel.StalkNarrow), ("BASE_BOOST", CutFaceModel.BaseBoost), ("BASE_LENGTH", CutFaceModel.BaseLength),
+            ("CAP_WIDTH", CutFaceModel.CapWidth), ("CAP_HEIGHT", CutFaceModel.CapHeight), ("CAP_DROOP0", CutFaceModel.CapDroop0),
+            ("CAP_DROOP", CutFaceModel.CapDroop), ("MEANDER_AMP", CutFaceModel.MeanderAmp), ("MEANDER_FREQ", CutFaceModel.MeanderFreq),
+            ("RIM_OXYGEN", CutFaceModel.RimOxygen), ("RIM_HELIUM", CutFaceModel.RimHelium), ("TONGUE_MEANDER", CutFaceModel.TongueMeander),
+            ("EDGE_LOW_FREQ", CutFaceModel.EdgeLowFreq), ("EDGE_LOW_AMP", CutFaceModel.EdgeLowAmp),
+            ("EDGE_HIGH_FREQ", CutFaceModel.EdgeHighFreq), ("EDGE_HIGH_AMP", CutFaceModel.EdgeHighAmp),
+            ("BOUNDARY_FREQ", CutFaceModel.BoundaryFreq), ("BOUNDARY_GAIN", CutFaceModel.BoundaryGain), ("BOUNDARY_OUT", CutFaceModel.BoundaryOut), ("BOUNDARY_IN", CutFaceModel.BoundaryIn),
+            ("BOUNDARY_FALLOFF", CutFaceModel.BoundaryFalloff), ("CLUMP_FREQ", CutFaceModel.ClumpFreq), ("CLUMP_LEVEL", CutFaceModel.ClumpLevel),
+            ("CLUMP_FROM", CutFaceModel.ClumpFrom), ("CLUMP_TO", CutFaceModel.ClumpTo), ("CLUMP_SOLID_FROM", CutFaceModel.ClumpSolidFrom), ("CLUMP_SOLID_TO", CutFaceModel.ClumpSolidTo),
         };
         foreach (var (name, value) in pairs)
         {
-            var m = System.Text.RegularExpressions.Regex.Match(text, $@"const float {name} = ([0-9.]+);");
+            var m = System.Text.RegularExpressions.Regex.Match(text, $@"const float {name} = (-?[0-9.]+);");
             Assert.True(m.Success, $"cutface.frag declares {name}");
             Assert.Equal(value, float.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
         }
         Assert.Contains($"const uint EDGE_SEED = {CutFaceModel.EdgeSeed}u;", text);
         Assert.Contains($"const uint BOUNDARY_SEED = {CutFaceModel.BoundarySeed}u;", text);
-        // The per-pixel rules, line for line with CutFaceModel.At / InFinger / InTongue.
+        Assert.Contains($"const uint CLUMP_SEED = {CutFaceModel.ClumpSeed}u;", text);
+        // The per-pixel rules, line for line with CutFaceModel.At / InPlume / InHead / InTongue.
         foreach (string needle in new[] {
-            "float grow = STALK_ROOT + (1.0 - STALK_ROOT) * min(1.0, s / NECK_START);",
-            "float neck = 1.0 - STALK_NARROW * max(0.0, s - NECK_START) / (1.0 - NECK_START);",
-            "float hw = f.z * grow * neck * rag;", "return d <= min(hw, STALK_MAX_ANGLE * slot);", "float x = d / (CAP_WIDTH * f.z * rag);",
-            "float y = (r - capC) / (r >= capC ? capR : CAP_UNDER * capR);", "float hw = t.z * (0.2 + 0.8 * s) * rag;", "return d <= min(hw, TONGUE_MAX_ANGLE * slot);",
-            "fbm1(BOUNDARY_SEED + uint(k), psi * BOUNDARY_FREQ, 3)", "fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_FREQ, v_face.y * EDGE_FREQ, 2)",
-            "float psi = atan(v_face.x, v_face.y);", "uniform vec4 u_cluster[10];", "uniform vec4 u_finger[50];", "uniform vec4 u_tongue[40];" })
+            "float centre = f.x + MEANDER_AMP * w * s * value1(uint(f.w), s * MEANDER_FREQ);",
+            "float arc = abs(psi - centre) * r;", "float stalk = f.z * (1.0 - STALK_NARROW * s) * rag;",
+            "float hw = stalk * (1.0 + BASE_BOOST * (1.0 - sstep(0.0, BASE_LENGTH, s)));",
+            "float capR = CAP_HEIGHT * CAP_WIDTH * f.z;", "bool dense = clump > -2.0 + (CLUMP_LEVEL + 2.0) * clumpy;",
+            "if (r <= capC && arc <= hw + ex * r && (level > 1 || dense)) return level;",
+            "if (inHead(arc, r, capW + ex * r, capR + ex * f.y, capC)) return level;",
+            "return capC - r <= R * (CAP_DROOP0 + CAP_DROOP * x * x) * sqrt(1.0 - x * x);",
+            "float hw = t.z * (0.15 + 0.85 * s) * rag;", "return arc <= hw + rimHe * r ? 2 : 0;",
+            "if (l == 1 && off > cl.y) l = rimO > 0.0 ? 2 : 3;",
+            "float nn = clamp(BOUNDARY_GAIN * fbm1(BOUNDARY_SEED + uint(k), psi * BOUNDARY_FREQ, 3), -1.0, 1.0);",
+            "if (r <= R * (1.0 + (nn >= 0.0 ? hi : lo) * nn)) { layer = k; break; }",
+            "clump = fbm2(CLUMP_SEED + uint(u_plane), v_face.x * CLUMP_FREQ, v_face.y * CLUMP_FREQ, 2);",
+            "rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)",
+            "+ EDGE_HIGH_AMP * value2(EDGE_SEED + 8u + uint(u_plane), v_face.x * EDGE_HIGH_FREQ, v_face.y * EDGE_HIGH_FREQ);",
+            "float psi = atan(v_face.x, v_face.y);", "uniform vec4 u_cluster[10];", "uniform vec4 u_finger[30];", "uniform vec4 u_tongue[20];" })
             Assert.Contains(needle, text);
     }
 
@@ -147,8 +160,8 @@ public class FaceNoiseTests
             var p = CutFacePlaneArrays.Pack(faces, plane);
             Assert.Equal(clusters.Count, p.ClusterCount);
             Assert.Equal(4 * CutFaceRenderer.MaxCones, p.Clusters.Length);
-            Assert.Equal(200, p.Fingers.Length);   // u_finger[50]
-            Assert.Equal(160, p.Tongues.Length);   // u_tongue[40]
+            Assert.Equal(120, p.Fingers.Length);   // u_finger[30]
+            Assert.Equal(80, p.Tongues.Length);   // u_tongue[20]
             int first = 0;
             for (int c = 0; c < clusters.Count; c++)
             {
