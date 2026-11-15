@@ -141,6 +141,13 @@ timeline and the same physics core.
   same scene and readouts in a compact form.
 - That decision is made at milestone 1 and reported to the owner before work continues.
 - **When the Close-up window is minimized or fully hidden, it stops drawing.**
+- **Milestone 1 result (owner's decision, 2026-11-15).** On Iris Xe both views held 62 fps with the light bending at
+  quarter resolution and 40 fps at half. The owner chose to **keep the window and try speed-ups** (Task 4b), and to **let
+  the user set the light-bending detail**, because other people's graphics will be faster or slower:
+  - **Close-up menu ▸ Light-bending detail:** Auto (the governor, default), Full, Half, Quarter. Remembered between
+    runs in `%LOCALAPPDATA%\SupernovaLab\layout.json`.
+  - The chosen level is shown in the window's notes (for example "Light bending: half resolution (your setting)").
+  - Auto keeps the governor of §6.6, stepping down to hold 50 fps.
 
 ## 3. The first second at the core
 

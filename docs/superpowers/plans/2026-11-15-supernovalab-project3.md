@@ -526,6 +526,32 @@ public void NoRemnant_Destroyed(string id) => Assert.Equal(CloseUpScene.Destroye
     - **Otherwise:** write ruling R-P3-1 for the inset fallback, and **stop and report to the owner before Task 5**.
 - [ ] **Step 7: Commit** — `git commit -m "Close-up window, lensing pass and speed test (spec §2, §6.6)"`.
 
+### Task 4b: Speed-ups and the user's light-bending detail setting (added 2026-11-15, owner's decision)
+
+**Files:** `CloseUpSceneController.cs`, `LensingPass.cs`, `lensing.frag`, `CloseUpWindow.xaml(.cs)`, `CloseUpViewModel.cs`,
+`Services/LayoutStore.cs` (`CloseUpLensingDetail`), `docs/perf-2026-11.md`; tests in `CloseUpWindowTests.cs`,
+`CloseUpSceneTests.cs`, `SnapshotRequestTests.cs`.
+
+**Interfaces:** Produces `public enum LensingDetail { Auto, Full, Half, Quarter }`, `CloseUpViewModel.LensingDetail` (bound
+to Close-up menu ▸ Light-bending detail, radio items), `LayoutSettings.CloseUpLensingDetail` (default Auto), and the note
+`"Light bending: {full|half|quarter} resolution ({your setting|automatic})"`.
+
+- [ ] **Step 1: Baseline (launch 1).** Run the `--bench-baseline` command recorded in `docs/perf-2026-11.md` and attribute
+  the fixed per-frame cost to its real cause. Record the numbers.
+- [ ] **Step 2: Speed-ups, aimed by Step 1.** At minimum, ruling R-P3-10 (**cache the traced rays**): the ray map (each
+  pixel's fate and exit direction, or surface hit point) depends only on the camera, the spin, the viewport and the
+  level — not on time. Trace into a cached RGBA16F/RGBA32F target only when those change; every other frame only samples
+  the environment through the cache. While the camera moves, trace at the governed level; when it stops, refine to the
+  user's level over the next frames. Add whatever Step 1 shows is the fixed cost's fix.
+- [ ] **Step 3: The user's setting.** The Close-up menu ▸ Light-bending detail (Auto / Full / Half / Quarter), persisted in
+  layout.json, honoured by the controller (Auto = governor), with the note.
+- [ ] **Step 4: Tests.** Cache invalidation (camera, spin, viewport, level change → retrace; time change → no retrace);
+  the setting round-trips through LayoutStore and an unknown stored value falls back to Auto; the note text per level.
+- [ ] **Step 5: Bench again (launch 2).** Both views at 1366×768 + 900×640 and 1920×1080, playing, camera still and camera
+  orbiting, at each level. Record in `docs/perf-2026-11.md`. Target ≥ 50 fps at Full with a still camera, and at the
+  Auto level while orbiting.
+- [ ] **Step 6: Commit.**
+
 ---
 
 ## Milestone 2: the neutron star
