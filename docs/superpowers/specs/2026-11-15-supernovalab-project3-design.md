@@ -51,8 +51,11 @@ timeline and the same physics core.
    - The neutron star's visible surface fraction against the exact Schwarzschild ray result.
 3. The observed checks pass:
    - The Crab's period at its age (33.4 ms, Project 1's tolerance) and its light cylinder (≈ 1,600 km).
-   - The Cas A neutron star's surface temperature: about 2.0–2.1 × 10⁶ K at about 340 yr (Heinke & Ho 2010).
-     - The lab's cooling model (`NeutronStarCoolingModel`, Project 1) gives about 1.8 × 10⁶ K there, about 10% low.
+   - The Cas A neutron star's surface temperature as seen from afar, T_s^∞: about 1.4–1.5 × 10⁶ K at about 340 yr
+     (Heinke & Ho 2010's local 2.0–2.1 × 10⁶ K, redshifted for their best-fit mass and radius; `compact.md` §C9, K1).
+     - The lab's cooling model (`NeutronStarCoolingModel`, Project 1) gives about 1.8 × 10⁶ K there, **about 20–30% warm**.
+       (Corrected 2026-11-15: this line first compared the lab's far-away temperature with the measured local one, and
+       called the lab 10% cool.)
      - Under R47b this is **disclosed, not tuned**: inconsistency #54, and the temperature readout's tooltip says so for
        the Cas A preset. The test checks that the comparison is shown with the right figures.
      - Changing the cooling model would change the X-ray panel, so it is flagged (§10).
@@ -220,7 +223,7 @@ O-Ne-Mg core for an electron-capture star, before collapse. Its size comes from 
     disagree, and the panel change is flagged (§10) **[my call]**.
   - **From 30 to 100 yr** it is the cooling model's band, as signals §8.4 requires: the crust has not relaxed.
   - **After 100 yr** it is the model's value.
-  - **Check:** the Cas A neutron star (criterion 3: about 10% low, disclosed as #54).
+  - **Check:** the Cas A neutron star (criterion 3: about 20–30% warm, disclosed as #54).
 - **Light bending at the surface:**
   - Light leaving the star follows the same Schwarzschild light paths as the black hole's optics (§6.6), so part of the
     star's far side is visible past its limb.
@@ -276,7 +279,7 @@ Two more rules:
     **[my call]**.
 - **The beams:**
   - They come out along the magnetic poles.
-  - Their half-opening angle is from the research's published relation with period (for example ρ ∝ P^(−1/2)).
+  - Their half-opening angle is from the research's published relation with period (`compact.md` §C4: ρ = 5.6° P^(−1/2), Biggs 1990; #59).
 - **The direction to Earth:**
   - An arrow labelled "To Earth".
   - The lab's existing "Jet or beam toward Earth" checkbox decides whether a beam crosses it.
@@ -362,8 +365,9 @@ Two more rules:
 - **Spin:**
   - From the lab's magnetar spin-down convention (Kasen & Bildsten 2010's t_p, as `PulsarModel` already uses for
     magnetars).
-  - It reaches periods of seconds within the timeline, matching observed magnetars (about 2–12 s; to be confirmed by
-    the research).
+  - Observed magnetars spin at about 2–12 s (`compact.md` §C6, K5). Only the lab's slow-rotation magnetar reaches
+    seconds within the timeline; its fast-born magnetars stay near 0.2 s at 1,000 yr. That mismatch is disclosed on
+    screen as #57, not tuned. (Corrected 2026-11-15: this line first said every magnetar reaches seconds.)
   - At real periods of a second or more, the rotation is shown at real speed (§4.3).
 - **Field decay:** if the research gives a decay law with a timescale inside 1,000 yr, the field readout follows it.
   Otherwise the readout notes the decay is not modelled.
@@ -660,7 +664,7 @@ Built on the `project3` branch, subagent-driven as before. Reversible calls are 
   shows.
 - A real birth-spin model for black holes (today's spin is from the Rotation input, Speculative).
 - **The cooling model:**
-  - Project 1's `NeutronStarCoolingModel` reads about 10% low against Cas A's neutron star (#54).
+  - Project 1's `NeutronStarCoolingModel` reads about 20–30% warm against Cas A's neutron star (#54).
   - Its panel starts at 30 yr, while the close-up's early-cooling track starts at about a minute.
   - Changing either would change the X-ray panel.
 - Kerr light bending for a fast-spinning neutron star.
@@ -703,7 +707,8 @@ Built on the `project3` branch, subagent-driven as before. Reversible calls are 
 - **C3:** The drawn rotation continues while the timeline is paused and shares one phase with the main view.
 - **C4:** The kick direction is measured where the research finds one, otherwise drawn from the run's seed (it changes
   with Re-roll). The main view's marker drifts with it.
-- **C5:** The magnetic tilt is schematic at 45°, matching Project 2, unless a preset's inclination is published.
+- **C5:** The magnetic tilt is schematic at 45°, matching Project 2, unless a preset's inclination is published. The
+  research found one: the Crab, 62° (`compact.md` §C4, K3), so that preset uses it in both views.
 - **C6:** The close-up draws the beams from the time the magnetosphere forms. The main view keeps drawing them only once
   the pulses escape the debris, and a note explains the difference.
 - **C7:** Giant flares also appear on the gamma-ray panel, so no view shows what no panel records (§7.3).
@@ -712,7 +717,7 @@ Built on the `project3` branch, subagent-driven as before. Reversible calls are 
 - **C10:** A white-dwarf close-up is out of scope. Those outcomes get a message.
 - **C11:** The neutron star's own rotation is neglected in its light bending.
 - **C12:** The neutron star's drawn brightness is tone-mapped to read, not set to its real brightness, with a note.
-- **C13:** The Cas A temperature check is disclosed, not tuned. The lab reads about 1.8 MK against 2.0–2.1 MK observed
+- **C13:** The Cas A temperature check is disclosed, not tuned. The lab reads about 1.8 MK against about 1.4–1.5 MK observed (seen from afar; 20–30% warm)
   (#54), and the model change is flagged.
 - **C14:** Before 30 yr the close-up shows an early-cooling band from new research. The X-ray panel is unchanged.
 - **C15:** A collapsar and a pulsational pair-instability black hole use the failed (stalled) track. A magnetar-driven
