@@ -21,8 +21,9 @@ timeline and the same physics core.
 ### What the owner wants (agreed 2026-11-15)
 - **Scientific accuracy, matching observations as well as we reasonably can.** Accuracy comes first. Wherever an observed
   object can check a number, it does, and the check is a test.
-- Nothing may depend on sound (the owner is hard of hearing). Pulsars are often presented as sounds. Here the pulse
-  rhythm is shown on screen.
+- Nothing may depend on sound (the owner is hard of hearing). Pulsars are often presented as sounds. Here they
+  **can** have that sound (the owner's request, §4.4), and the pulse rhythm is **always** shown on screen as well.
+  Everything the sound conveys is also on screen.
 
 ### Ground rules
 - **The physics core is the single source.** New physics (the core's first second, the neutron star at each moment, the
@@ -301,7 +302,34 @@ Two more rules:
 - **Until the pulses escape the debris** (`PulsarModel.EmergenceTimeS`), the trace reads "To Earth: hidden by debris", in
   step with the radio panel.
 - With the beam not toward Earth, it reads "Beam misses Earth".
-- **No sound,** ever.
+- **The pulsar's sound (added at the owner's request).** Pulsars are usually presented as radio-telescope pulses
+  played as sound, and the lab can do the same:
+  - **What it plays:**
+    - One short click per pulse at the **real** period, as in the usual radio-astronomy recordings.
+    - A slow pulsar ticks. The Crab's 30 a second blurs into a buzz. A millisecond pulsar becomes a tone. A magnetar
+      gives one click every few seconds.
+    - The clicks are synthesised in code, so no recordings are bundled and no licence is needed.
+    - The click's shape is schematic.
+  - **When it plays:** only when a radio telescope on Earth would receive pulses, so it agrees with the pulse trace and
+    the radio panel:
+    - the pulsar's beam is toward Earth;
+    - the pulses have escaped the debris;
+    - the timeline is playing.
+    - Otherwise it is silent, and the trace's on-screen words say why ("hidden by debris", "beam misses Earth").
+  - **The sound and the picture keep separate rates, both labelled.**
+    - The sound plays at the real rate. Sound has no flash limit, and the real rate is the accurate one.
+    - The picture stays slowed for flash safety (§4.3).
+    - The trace reads, for example, "Sound: real rate, 30 a second · Picture: shown 60× slower".
+  - **The switch:**
+    - Close-up menu ▸ Sound, **off by default** **[my call]**: the lab has never made a sound, and a sudden noise
+      shouldn't surprise anyone.
+    - The pulse trace shows a speaker symbol with its state (on, or crossed out) and the volume, so you can see whether
+      it is sounding.
+  - **Nothing depends on it:** the period, the rhythm and every reason for silence are on screen.
+  - **Implementation:** a small audio-output library (NAudio, MIT) or Windows' own audio API. The builder decides,
+    keeping to permissive licences and no network.
+  - **Tests:** the click schedule equals the model's period at each time, and it is silent exactly when the trace says
+    "hidden by debris" or "beam misses Earth".
 
 ### 4.5 Readouts
 - mass (gravitational);
@@ -621,7 +649,7 @@ Built on the `project3` branch, subagent-driven as before. Reversible calls are 
 - A full magnetohydrodynamic magnetosphere: the field is a dipole, opening at the light cylinder.
 - A neutron star's own rotation in the light bending (§4.1).
 - Black-hole ring-down (quasi-normal modes) drawn as such: settling is a labelled fade.
-- Sound of any kind, including pulsar "sounds".
+- Sound beyond the pulsar's pulses (§4.4): no narration, no other sound effects.
 - A starfield behind the black hole: made-up or Earth-sky stars would be decoration, and Earth's bright stars mostly lie
   in front of a remnant, not behind it.
 - Kilonovas, mergers and other non-supernova transients, as before.
@@ -665,7 +693,8 @@ Built on the `project3` branch, subagent-driven as before. Reversible calls are 
 - **D6:** The first second (§3), the neutron star and magnetar (§4, §5), the black hole (§6) and the window (§2, §8)
   were approved section by section.
 - **D7:** The neutron star's layers are shown, including the neutron drip line, as a cutaway with a magnified crust strip.
-- **D8:** The pulse rhythm is shown on screen, slowed and labelled. Nothing depends on sound.
+- **D8:** The pulse rhythm is always shown on screen, slowed and labelled. Pulsars can also have their usual sound
+  (the owner's request), but nothing depends on it.
 
 ## 13. My calls, for the owner's review
 - **C1:** The disputed 1987 bar-detector claim goes in SN 1987A's preset note (marked disputed) and becomes inconsistency #53.
@@ -695,5 +724,7 @@ Built on the `project3` branch, subagent-driven as before. Reversible calls are 
 - **C17:** Measured kick directions are placed in the sky plane, with the line-of-sight part set to zero and disclosed.
 - **C18:** The black hole bends Project 2's actual scene, rendered into a cube map that is refreshed only when it
   changes. It is included in the milestone 1 speed test.
+- **C19:** The pulsar sound is off by default and plays at the real period (the picture stays slowed), only when Earth
+  would receive the pulses. Both rates are labelled on screen.
 - **Builder check (2026-11-15):** a fresh reviewer read this spec before the owner. Its six questions are settled above
   (C2, C13–C18). None needed the owner.
