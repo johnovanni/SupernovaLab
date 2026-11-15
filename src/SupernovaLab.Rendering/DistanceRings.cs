@@ -4,7 +4,8 @@ namespace SupernovaLab.Rendering;
 public sealed record Ring(double RadiusCm, string Label, float Opacity);
 
 /// <summary>
-/// The 3D view's distance-ring ladder (plan ruling P5): rings at 1-2-5 × 10^k of the scale bar's unit, from 0.9 of the view's
+/// The 3D view's distance-ring ladder (plan ruling P5): rings at 1-2-5 × 10^k of the scale bar's unit (metres below 1 km, for the
+/// Close-up, Project 3), from 0.9 of the view's
 /// half-height down to 0.05 of it. Rings are fully opaque from 0.1 of the half-height up and fade linearly to nothing at 0.05.
 /// </summary>
 public static class DistanceRings
@@ -48,17 +49,20 @@ public static class DistanceRings
     /// </summary>
     private static readonly (double Cm, double UnitCm, string Unit)[] Table = BuildTable();
 
+    /// <summary>The smallest ring on the table: 1 m (Project 3: the ladder runs down to metres for the Close-up, spec §2.2).</summary>
+    public const double MinRingCm = 100;
+
     private static (double Cm, double UnitCm, string Unit)[] BuildTable()
     {
         var list = new List<(double, double, string)>();
-        foreach (var name in new[] { "km", "AU", "light-year", "pc" })
+        foreach (var name in new[] { "m", "km", "AU", "light-year", "pc" })
         {
             double unitCm = ScaleBar.UnitCmOf(name);
             for (int e = -8; e <= 12; e++)
                 foreach (double m in Mantissas)
                 {
                     double cm = m * Math.Pow(10, e) * unitCm;
-                    if (cm < 1e3 || cm > 1e26) continue;
+                    if (cm < MinRingCm || cm > 1e26) continue;
                     if (ScaleBar.UnitFor(cm / Outer).Name == name) list.Add((cm, unitCm, name));
                 }
         }

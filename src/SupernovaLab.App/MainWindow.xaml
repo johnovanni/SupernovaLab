@@ -16,6 +16,8 @@
                           ToolTip="{x:Static text:Glossary.OutcomeDetails}"/>
                 <MenuItem Header="_Preset info" Foreground="Black" Command="{Binding ShowPresetInfoCommand}"
                           ToolTip="{x:Static text:Glossary.PresetInfo}"/>
+                <MenuItem Header="Close-_up" Foreground="Black" Command="{Binding ShowCloseUpCommand}"
+                          ToolTip="{x:Static text:Glossary.CloseUp}"/>
                 <MenuItem Header="_Focus view" Foreground="Black" IsCheckable="True" InputGestureText="F"
                           IsChecked="{Binding Layout.IsFocusView, Mode=TwoWay}"
                           ToolTip="{Binding Layout.FocusToggleToolTip}"/>

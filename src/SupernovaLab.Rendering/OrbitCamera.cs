@@ -20,6 +20,8 @@ public sealed class OrbitCamera
 
     private double _pitchDeg;
     private double _distanceMpc = 10;
+    private Vector3d? _fixedBackward;
+    private Vector3d _up = Vector3d.UnitZ;
 
     public Vector3d Target { get; set; }
 
@@ -51,11 +53,22 @@ public sealed class OrbitCamera
         PitchDeg += dyPx * DegreesPerPixel;
     }
 
-    /// <summary>Unit vector from the target toward the eye.</summary>
+    /// <summary>
+    /// Points the camera along −<paramref name="backward"/> with this screen-up direction, in place of its yaw and pitch (Project 3:
+    /// the Close-up's environment cube map renders its six faces with the GL cube-map orientations, which yaw and pitch cannot reach).
+    /// </summary>
+    public void Orient(Vector3d backward, Vector3d up)
+    {
+        _fixedBackward = backward.Normalized();
+        _up = up.Normalized();
+    }
+
+    /// <summary>Unit vector from the target toward the eye (from the yaw and pitch, or from <see cref="Orient"/>).</summary>
     public Vector3d Backward
     {
         get
         {
+            if (_fixedBackward is { } fixedBackward) return fixedBackward;
             double yaw = YawDeg * Math.PI / 180, pitch = PitchDeg * Math.PI / 180;
             return new Vector3d(Math.Cos(pitch) * Math.Cos(yaw), Math.Cos(pitch) * Math.Sin(yaw), Math.Sin(pitch));
         }
@@ -69,7 +82,7 @@ public sealed class OrbitCamera
         get
         {
             var b = Backward;
-            return Matrix4d.LookAt(Vector3d.Zero, -b, Vector3d.UnitZ);
+            return Matrix4d.LookAt(Vector3d.Zero, -b, _up);
         }
     }
 
@@ -93,11 +106,12 @@ public sealed class OrbitCamera
 
     private double FovRad => FieldOfViewDeg * Math.PI / 180;
 
-    /// <summary>Unit screen-right and screen-up directions in the display frame (public here: billboards use them).</summary>
+    /// <summary>Unit screen-right and screen-up directions in the display frame (public here: billboards use them). The up hint is +z
+    /// unless <see cref="Orient"/> gave another.</summary>
     public (Vector3d right, Vector3d up) ScreenAxes()
     {
         var forward = -Backward;
-        var right = Vector3d.Cross(forward, new Vector3d(0, 0, 1)).Normalized();
+        var right = Vector3d.Cross(forward, _up).Normalized();
         var up = Vector3d.Cross(right, forward);
         return (right, up);
     }

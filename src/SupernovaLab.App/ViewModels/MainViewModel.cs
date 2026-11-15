@@ -33,6 +33,7 @@ public sealed partial class MainViewModel : ObservableObject
         ShowInstrumentsCommand = new RelayCommand<Messenger?>(focus => _windows.ShowInstruments(focus));
         ShowOutcomeDetailsCommand = new RelayCommand(_windows.ShowOutcomeDetails);
         ShowPresetInfoCommand = new RelayCommand(_windows.ShowPresetInfo);
+        ShowCloseUpCommand = new RelayCommand(_windows.ShowCloseUp);
 
         _currentOutcome = Recompute();
         _currentObserver = Lab.Observer;
@@ -135,6 +136,9 @@ public sealed partial class MainViewModel : ObservableObject
     public IRelayCommand<Messenger?> ShowInstrumentsCommand { get; }
     public IRelayCommand ShowOutcomeDetailsCommand { get; }
     public IRelayCommand ShowPresetInfoCommand { get; }
+
+    /// <summary>Spec §2.2: View ▸ Close-up and the outcome summary's Close-up button.</summary>
+    public IRelayCommand ShowCloseUpCommand { get; }
 
     /// <summary>Spec §2.4: Explode starts the timeline at t = 0 (the axis's first millisecond) and plays it.</summary>
     private void Explode()

@@ -206,6 +206,9 @@ public static class BlackHoleOptics
         return result;
     }
 
+    /// <summary>The escape radius a caller passes for a camera at this distance (GM/c²): max(60, 1.2 D) (ruling P3-7).</summary>
+    public static double EscapeRadiusFor(double cameraDistance) => Math.Max(60, 1.2 * cameraDistance);
+
     /// <summary>The weak-field deflection 4GM/(bc²) = 4/b radians (Einstein 1915; §C7): 0.004 at b = 1,000.</summary>
     public static double WeakFieldDeflection(double impactParameter) => 4 / impactParameter;
 

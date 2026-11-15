@@ -28,11 +28,13 @@ public partial class App : Application
             return;
         }
 
-        var windows = new WindowService();
+        // Plan ruling P3-5: one beam clock, handed to both 3D views (the main window's and the Close-up's).
+        var beamClock = new BeamClock();
+        var windows = new WindowService(beamClock);
         // Task 15: the panel layout is remembered in %LOCALAPPDATA%\SupernovaLab\layout.json; a snapshot run never reads or writes it.
         var vm = new MainViewModel(new OutcomeEngine(ExplodabilityTable.LoadEmbedded()), windows,
             snapshot is null ? LayoutStore.ForCurrentUser() : null);
-        var main = new MainWindow { DataContext = vm };
+        var main = new MainWindow { DataContext = vm, BeamClock = beamClock };
         windows.Attach(main);
         MainWindow = main;
 

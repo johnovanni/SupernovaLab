@@ -9,7 +9,8 @@ public sealed record ScaleBarChoice(double LengthCm, double LengthPx, string Lab
 /// <summary>
 /// The 3D view's scale bar (spec §6): km, AU, light-years or parsecs, switching where the overlay's radius
 /// (<see cref="UnitFormat.Distance"/>) does: parsecs from 1 pc; light-years from 10,000 AU, fractions allowed ("0.5
-/// light-years", as the overlay gives pc with light-years there); AU from 1 AU; km below. The length is the largest 1, 2
+/// light-years", as the overlay gives pc with light-years there); AU from 1 AU; km from 1 km; metres below (Project 3: the
+/// Close-up's crust strip, spec §2.2). The length is the largest 1, 2
 /// or 5 × 10^k of the unit that fits, so the bar is between a fifth of the space and all of it. Kilometres from 1 million
 /// up are written "20 million km"; AU and km keep thousands separators ("5,000 AU").
 /// </summary>
@@ -23,7 +24,8 @@ public static class ScaleBar
         (PhysicalConstants.Pc, PhysicalConstants.Pc, "pc"),
         (PhysicalConstants.LightYear, 1e4 * PhysicalConstants.Au, "light-year"),
         (PhysicalConstants.Au, PhysicalConstants.Au, "AU"),
-        (1e5, 0, "km"),
+        (1e5, 1e5, "km"),
+        (100, 0, "m"),
     };
 
     /// <summary>The bar for a view at this scale (cm per pixel) with at most this many pixels for it; null for a bad scale.</summary>
@@ -57,7 +59,7 @@ public static class ScaleBar
         return (Units[^1].Cm, Units[^1].Name);
     }
 
-    /// <summary>The size in cm of a unit given its name ("pc", "light-year", "AU" or "km").</summary>
+    /// <summary>The size in cm of a unit given its name ("pc", "light-year", "AU", "km" or "m").</summary>
     internal static double UnitCmOf(string name)
     {
         foreach (var (unitCm, _, n) in Units)

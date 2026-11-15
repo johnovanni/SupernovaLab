@@ -1,4 +1,5 @@
 using System.Windows;
+using SupernovaLab.App.ViewModels;
 using SupernovaLab.App.Windows;
 using SupernovaLab.Core.Signals;
 
@@ -6,16 +7,32 @@ namespace SupernovaLab.App.Services;
 
 /// <summary>
 /// Opens the non-modal windows of spec §5.0, owned by the main window (so they close with it) and bound to its
-/// DataContext (the shared MainViewModel). At most one of each; asking again activates it. The Instruments window's size
-/// and position are remembered for the session.
+/// DataContext (the shared MainViewModel). At most one of each; asking again activates it. The Instruments and Close-up windows'
+/// sizes and positions are remembered for the session. The Close-up's DataContext is its own <see cref="CloseUpViewModel"/>,
+/// made on the shared one, and it is given the app's one <see cref="Services.BeamClock"/> (plan ruling P3-5).
 /// </summary>
 public sealed class WindowService : IWindowService
 {
+    private readonly BeamClock _beamClock;
+    private readonly Func<CloseUpViewModel, Window> _closeUpFactory;
     private Window? _owner;
     private InstrumentsWindow? _instruments;
     private OutcomeDetailsWindow? _details;
     private PresetInfoWindow? _presetInfo;
-    private Rect? _instrumentsBounds;
+    private Window? _closeUp;
+    private Rect? _instrumentsBounds, _closeUpBounds;
+
+    /// <param name="beamClock">The beams' clock, shared by both 3D views; null for one of its own.</param>
+    /// <param name="closeUpFactory">Makes the Close-up window for its view model (null: <see cref="Windows.CloseUpWindow"/>); tests pass
+    /// a plain window, so no GL context is made.</param>
+    public WindowService(BeamClock? beamClock = null, Func<CloseUpViewModel, Window>? closeUpFactory = null)
+    {
+        _beamClock = beamClock ?? new BeamClock();
+        _closeUpFactory = closeUpFactory ?? (vm => new CloseUpWindow { DataContext = vm, BeamClock = _beamClock });
+    }
+
+    /// <summary>The beams' clock this service hands to the Close-up.</summary>
+    public BeamClock BeamClock => _beamClock;
 
     /// <summary>The main window: the owner of every window this service opens, and their DataContext.</summary>
     public void Attach(Window owner) => _owner = owner ?? throw new ArgumentNullException(nameof(owner));
@@ -24,6 +41,13 @@ public sealed class WindowService : IWindowService
     public Window? Instruments => _instruments;
     public Window? OutcomeDetails => _details;
     public Window? PresetInfo => _presetInfo;
+    public Window? CloseUp => _closeUp;
+
+    /// <summary>The open Close-up window, typed (null when closed, or when a test's factory made a plain window).</summary>
+    public CloseUpWindow? CloseUpWindow => _closeUp as CloseUpWindow;
+
+    /// <summary>How many Close-up windows this service has made (at most one is open at a time).</summary>
+    public int CloseUpWindowsMade { get; private set; }
 
     /// <summary>The Instruments window's last focus request: the panel it enlarged, or null for the grid.</summary>
     public Messenger? LastInstrumentsFocus { get; private set; }
@@ -64,7 +88,33 @@ public sealed class WindowService : IWindowService
         return w;
     });
 
-    private T ShowOrActivate<T>(T? existing, Func<T> create) where T : Window
+    /// <summary>
+    /// Spec §2.2: opens the Close-up at most once (asking again brings it to the front), remembers its size and position for the
+    /// session, and closes it with the main window (its owner). Its view model follows the shared one and is disposed when it closes.
+    /// </summary>
+    public void ShowCloseUp() => _closeUp = ShowOrActivate(_closeUp, () =>
+    {
+        var main = _owner?.DataContext as MainViewModel
+                   ?? throw new InvalidOperationException("WindowService.Attach must be called with the main window first.");
+        var vm = new CloseUpViewModel(main);
+        var w = _closeUpFactory(vm);
+        w.DataContext = vm;
+        CloseUpWindowsMade++;
+        if (_closeUpBounds is { } b)
+        {
+            w.WindowStartupLocation = WindowStartupLocation.Manual;
+            (w.Left, w.Top, w.Width, w.Height) = (b.Left, b.Top, b.Width, b.Height);
+        }
+        w.Closing += (_, _) => _closeUpBounds = w.RestoreBounds;
+        w.Closed += (_, _) =>
+        {
+            _closeUp = null;
+            vm.Dispose();
+        };
+        return w;
+    }, keepDataContext: true);
+
+    private T ShowOrActivate<T>(T? existing, Func<T> create, bool keepDataContext = false) where T : Window
     {
         if (existing is not null)
         {
@@ -75,7 +125,7 @@ public sealed class WindowService : IWindowService
         var owner = _owner ?? throw new InvalidOperationException("WindowService.Attach must be called before showing windows.");
         var window = create();
         window.Owner = owner;
-        window.DataContext = owner.DataContext;
+        if (!keepDataContext) window.DataContext = owner.DataContext;
         window.Show();
         return window;
     }

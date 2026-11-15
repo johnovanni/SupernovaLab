@@ -70,4 +70,32 @@ public class ShaderSourceTests
         string text = System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith("." + shader)).Bytes);
         foreach (string needle in needles) Assert.Contains(needle, text);
     }
+
+    /// <summary>
+    /// Plan Task 4: lensing.frag is the GLSL mirror of BlackHoleOptics.TraceRay (ruling P3-7): it declares the uniforms the brief
+    /// names (spin, camera position and basis, R_esc, the surface radius, the grid flag) and carries the C# tracer's constants.
+    /// </summary>
+    [Fact]
+    public void LensingShader_DeclaresItsUniforms_AndMirrorsTheTracersConstants()
+    {
+        string text = System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith(".lensing.frag")).Bytes);
+        foreach (string needle in new[]
+                 {
+                     "uniform float u_spin", "uniform vec3 u_camPos", "uniform vec3 u_camForward", "uniform vec3 u_camRight",
+                     "uniform vec3 u_camUp", "uniform float u_escapeRadius", "uniform float u_surfaceRadius", "uniform int u_grid",
+                     "uniform samplerCube u_env", "float a = -u_spin",
+                 })
+            Assert.Contains(needle, text);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        Assert.Contains($"const int MAX_STEPS = {SupernovaLab.Core.Compact.BlackHoleOptics.MaxSteps};", text);
+        Assert.Contains($"const float FAR_CAMERA_RADIUS = {SupernovaLab.Core.Compact.BlackHoleOptics.FarCameraRadius.ToString("0.0", inv)};", text);
+        Assert.Contains($"const float FAR_START_RADIUS = {SupernovaLab.Core.Compact.BlackHoleOptics.FarStartRadius.ToString("0.00", inv)};", text);
+        Assert.Contains("const float CAPTURE_MARGIN = 0.01;", text);
+        Assert.Contains("const float MAX_STEP = 2.0;", text);
+        Assert.Contains("min(0.05 * max(r - rPlus, 0.5) * (1.0 + r / 20.0), MAX_STEP)", text);   // the step rule
+        Assert.Contains("2.0 * b / (c2 * (1.0 + cosG)) : 2.0 / b * (1.0 - cosG)", text);         // ruling R-P3-6's deflection
+        // Ruling R-P3-7: step-limited rays sample the surroundings, as escaped ones do.
+        Assert.Contains("fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT", text);
+        Assert.NotNull(Shaders().SingleOrDefault(s => s.Name.EndsWith(".upsample.frag")).Bytes);
+    }
 }

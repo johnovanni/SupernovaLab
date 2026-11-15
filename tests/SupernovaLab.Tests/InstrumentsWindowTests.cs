@@ -74,7 +74,7 @@ public class InstrumentsWindowTests
     /// The windows' StaticResources come from the application's theme. One Application per process: it is made once,
     /// with every brush frozen and every style sealed, so other tests on other threads can still read its resources.
     /// </summary>
-    private static void EnsureApplication()
+    internal static void EnsureApplication()
     {
         if (Application.Current is not null) return;
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };

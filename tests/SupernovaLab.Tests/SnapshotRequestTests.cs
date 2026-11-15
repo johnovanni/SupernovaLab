@@ -241,4 +241,35 @@ public class SnapshotRequestTests
         Assert.Equal(20, r.BenchSeconds);
         Assert.False(SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20" })!.BenchTour);
     }
+
+    // ---- Project 3, Task 4: the Close-up ----
+
+    [Fact]
+    public void Snapshot_ParsesCloseUpOptions()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--closeup", "--window", "closeup" })!;
+        Assert.True(r.OpenCloseUp); Assert.Contains(SnapshotWindow.CloseUp, r.Windows);
+    }
+
+    [Fact]
+    public void Snapshot_CloseUpWindowAlone_OpensIt_AndTheBenchCommandParses()
+    {
+        Assert.True(SnapshotRequest.Parse(new[] { "--snapshot", "out", "--window", "main,closeup" })!.OpenCloseUp);
+        Assert.False(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.OpenCloseUp);
+        var bench = SnapshotRequest.Parse(new[] { "--snapshot", @"out\p3t4", "--preset", "n6946bh1,sn1998bw", "--closeup", "--window",
+            "main,closeup", "--size", "1366x768,1920x1080", "--bench", "20", "--bench-spin", "0.9" })!;
+        Assert.True(bench.OpenCloseUp);
+        Assert.Equal(0.9, bench.BenchSpin);
+        Assert.Equal(20, bench.BenchSeconds);
+        Assert.Equal(new[] { SnapshotWindow.Main, SnapshotWindow.CloseUp }, bench.Windows);
+        Assert.Equal(new[] { "n6946bh1", "sn1998bw" }, bench.PresetIds);
+        Assert.Null(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.BenchSpin);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("-0.1")]
+    [InlineData("fast")]
+    public void BadBenchSpin_Throws(string spin)
+        => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench-spin", spin }));
 }

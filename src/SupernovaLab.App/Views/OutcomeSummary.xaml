@@ -20,11 +20,17 @@
                             <TextBlock Text="Published" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource BadgeTextBrush}"/>
                         </Border>
                     </Grid>
-                    <TextBlock FontSize="14" TextWrapping="Wrap" Margin="0,1,0,0">
-                        <Run Text="{Binding FateText, Mode=OneWay}" ToolTip="{Binding FateToolTip}"/><Run
-                             Text="{Binding FateSeparator, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/><Run
-                             Text="{Binding RemnantText, Mode=OneWay}" ToolTip="{Binding RemnantToolTip}"/>
-                    </TextBlock>
+                    <!-- Spec §2.2: the Close-up button beside the remnant. -->
+                    <DockPanel Margin="0,1,0,0">
+                        <Button DockPanel.Dock="Right" Content="Close-up" Padding="6,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                                Command="{Binding DataContext.ShowCloseUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                ToolTip="{x:Static text:Glossary.CloseUp}"/>
+                        <TextBlock FontSize="14" TextWrapping="Wrap">
+                            <Run Text="{Binding FateText, Mode=OneWay}" ToolTip="{Binding FateToolTip}"/><Run
+                                 Text="{Binding FateSeparator, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/><Run
+                                 Text="{Binding RemnantText, Mode=OneWay}" ToolTip="{Binding RemnantToolTip}"/>
+                        </TextBlock>
+                    </DockPanel>
                     <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap" Margin="0,5,0,0" FontSize="12.5"/>
 
                     <!-- Three or four key numbers, each with its confidence badge; the source is in the badge's tooltip. -->

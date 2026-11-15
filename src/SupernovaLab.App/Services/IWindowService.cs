@@ -14,4 +14,7 @@ public interface IWindowService
     void ShowOutcomeDetails();
 
     void ShowPresetInfo();
+
+    /// <summary>The Close-up window (spec §2.2): opened at most once; asking again brings it to the front.</summary>
+    void ShowCloseUp();
 }

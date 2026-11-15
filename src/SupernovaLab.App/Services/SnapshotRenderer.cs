@@ -26,7 +26,7 @@ public readonly record struct SnapshotSize(int Width, int Height)
 /// panel on each of its other sub-tabs in turn (instruments-tab1.png, -tab2, -tab3). <see cref="MainAdvanced"/> is the main
 /// window with the lab's Advanced section expanded, at the top of the lab panel and scrolled to its end.
 /// </summary>
-public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentTabs, MainAdvanced }
+public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentTabs, MainAdvanced, CloseUp }
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
@@ -44,8 +44,13 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> PresetIds, double? ObserverTimeS,
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
     int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false,
-    IReadOnlyList<int>? TourStopList = null, bool BenchTour = false, LayoutSettings? Layout = null)
+    IReadOnlyList<int>? TourStopList = null, bool BenchTour = false, LayoutSettings? Layout = null, bool OpenCloseUp = false,
+    double? BenchSpin = null)
 {
+    // Project 3 (Task 4): <c>--closeup</c> (a flag) opens the Close-up window before the captures, so <c>--bench</c> measures both 3D views
+    // together (with the Close-up drawing every frame, at each lensing level); <c>--window closeup</c> captures it (its GL frame read back
+    // with GL.ReadPixels); <c>--bench-spin &lt;a&gt;</c> gives the Close-up's placeholder black hole this spin (0 to 0.998), a diagnostic.
+
     // Layout (Task 15): <c>--layout focus,lab-folded,outcome-folded,key-folded,notes-open,caption-folded</c> sets the panel states for every
     // capture; a preset entry may add them for itself ("sn1987a+tour+labfolded"). Snapshots never read layout.json (the owner's own state).
 
@@ -92,12 +97,15 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         var tourStops = new List<int>();
         bool benchTour = false;
         LayoutSettings? layout = null;
+        bool openCloseUp = false;
+        double? benchSpin = null;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
             string option = args[i];
             if (option == "--cutaway") { cutaway = true; continue; }   // a flag: the 3D view's wedge cutaway is on
             if (option == "--bench-tour") { benchTour = true; continue; }   // a flag: the bench plays the guided tour
+            if (option == "--closeup") { openCloseUp = true; continue; }    // a flag: the Close-up window is open (Project 3)
             if (i + 1 >= args.Count) throw new ArgumentException($"{option} needs a value.");
             string value = args[++i];
             switch (option)
@@ -145,6 +153,11 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                 case "--layout":
                     layout = ParseLayout(value, layout ?? new LayoutSettings());
                     break;
+                case "--bench-spin":
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double spin) || !(spin >= 0) || spin > 0.998)
+                        throw new ArgumentException($"--bench-spin needs a spin from 0 to 0.998, not '{value}'.");
+                    benchSpin = spin;
+                    break;
                 case "--quality":
                     foreach (string q in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                         qualities.Add(QualityLevels.Parse(q) ?? throw new ArgumentException($"--quality needs high, medium or low, not '{q}'."));
@@ -155,7 +168,9 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         }
         if (sizes.Count == 0) sizes.Add(new SnapshotSize(1366, 768));
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
-        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour, layout);
+        if (windows.Contains(SnapshotWindow.CloseUp)) openCloseUp = true;
+        return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour, layout,
+            openCloseUp, benchSpin);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -309,8 +324,9 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         "presetinfo" => SnapshotWindow.PresetInfo,
         "instrument-tabs" => SnapshotWindow.InstrumentTabs,
         "main-advanced" => SnapshotWindow.MainAdvanced,
+        "closeup" => SnapshotWindow.CloseUp,
         _ => throw new ArgumentException(
-            $"--window must be main, main-advanced, instruments, instrument-tabs, details or presetinfo, not '{text}'."),
+            $"--window must be main, main-advanced, instruments, instrument-tabs, details, presetinfo or closeup, not '{text}'."),
     };
 }
 
@@ -337,6 +353,7 @@ public static class SnapshotRenderer
                 quality.Quality = request.Qualities[0];
                 quality.IsCutaway = request.Cutaway;
             }
+            if (request.OpenCloseUp) await OpenCloseUp(request, windows, log);
             var presets = request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
             foreach (string? entry in presets)
             {
@@ -364,6 +381,7 @@ public static class SnapshotRenderer
         }
         finally
         {
+            LogCloseUpRelease(windows, log);
             LogSceneRelease(main, log);
             File.WriteAllLines(Path.Combine(request.OutDirectory, "snapshot.log"), log);
             Application.Current.Shutdown(exitCode);
@@ -438,6 +456,11 @@ public static class SnapshotRenderer
             if (kind == SnapshotWindow.MainAdvanced)
             {
                 await CaptureAdvanced(request, main, suffix, log);
+                continue;
+            }
+            if (kind == SnapshotWindow.CloseUp)
+            {
+                await CaptureCloseUp(request, windows, suffix, log);
                 continue;
             }
 
@@ -692,12 +715,22 @@ public static class SnapshotRenderer
             }
             foreach (var size in request.Sizes)
                 foreach (var quality in request.Qualities)
-                {
-                    if (scene is not null) scene.Quality = quality;
-                    var lines = await RunBenchOnce(main, vm, size, quality, seconds, scene, request.BenchTour);
-                    all.AddRange(lines);
-                    all.Add("");
-                }
+                    foreach (var level in CloseUpBenchLevels(windows))
+                    {
+                        if (scene is not null) scene.Quality = quality;
+                        var closeUp = windows.CloseUpWindow?.Scene;
+                        if (closeUp is not null)
+                        {
+                            // Project 3: the Close-up draws every frame (its worst case); null is the governor's run from 1/1.
+                            closeUp.ForceAnimating = true;
+                            closeUp.AutoLevel = level is null;
+                            closeUp.SetLevel(level ?? LensingLevel.Full);
+                        }
+                        var lines = await RunBenchOnce(main, vm, size, quality, seconds, scene, request.BenchTour, closeUp, level);
+                        all.AddRange(lines);
+                        all.Add("");
+                        if (closeUp is not null) closeUp.ForceAnimating = false;
+                    }
         }
         File.WriteAllLines(Path.Combine(request.OutDirectory, "bench.log"), all);
         log.AddRange(all);
@@ -712,8 +745,17 @@ public static class SnapshotRenderer
         lab.Mixing = d.Mixing; lab.Yield = d.Yield; lab.DenseCsm = d.DenseCsm; lab.Opacity = d.Opacity;
     }
 
+    /// <summary>
+    /// The Close-up's lensing levels the bench runs at each size: with the Close-up open, the governor's own run from 1/1 (null), then
+    /// 1/1, 1/2 and 1/4 held fixed (plan ruling P3-9; spec §2.5's decision needs 1/2); without it, one run.
+    /// </summary>
+    private static IReadOnlyList<LensingLevel?> CloseUpBenchLevels(WindowService windows) => windows.CloseUpWindow?.Scene is null
+        ? new LensingLevel?[] { null }
+        : new LensingLevel?[] { null, LensingLevel.Full, LensingLevel.Half, LensingLevel.Quarter };
+
     private static async Task<List<string>> RunBenchOnce(Window main, MainViewModel vm, SnapshotSize size, QualityLevel quality,
-        double seconds, SupernovaLab.App.Controllers.SceneController? scene, bool tour = false)
+        double seconds, SupernovaLab.App.Controllers.SceneController? scene, bool tour = false,
+        SupernovaLab.App.Controllers.CloseUpSceneController? closeUp = null, LensingLevel? level = null)
     {
         main.Width = size.Width;
         main.Height = size.Height;
@@ -736,6 +778,9 @@ public static class SnapshotRenderer
         }
         long sceneFrames0 = scene?.FramesDrawn ?? 0;
         scene?.ResetGpuStats();
+        long closeUpFrames0 = closeUp?.FramesDrawn ?? 0;
+        int captures0 = closeUp?.EnvironmentCaptures ?? 0;
+        closeUp?.ResetGpuStats();
         // The tour's travel and dwell are timed apart: a dwell on a still scene redraws only when something moves.
         var director = vm.Tour.Director;
         double travelS = 0, dwellS = 0;
@@ -800,7 +845,75 @@ public static class SnapshotRenderer
                 : $"GPU render time (the governor's measurement, GL timer query): mean {(scene.MeanGpuRenderTimeS * 1000).ToString("0.00", inv)} ms, " +
                   $"max {(scene.MaxGpuRenderTimeS * 1000).ToString("0.00", inv)} ms over {scene.GpuSamples} drawn frames " +
                   $"(the governor steps down above {(1000 / QualityGovernor.MinFps).ToString("0", inv)} ms)");
+        if (closeUp is not null) lines.AddRange(CloseUpBenchLines(closeUp, closeUpFrames0, captures0, elapsed, level));
         return lines;
+    }
+
+    /// <summary>The Close-up's lines of a bench run: its frames, GPU time, lensing level and environment refreshes.</summary>
+    private static IEnumerable<string> CloseUpBenchLines(SupernovaLab.App.Controllers.CloseUpSceneController c, long frames0, int captures0,
+        double elapsed, LensingLevel? level)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        long frames = c.FramesDrawn - frames0;
+        yield return $"Close-up: {(level is { } l ? $"lensing level held at {LensingLevels.Text(l)}" : "lensing level governed (from 1/1; steps down above 12 ms)")}; " +
+                     $"level at the end {LensingLevels.Text(c.Level)}; HDR {(c.HdrEnabled ? "on" : "off")}; GPU {(c.GlInfo.Length > 0 ? c.GlInfo : "not reported")}";
+        yield return c.IsFailed ? $"Close-up: failed ({c.FailureMessage})"
+            : $"Close-up frames drawn {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps " +
+              $"(drawing every frame); environment refreshes {c.EnvironmentCaptures - captures0}";
+        yield return !c.GpuTimingAvailable || c.GpuSamples == 0
+            ? "Close-up GPU time: not available"
+            : $"Close-up GPU time (GL timer query): mean {(c.MeanGpuRenderTimeS * 1000).ToString("0.00", inv)} ms, " +
+              $"max {(c.MaxGpuRenderTimeS * 1000).ToString("0.00", inv)} ms over {c.GpuSamples} frames";
+    }
+
+    /// <summary><c>--closeup</c>: opens the Close-up window off-screen (with the bench's spin, if given) and lets it draw a first frame.</summary>
+    private static async Task OpenCloseUp(SnapshotRequest request, WindowService windows, List<string> log)
+    {
+        windows.ShowCloseUp();
+        if (windows.CloseUp is not { } w) { log.Add("Close-up: no window opened"); return; }
+        PlaceOffScreen(w);
+        if (w.DataContext is CloseUpViewModel vm && request.BenchSpin is double spin) vm.BenchSpin = spin;
+        await NextFrame(w);
+        if (windows.CloseUpWindow?.Scene is { } c) c.AutoLevel = false;   // a capture shows the level asked for (1/1 unless the bench sets it)
+        log.Add($"Close-up opened ({w.ActualWidth:0}x{w.ActualHeight:0} DIP){(request.BenchSpin is double s ? $", bench spin {s.ToString("0.###", CultureInfo.InvariantCulture)}" : "")}");
+    }
+
+    /// <summary>Saves the Close-up window with its GL frame shown in place of the GL control (as the main window's).</summary>
+    private static async Task CaptureCloseUp(SnapshotRequest request, WindowService windows, string suffix, List<string> log)
+    {
+        if (windows.CloseUpWindow is not { } w)
+        {
+            windows.ShowCloseUp();
+            if (windows.CloseUpWindow is not { } opened) { log.Add("closeup: no window opened"); return; }
+            PlaceOffScreen(opened);
+            w = opened;
+        }
+        await NextFrame(w);
+        await NextFrame(w);
+        if (w.DataContext is CloseUpViewModel vm)
+            log.Add($"closeup{suffix}: {vm.WindowTitle}; {(vm.NoRemnantMessage ?? string.Join(" | ", vm.Readouts.Select(r => $"{r.Label} {r.ValueText}")))}" +
+                    (w.Scene is { } c ? $"; lensing {LensingLevels.Text(c.Level)}, environment refreshes {c.EnvironmentCaptures}" : ""));
+        log.Add(await w.ShowFrameForSnapshotAsync());
+        await NextFrame(w);
+        log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}.png")));
+        w.HideFrameForSnapshot();
+    }
+
+    /// <summary>Closes the Close-up (as a user would) and logs whether its view released its GL objects with the context current.</summary>
+    private static void LogCloseUpRelease(WindowService windows, List<string> log)
+    {
+        if (windows.CloseUpWindow is not { } w) return;
+        bool? atStart = w.GlContextExistsAfterStart;
+        try
+        {
+            w.Close();
+            log.Add($"Close-up: GL context existed right after Start: {(atStart?.ToString() ?? "no host")}; on closing, " +
+                    (w.LastGlReleased == true ? "its GL objects were deleted with the context current" : "its GL objects were NOT released"));
+        }
+        catch (Exception e)
+        {
+            log.Add($"Close-up: closing failed: {e.Message}");
+        }
     }
 
     /// <summary>The window's tallest scroll viewer (its main content), or null.</summary>

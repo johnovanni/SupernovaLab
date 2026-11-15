@@ -320,6 +320,21 @@ public static class Glossary
     public const string DistanceRings =
         "Measuring circles, not part of the supernova: when the debris reach a ring, they are that far from the centre.";
 
+    public const string CloseUp =
+        "Opens the Close-up window: what the explosion leaves at its centre (a neutron star or a black hole), seen from close by, " +
+        "on the same timeline as this window.";
+    public const string CloseUpView =
+        "The compact remnant from close by, a place no telescope could reach. Around a black hole, the light of the explosion's " +
+        "scene is bent exactly as general relativity says. Drag to turn, wheel to zoom, Home to frame it again.";
+    public const string CloseUpGrid =
+        "A measuring grid of latitude and longitude lines on a sphere round the black hole, bent like everything behind it.";
+    public const string FieldLines = "The neutron star's magnetic field lines, which leave and re-enter its surface.";
+    public const string LightCylinder =
+        "Where the neutron star's field would have to turn as fast as light to keep up with the spin: the edge of the region it drags round with it.";
+    public const string CloseUpCutaway = "Cuts the neutron star open to show its layers: the crust, and the core below it.";
+    public const string CloseUpLabels = "Shows or hides the labels on the view, such as the measuring rings' distances.";
+    public const string CloseUpFocusView = "Shows the view alone, without the column of numbers beside it.";
+
     public const string Cutaway =
         "Removes one quarter of the picture, like a wedge cut from a cake, so you can see inside. The two flat faces of the cut " +
         "are coloured by element (schematic colours: the key lists them), and the rest of the debris keeps its heat colour. " +

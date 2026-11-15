@@ -70,13 +70,16 @@ public partial class MainWindow : Window
     /// <summary>Whether the GL control had its context right after Start (--snapshot logs it; see GlHost).</summary>
     public bool? GlContextExistsAfterStart => _glHost?.ContextExistsAfterStart;
 
+    /// <summary>The beams' clock shared with the Close-up (plan ruling P3-5); set at composition, before the window loads.</summary>
+    public SupernovaLab.App.Services.BeamClock? BeamClock { get; init; }
+
     /// <summary>The 3D view's controller, once the window has loaded.</summary>
     public SceneController? Scene { get; private set; }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (Scene is not null || DataContext is not MainViewModel vm) return;
-        Scene = new SceneController(vm, () => _glHost = new GlHost(GlControl));
+        Scene = new SceneController(vm, () => _glHost = new GlHost(GlControl), beamClock: BeamClock);
         SceneHost.DataContext = Scene;
         vm.Tour.AttachScene(Scene);
         Scene.SetViewSize(new Size(SceneGrid.ActualWidth, SceneGrid.ActualHeight));

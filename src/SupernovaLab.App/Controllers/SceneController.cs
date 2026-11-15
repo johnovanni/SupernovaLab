@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using OpenTK.Graphics.OpenGL4;
+using SupernovaLab.App.Services;
 using SupernovaLab.App.ViewModels;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Structure;
@@ -41,7 +42,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private readonly MainViewModel _vm;
     private readonly Func<IRenderHost> _hostFactory;
     private readonly Func<Outcome, double, ExplosionScene> _sceneFactory;
-    private readonly Stopwatch _wall = Stopwatch.StartNew();
+    private readonly BeamClock _beamClock;
     private readonly Func<double> _clock;
     private double? _lastFrameS;
     private IRenderHost? _host;
@@ -49,12 +50,10 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private SceneState _state = new();
     /// <summary>Review M1: the 3D view's model error, shown in place of its notes; null when the scene is fine.</summary>
     private string? _modelError;
-    private StarRenderer? _star;
-    private ParticleRenderer? _particles;
+    /// <summary>The explosion's matter (star, particles, shells), shared with the Close-up's environment (Project 3).</summary>
+    private ExplosionPainter? _painter;
     private HdrPipeline? _hdr;
     private bool _uploadParticles = true;
-    /// <summary>The set on the GPU now (its v_max scales the shader's positions); null when there is none.</summary>
-    private ParticleSet? _uploaded;
     private QualityLevel _quality = QualityLevels.Default;
     private readonly QualityGovernor _governor = new(QualityLevels.Default);
     private string? _qualityNote;
@@ -72,10 +71,12 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <param name="sceneFactory">Builds the scene of an outcome at a time dilation; null for <see cref="ExplosionScene"/>'s
     /// own constructor (tests pass one that fails, review M1).</param>
     /// <param name="wallClock">Wall-clock seconds for the director's ease; null for the real clock (tests pass a fake).</param>
+    /// <param name="beamClock">The beams' wall clock, shared with the Close-up (plan ruling P3-5); null for one of its own.</param>
     public SceneController(MainViewModel vm, Func<IRenderHost> hostFactory,
-        Func<Outcome, double, ExplosionScene>? sceneFactory = null, Func<double>? wallClock = null)
+        Func<Outcome, double, ExplosionScene>? sceneFactory = null, Func<double>? wallClock = null, BeamClock? beamClock = null)
     {
         _clock = wallClock ?? (() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
+        _beamClock = beamClock ?? new BeamClock();
         _vm = vm ?? throw new ArgumentNullException(nameof(vm));
         _hostFactory = hostFactory ?? throw new ArgumentNullException(nameof(hostFactory));
         _sceneFactory = sceneFactory ?? ((o, z1) => new ExplosionScene(o, z1));
@@ -229,7 +230,10 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     public float FlashOverlayAlpha => HdrEnabled ? 0f : FlashLayer.NoHdrAlpha(_state.FlashIntensity);
 
     /// <summary>True once the GL context and the renderers exist.</summary>
-    public bool IsReady => _star is not null;
+    public bool IsReady => _painter is not null;
+
+    /// <summary>The beams' wall clock (plan ruling P3-5), the same instance the Close-up is given.</summary>
+    public BeamClock BeamClock => _beamClock;
 
     [ObservableProperty] private string _timeText = "";
     [ObservableProperty] private string _radiusText = "";
@@ -749,8 +753,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         string version = glInfo.Split('|').ElementAtOrDefault(2)?.Trim() ?? "";
         if (!IsSupported(version))
             throw new NotSupportedException($"this computer's OpenGL is {(version.Length > 0 ? version : "unknown")}");
-        _star = new StarRenderer();
-        _particles = new ParticleRenderer((int)QualityLevel.High);
+        _painter = new ExplosionPainter((int)QualityLevel.High);
         _hdr = new HdrPipeline();
         _uploadParticles = true;
         _jets = new JetRenderer();
@@ -758,7 +761,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _rings = new RingRenderer();
         _torusRings = new TorusRingRenderer();
         _cutFaces = new CutFaceRenderer();
-        _shells = new ShellRenderer();
         _flash = new FlashRenderer();
         _gpuTimer = new GpuTimer();
     }
@@ -790,7 +792,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         double interval = delta.TotalSeconds;
         _gpuTimer?.Poll(t => { RecordGpuTime(t); FeedRenderTime(t, interval); });   // measurements of earlier frames, read late
         StepDirector();
-        if (_star is null || _particles is null || _hdr is null || _jets is null || _remnant is null || _rings is null) return;
+        if (_painter is null || _hdr is null || _jets is null || _remnant is null || _rings is null) return;
         FramesDrawn++;
         if (_uploadParticles) UploadParticles();
         var s = _state;
@@ -805,40 +807,14 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             // The wedge: the particles in the removed quarter are dropped here; the cut faces (debris and star) are painted after
             // the bloom is built (below), so they feed no glow (rulings R-P2-21 and R-P2-23).
             bool starCut = IsCutaway && s.ShowStar && s.StarLayers.Count > 0 && s.StarRadiusCm > 0;
-            bool particleCut = IsCutaway && s.ShowParticles && _uploaded is not null;
+            bool particleCut = IsCutaway && s.ShowParticles && _painter.Uploaded is not null;
             var faceColors = starCut || particleCut ? FaceColors() : Array.Empty<(float R, float G, float B)>();
-            _star.WedgeAngleRad = _particles.WedgeAngleRad = _wedgeAngleRad;
-            if (_shells is not null)
-            {
-                _shells.WedgeAngleRad = _wedgeAngleRad;
-                _shells.Cutaway = IsCutaway;
-            }
             if (_cutFaces is not null) _cutFaces.WedgeAngleRad = _wedgeAngleRad;
-            if (s.Surroundings is not null && _shells is not null) DrawSurroundings(viewportPx, s, unit);
-            if (s.ShowStar) _star.Render(Camera, viewportPx, s.StarRadiusCm / unit, s.StarColor, starCut);
-            if (s.ShowParticles && _uploaded is { } set)
-            {
-                // The brightness is Project 1's, spread over the particle count so the picture keeps its overall level.
-                // Positions follow ParticleKinematics.RadiusCm: the shader gets R*, v_max * (t - t_bo) and the shock radii in
-                // scene units (doubles divided by the unit before they become floats).
-                float perParticle = ParticleGain * ReferenceParticleCount / _particles.Count;
-                double starCm = double.IsFinite(s.StarRadiusCm) ? s.StarRadiusCm : 0;
-                var shocks = s.Shocks;
-                var hot = ExplosionScene.HotGasColor;
-                _particles.Render(Camera, viewportPx, pxPerDip, new ParticleUniforms((float)(starCm / unit),
-                    (float)(set.MaxCmS * s.SinceBreakoutS / unit),
-                    new OpenTK.Mathematics.Vector3(s.EjectaColor.R, s.EjectaColor.G, s.EjectaColor.B), s.EjectaBrightness * perParticle,
-                    particleCut, shocks is not null, (float)((shocks?.ReverseCm ?? 0) / unit), (float)((shocks?.ContactCm ?? 0) / unit),
-                    (float)(shocks?.ConfinementWeight ?? 0), new OpenTK.Mathematics.Vector3(hot.R, hot.G, hot.B),
-                    (float)ParticleKinematics.ShockedSpeedRatio(shocks, s.SinceBreakoutS, starCm, set.MaxCmS)));
-            }
-            if (double.IsFinite(s.NebulaRadiusCm) && s.NebulaRadiusCm > 0 && _shells is not null)
-                _shells.Render(Camera, viewportPx, ShellKind.Ball, 0, s.NebulaRadiusCm / unit, NebulaColor, NebulaIntensity, NebulaCover);
-            if (s.Shocks is { } sh && _shells is not null) DrawShells(viewportPx, sh, unit);
+            _painter.Paint(Camera, viewportPx, pxPerDip, s, unit, starCut, particleCut, IsCutaway, _wedgeAngleRad);
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit, hdr: HdrEnabled);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
             if (s.ShowRings1987A) _torusRings?.Render(Camera, viewportPx, pxPerDip, unit, s.RingBrightness);
-            double phase = 2 * Math.PI * _wall.Elapsed.TotalSeconds / ExplosionScene.ShownPulsarPeriodS;
+            double phase = _beamClock.PhaseRad(ExplosionScene.ShownPulsarPeriodS);   // plan ruling P3-5: one clock for both views
             // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
             _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
@@ -847,7 +823,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (starCut || particleCut)
             {
                 // Final review M1: one cached delegate reads this frame's inputs from a field (no closure per frame).
-                _cutFrame = (viewportPx, s, _uploaded, unit, faceColors, starCut, particleCut);
+                _cutFrame = (viewportPx, s, _painter.Uploaded, unit, faceColors, starCut, particleCut);
                 cutFaces = _drawCutFacesNow ??= DrawCutFacesNow;
             }
         }
@@ -895,7 +871,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     private CutFaceRenderer? _cutFaces;
-    private ShellRenderer? _shells;
     private EjectaStructure? _conesFor;
     private FingerCones _cones = FingerCones.Empty;
 
@@ -920,7 +895,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         var (viewportPx, s, set, unit, colors, starCut, particleCut) = _cutFrame;
         GL.ColorMask(true, true, true, true);
         if (particleCut && set is not null) DrawCutFaces(viewportPx, s, set, unit, colors);
-        if (!starCut || _star is null) return;
+        if (!starCut || _painter is null) return;
         if (!ReferenceEquals(_starCutFor, s) || !ReferenceEquals(_starCutColors, colors))
         {
             var layers = s.StarLayers.Select(l => ((float)(l.OuterRadiusCm / s.StarRadiusCm), ToVector(colors[(int)l.Layer]))).ToList();
@@ -929,7 +904,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             _starCutFor = s;
             _starCutColors = colors;
         }
-        _star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, _starCut!);
+        _painter.Star.RenderCutFaces(Camera, viewportPx, s.StarRadiusCm / unit, _starCut!);
     }
 
     private SceneState? _starCutFor;
@@ -1009,24 +984,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// <summary>The reverse shock is drawn as a thin shell this fraction of its radius thick (at least <see cref="ReverseShellMinPx"/> pixels).</summary>
     public const double ReverseShellFraction = 0.015, ReverseShellMinPx = 2;
 
-    /// <summary>
-    /// The shock shells (structure §S4, plan ruling P8): the swept-up gas between the contact surface and the forward shock, and
-    /// the reverse shock as a thin shell at R_r, each faded in with ruling R-P2-4's weight so they do not pop in when the shocks
-    /// start. Radii in scene units (cm divided by the unit before they become floats).
-    /// </summary>
-    private void DrawShells(Size viewportPx, ShockRadii shocks, double unit)
-    {
-        float w = (float)Math.Clamp(shocks.ConfinementWeight, 0, 1);
-        if (!(w > 0) || _shells is null) return;
-        _shells.Render(Camera, viewportPx, ShellKind.Shell, shocks.ContactCm / unit, shocks.ForwardCm / unit, ForwardShellColor,
-            ForwardShellIntensity * w);
-        if (!(shocks.ReverseCm > 0)) return;
-        double pxUnits = 2 * Camera.DistanceMpc * Math.Tan(Camera.FieldOfViewDeg * Math.PI / 360) / viewportPx.Height;
-        double rOut = shocks.ReverseCm / unit;
-        double thick = Math.Min(rOut, Math.Max(ReverseShellFraction * rOut, ReverseShellMinPx * pxUnits));
-        _shells.Render(Camera, viewportPx, ShellKind.Shell, rOut - thick, rOut, ExplosionScene.HotGasColor, ReverseShellIntensity * w);
-    }
-
     /// <summary>The wind haze: faint grey-blue (schematic).</summary>
     public static readonly (float R, float G, float B) HazeColor = (0.55f, 0.65f, 0.85f);
 
@@ -1058,53 +1015,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         => aStar > 0 ? Math.Clamp(Math.Pow(10, HazeScalePerDecade * (Math.Log10(aStar) - 1)), HazeMinScale, HazeMaxScale) : 0;
 
     /// <summary>
-    /// The gas around the star (structure §S7, plan ruling P8): the wind haze (ρ ∝ 1/r², R* out to the wind's outer extent) drawn only
-    /// outside the forward shock, the dense shell (uniform, R* to its outer radius, flaring with the shock's glow) likewise, and
-    /// at the forward shock a thin lit shell scaled by the glow. All clip to the removed quarter in the cutaway (the shell
-    /// shader). Radii in scene units (cm over the unit). The haze's brightness is pinned to its column at b = 2 R*, since the
-    /// shader normalizes by the largest column (at the wind's far edge), which is meaningless against the star.
-    /// </summary>
-    private void DrawSurroundings(Size viewportPx, SceneState s, double unit)
-    {
-        var csm = s.Surroundings!;
-        double forwardCm = s.Shocks?.ForwardCm ?? 0;
-        float glow = s.SurroundingsGlow;
-        double rOut = csm.WindOuterCm / unit;
-        if (csm.WindAStar > 0 && csm.WindOuterCm > csm.WindInnerCm && csm.WindInnerCm > 0)
-        {
-            double inner = Math.Max(csm.WindInnerCm, forwardCm) / unit;
-            if (inner < rOut)
-            {
-                // intensity such that the column through the whole wind at b = 2 R* has this brightness.
-                double bRef = 2 * csm.WindInnerCm / unit;
-                double reference = ColumnDensity.Wind(bRef, csm.WindInnerCm / unit, rOut);
-                double peak = ColumnDensity.Peak(ShellKind.Wind, inner, rOut);
-                if (reference > 0 && peak > 0)
-                {
-                    float target = (float)(HazeIntensityAtTenAStar * HazeScale(csm.WindAStar));
-                    _shells!.Render(Camera, viewportPx, ShellKind.Wind, inner, rOut, HazeColor, (float)(target * peak / reference));
-                }
-            }
-        }
-        if (csm.ShellOuterCm is { } shellOuterCm && csm.ShellInnerCm is { } shellInnerCm)
-        {
-            double inner = Math.Max(shellInnerCm, forwardCm) / unit, outer = shellOuterCm / unit;
-            if (inner < outer)
-                _shells!.Render(Camera, viewportPx, ShellKind.Shell, inner, outer, DenseShellColor, DenseShellIntensity * (1 + DenseShellFlare * s.ShellFlare));
-        }
-        if (s.Shocks is { } shocks && glow > 0 && shocks.ForwardCm > 0)
-        {
-            bool inDense = csm.ShellOuterCm is { } o && shocks.ForwardCm < o;
-            bool inWind = csm.WindAStar > 0 && shocks.ForwardCm < csm.WindOuterCm;
-            if (!inDense && !inWind) return;
-            double rf = shocks.ForwardCm / unit;
-            float w = (float)Math.Clamp(shocks.ConfinementWeight, 0, 1);
-            _shells!.Render(Camera, viewportPx, ShellKind.Shell, rf * (1 - GlowShellFraction), rf, GlowColor,
-                GlowShellIntensity * glow * w * (inDense ? DenseGlowGain : 1));
-        }
-    }
-
-    /// <summary>
     /// The cut faces' colours, by layer: through the HDR path, the values that tone-map to the element's hex
     /// (<see cref="LayerColors.FaceHdr"/>); without it, the hex itself.
     /// </summary>
@@ -1132,9 +1042,6 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     /// </summary>
     public const float ParticleGain = 0.5f;
 
-    /// <summary>Project 1's point count: its brightness was tuned for 50,000 points, so it is scaled by this over the count drawn.</summary>
-    private const int ReferenceParticleCount = 50_000;
-
     /// <summary>
     /// Uploads the scene's particle set at the current quality (built once per outcome and count by
     /// <see cref="ExplosionScene.ParticlesFor"/>); nothing for an outcome without ejecta.
@@ -1142,10 +1049,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     private void UploadParticles()
     {
         _uploadParticles = false;
-        var set = _scene?.ParticlesFor((int)_quality);
-        _uploaded = set;
-        if (set is null) _particles!.Upload(Array.Empty<float>(), Array.Empty<float>(), Array.Empty<float>(), 0);
-        else _particles!.Upload(set.Velocity, set.Layer, set.Seed, set.Count);
+        _painter!.Upload(_scene?.ParticlesFor((int)_quality));
     }
 
     /// <summary>The frame just drawn, top row first, as a 96-dpi bitmap; null if the read fails (the error is cleared).</summary>
@@ -1188,15 +1092,13 @@ public sealed partial class SceneController : ObservableObject, IDisposable
                 {
                     _gpuTimer?.Dispose();
                     _flash?.Dispose();
-                    _shells?.Dispose();
                     _cutFaces?.Dispose();
                     _torusRings?.Dispose();
                     _rings?.Dispose();
                     _remnant?.Dispose();
                     _jets?.Dispose();
-                    _particles?.Dispose();
+                    _painter?.Dispose();
                     _hdr?.Dispose();
-                    _star?.Dispose();
                 });
             }
             catch (Exception e)
@@ -1207,15 +1109,13 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         }
         _gpuTimer = null;
         _flash = null;
-        _shells = null;
         _cutFaces = null;
         _rings = null;
         _torusRings = null;
         _remnant = null;
         _jets = null;
-        _particles = null;
+        _painter = null;
         _hdr = null;
-        _star = null;
     }
 }
 

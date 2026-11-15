@@ -21,7 +21,7 @@ public sealed class HdrPipeline : IDisposable
     public const int MinBloomLevelPx = 8;
 
     /// <summary>The HDR target's clear colour: the view's dark blue background (sRGB 0.01, 0.01, 0.03) in linear light.</summary>
-    private static readonly (float R, float G, float B) Background = (0.00077f, 0.00077f, 0.00232f);
+    public static readonly (float R, float G, float B) Background = (0.00077f, 0.00077f, 0.00232f);
 
     private readonly ShaderProgram? _down, _up, _tonemap;
     private readonly int _vao;
