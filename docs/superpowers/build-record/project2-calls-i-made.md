@@ -70,9 +70,9 @@ plain words. Each has a number so you can find its full wording, reason and cost
 
 - **Turning or zooming the view no longer pauses the tour;** only the timeline does, and a click on the caption
   resumes. The tour's camera sways instead of circling, so the cutaway stays in view.
-- **The sway is lopsided on purpose (R-P2-34):** the full 60° on one side, 45–59° on the other for 9 of 14
-  presets. The cut is turned about a different axis from the camera's swing, so a symmetric 60° would show some cut
-  faces from behind.
+- **The sway can be lopsided (R-P2-34):** the full 60° on one side, 41° on the other for 3 of 14 presets (SN 1998bw,
+  SN 2008D, SN 2015bn); the other 11 sway the full 60° both ways (recomputed after Task 16 changed the cut's angles). The
+  cut is turned about a different axis from the camera's swing, so a symmetric 60° would show some cut faces from behind.
 - **On cutaway stops the caption moves to the top; panels fold; Focus view (F) clears the screen;** what you fold
   is remembered in %LOCALAPPDATA%\SupernovaLab\layout.json.
 - **The neutrino and gravitational-wave labels keep fixed rows on the timeline.** I also fixed the detector order
