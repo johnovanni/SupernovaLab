@@ -274,6 +274,104 @@ public class BlackHoleOpticsTests
         Assert.True(Math.Abs(c0) < 1e-12 && Math.Abs(c1) < 1e-5, $"captured ray: H {c0} → {c1}");
     }
 
+    // ---- Task 4: ruling R-P3-6 (far cameras) and the Task 3 review's budget cases ----
+
+    /// <summary>
+    /// Ruling R-P3-6: a camera at 700 GM/c² (beyond 200) has its rays advanced along their straight lines to the sphere
+    /// r = 200 and traced from there with R_esc = 200, inside the 400-step budget. The edge of the Captured region, as an
+    /// impact parameter b = 700 sin θ, is √27 within 0.5%.
+    /// </summary>
+    [Fact]
+    public void FarCamera_At700_ShadowEdgeIsRoot27()
+    {
+        const double d = 700;
+        double lo = 0, hi = 0.02; // θ from the direction of the hole
+        Assert.Equal(RayFate.Captured, TraceAt(lo).Fate);
+        Assert.NotEqual(RayFate.Captured, TraceAt(hi).Fate);
+        for (int k = 0; k < 30; k++)
+        {
+            double mid = 0.5 * (lo + hi);
+            if (TraceAt(mid).Fate == RayFate.Captured) lo = mid; else hi = mid;
+        }
+        double b = d * Math.Sin(lo);
+        Assert.InRange(b, C7.ShadowRadius * (1 - C7.ShadowFractionalTolerance), C7.ShadowRadius * (1 + C7.ShadowFractionalTolerance));
+        Assert.True(TraceAt(1.2 * lo).Steps < BlackHoleOptics.MaxSteps, "a ray just outside the edge fits the 400-step budget");
+
+        static RayResult TraceAt(double theta)
+            => BlackHoleOptics.TraceRay(0, new(d, 0, 0), new(-Math.Cos(theta), Math.Sin(theta), 0), 1.2 * d);
+    }
+
+    /// <summary>
+    /// Ruling R-P3-6: a far ray whose line misses the r = 200 sphere escapes at once with the weak-field deflection toward
+    /// the hole, (2/b)(1 − cos γ) for a half-line leaving the camera at angle γ from its position vector: 4/b for a line
+    /// passing the hole from far away, nothing for one pointing straight out.
+    /// </summary>
+    [Fact]
+    public void FarCamera_LineMissingTheSphere_GetsTheWeakFieldDeflection()
+    {
+        // From 10⁶ GM/c², a line passing the hole at b = 1,000: γ ≈ π, so the deflection is 4/b = 0.004 rad (within 1%).
+        const double d = 1e6, b = 1000;
+        var dir = new Vec3(-d, b, 0).Normalized();
+        var r = BlackHoleOptics.TraceRay(0.5, new(d, 0, 0), dir, 1.2 * d);
+        Assert.Equal(RayFate.Escaped, r.Fate);
+        Assert.Equal(0, r.Steps);
+        double bLine = d * b / Math.Sqrt(d * d + b * b);
+        Assert.Equal(4 / bLine, Angle(dir, r.ExitDirection), 4 / bLine * 0.01);
+        Assert.True(r.ExitDirection.Y < dir.Y, "bent toward the hole (−y side of the line)");
+        // Pointing straight away: no deflection, and never NaN (b = 0).
+        var away = BlackHoleOptics.TraceRay(0.5, new(d, 0, 0), new(1, 0, 0), 1.2 * d);
+        Assert.Equal(RayFate.Escaped, away.Fate);
+        Assert.Equal(1, away.ExitDirection.X, 12);
+    }
+
+    /// <summary>A far ray that does reach the sphere starts on it (r just under 200) and is traced with R_esc = 200.</summary>
+    [Fact]
+    public void FarCamera_RayReachingTheSphere_IsTracedFromIt()
+    {
+        var r = BlackHoleOptics.TraceRay(0, new(1000, 0, 0), new Vec3(-1, 0.02, 0).Normalized(), 1200);
+        Assert.Equal(RayFate.Escaped, r.Fate);
+        Assert.True(r.Steps > 100, $"traced through the sphere ({r.Steps} steps)");
+        Assert.InRange(r.ExitPosition.Length, BlackHoleOptics.FarCameraRadius, BlackHoleOptics.FarCameraRadius + 2.5);
+    }
+
+    /// <summary>Task 3 review: the NeverNaN cases for a far camera (a = 0.5, camera at 1,000, R_esc 1,200).</summary>
+    [Fact]
+    public void Tracer_NeverNaN_FarCamera()
+    {
+        foreach (var dir in GridDirections(64))
+        {
+            var r = BlackHoleOptics.TraceRay(0.5, new(1000, 0, 0.1), dir, 1200);
+            Assert.True(r.Steps <= BlackHoleOptics.MaxSteps);
+            Assert.True(double.IsFinite(r.ExitDirection.Length) && double.IsFinite(r.ExitPosition.Length));
+            Assert.NotEqual(RayFate.StepLimit, r.Fate);
+        }
+    }
+
+    /// <summary>
+    /// Task 3 review: Kerr at the shader's own 400-step budget (a = 0.9, seen edge-on from a camera at 50, R_esc 60).
+    /// Along 24 lines through Bardeen's outline, parallel rays at 0.9 of the outline radius are Captured and at 1.1 are
+    /// not; StepLimit rays (ruling R-P3-7: drawn as the photon ring) sit only in a narrow band at the edge.
+    /// </summary>
+    [Fact]
+    public void KerrShadow_AtTheShaderBudget_FatesAreSensible_StepLimitBandNarrow()
+    {
+        const double a = 0.9, cam = 50, inc = Math.PI / 2;
+        Vec3 n = Normal(inc);
+        var outline = BlackHoleOptics.KerrShadowOutline(a, inc, 24);
+        int stepLimited = 0, samples = 0;
+        foreach (var (alpha, beta) in outline)
+        {
+            RayResult At(double s) => BlackHoleOptics.TraceRay(a, cam * n + s * alpha * EAlpha + s * beta * EBeta(inc), -n, 60);
+            Assert.Equal(RayFate.Captured, At(0.9).Fate);
+            Assert.Equal(RayFate.Escaped, At(1.1).Fate);
+            for (int k = 0; k <= 100; k++, samples++)
+                if (At(0.9 + 0.2 * k / 100).Fate == RayFate.StepLimit) stepLimited++;
+        }
+        // Band width as a fraction of the outline radius: (StepLimit samples / samples) × 0.2.
+        double band = 0.2 * stepLimited / samples;
+        Assert.True(band < 0.01, $"StepLimit band {band:P2} of the shadow radius ({stepLimited} of {samples} samples)");
+    }
+
     [Fact]
     public void Vec3_Operations()
     {

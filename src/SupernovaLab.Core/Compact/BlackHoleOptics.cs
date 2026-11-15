@@ -33,25 +33,39 @@ public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 Ex
 /// f = 2r³/(r⁴ + a²z²), l_μ = (1, (rx + ay)/(r² + a²), (ry − ax)/(r² + a²), z/r), and r from
 /// r² = ½(w + √(w² + 4a²z²)), w = x² + y² + z² − a² (for w &lt; 0 use the equal form 2a²z²/(√(w² + 4a²z²) − w)).
 /// The inverse is g^μν = η^μν − f l^μ l^ν with l^μ = (−1, l_x, l_y, l_z).</item>
-/// <item><b>Backwards in time by time reversal.</b> A photon arriving at the camera along −d, around spin a, has the same
-/// spatial path as a <i>future-directed</i> photon leaving the camera along +d around spin −a (the Kerr metric is
-/// unchanged by t → −t with a → −a). The tracer therefore integrates forwards in λ with the metric's a set to
-/// <b>−spin</b>. In ingoing Kerr–Schild coordinates such a ray crosses the horizon smoothly (no coordinate singularity),
-/// which is why the capture test can sit just inside r₊ + 0.01. Captured, Escaped and the screen orientation of the
+/// <item><b>Backwards in time by time reversal; the chart (ruling R-P3-8).</b> A photon arriving at the camera along −d,
+/// around spin a, has the same spatial path as a <i>future-directed</i> photon leaving the camera along +d around spin −a
+/// (the Kerr metric is unchanged by t → −t with a → −a). The tracer therefore integrates forwards in λ with the metric's a
+/// set to <b>−spin</b>, in ingoing Kerr–Schild coordinates of spin −a, where such a ray crosses the horizon smoothly (no
+/// coordinate singularity), which is why the capture test can sit just inside r₊ + 0.01. Read back with t → −t, that chart
+/// is <b>outgoing Kerr–Schild coordinates of the hole's own spin +a</b>: positions, directions and the scene's axes
+/// (spin along +z) are all in it. Its azimuth φ differs from Boyer–Lindquist's by about a/r (≈ 1° at r = 60 for a = 0.9),
+/// which does not matter for drawing; r and θ are Boyer–Lindquist's. Captured, Escaped and the screen orientation of the
 /// Kerr shadow (Bardeen's α = −ξ/sin i) come out right: <c>KerrShadow_TracerMatchesBardeen</c> checks the asymmetric
 /// edge-on outline.</item>
 /// <item><b>Hamiltonian.</b> H = ½ g^μν p_μ p_ν, integrated in x^i and p_i (6 numbers); p_t = −1 is constant (E = 1),
 /// so far from the hole |dx/dλ| ≈ 1 and the step h is roughly a coordinate length. With L = l^μ p_μ = 1 + l·p:
 /// dx^i/dλ = p_i − f L l_i and dp_i/dλ = ½ L² ∂_i f + f L ∂_i L, using the analytic derivatives in <c>Derivatives</c>
 /// (∂_i r, ∂_i f, ∂_i L in closed form, plain arithmetic).</item>
+/// <item><b>Far cameras (ruling R-P3-6).</b> When the camera is farther than <see cref="FarCameraRadius"/> (200, by
+/// |x|), the ray first runs along its straight line to the sphere |x| = <see cref="FarStartRadius"/> (199.99, just inside
+/// 200 so the step-0 escape test cannot fire on rounding) and is traced from there with R_esc = 200, whatever the caller
+/// passed. A line whose forward half misses that sphere escapes at step 0 with the weak-field deflection applied
+/// analytically, toward the hole: Δ = (2/b)(1 − cos γ), b the line's distance from the hole and γ the angle between the
+/// camera's position vector and d (the 4/b of a line passing the hole from far away, integrated from the camera onwards
+/// along the straight line; computed as 2b/(|x|²(1 + cos γ)) when cos γ &gt; 0, without cancellation). Its ExitPosition is
+/// the camera. [APPROX] The bending outside r = 200 on the way in (below 0.5° for any ray that reaches it) is
+/// neglected; the 400-step budget then covers every camera distance.</item>
 /// <item><b>Start.</b> d = normalize(direction). With s = l·d at the camera, the null vector v = (T, d) has
 /// T = (1 + f s²)/(√(1 − f(1 − s²)) − f s) (the future-directed root of −T² + 1 + f(T + s)² = 0, stable form);
 /// p_i = (d_i + f (T + s) l_i)/E with E = T − f (T + s), so p_t = −1. If the root does not exist or E ≤ 0 (a camera
 /// inside the ergosphere, out of scope: the Close-up camera stays beyond 2 GM/c²), the ray is Captured at step 0.</item>
 /// <item><b>Fate tests</b>, at the camera (step 0) and after every step, in this order: HitSurface if surfaceRadius &gt; 0
 /// and r &lt; surfaceRadius; Captured if r &lt; r₊ + 0.01 (r₊ = 1 + √(1 − a²)); Escaped if r &gt; R_esc (the caller
-/// passes R_esc = max(60, 1.2 × camera distance), ruling P3-7). A camera already outside R_esc is Escaped at step 0
-/// with its own direction. After <see cref="MaxSteps"/> steps with none of these: StepLimit.</item>
+/// passes R_esc = max(60, 1.2 × camera distance), ruling P3-7; 200 for a far camera, item 4). A camera already outside
+/// R_esc is Escaped at step 0 with its own direction. After <see cref="MaxSteps"/> steps with none of these: StepLimit
+/// (ruling R-P3-7: shaded by the surroundings along the exit direction; these rays orbit near the photon sphere, so they
+/// read as the photon ring).</item>
 /// <item><b>Step.</b> Classical RK4 on (x, p) with h = 0.05 · max(r − r₊, 0.5) · (1 + r/20), capped at 2.0, r taken at
 /// the start of the step. At most 400 steps. No allocation in the loop.</item>
 /// <item><b>Exit.</b> ExitPosition = x at the stop; ExitDirection = normalize(dx/dλ) there (the k₁ derivative of the
@@ -60,7 +74,8 @@ public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 Ex
 /// <para>
 /// Budget: a ray from a camera at distance D travels about 2.2 D (in, then out to R_esc = 1.2 D) at h = 2.0, plus about
 /// 100 smaller steps near the hole, so 400 steps cover a camera within about 250 GM/c² (measured, a = 0.5, b ≤ 20: no
-/// StepLimit at D ≤ 250, 3 of 81 rays at 300, 56 of 81 at 400). Rays that loop near the photon sphere take small steps
+/// StepLimit at D ≤ 250, 3 of 81 rays at 300, 56 of 81 at 400); the far-camera rule (item 4) starts every farther ray
+/// at 200. Rays that loop near the photon sphere take small steps
 /// there (h ≈ 0.06 at r = 3, a = 0) and may end as StepLimit; they lie in a thin band at the shadow edge
 /// (<c>SchwarzschildShadow_ShaderBudgetMatchesRoot27</c> bounds it below 0.5% of √27 for a camera at 50). The exact
 /// outline overlay comes from <see cref="KerrShadowOutline"/> (ruling P3-9), not the tracer.
@@ -74,6 +89,10 @@ public static class BlackHoleOptics
     public const double PhotonSphereRadius = 3;
     /// <summary>The tracer's step cap (ruling P3-7).</summary>
     public const int MaxSteps = 400;
+    /// <summary>Ruling R-P3-6: a camera farther than this (|x|, GM/c²) starts its rays on the sphere of this radius, and R_esc is this.</summary>
+    public const double FarCameraRadius = 200;
+    /// <summary>Ruling R-P3-6: where a far camera's ray starts, just inside <see cref="FarCameraRadius"/>.</summary>
+    public const double FarStartRadius = 199.99;
 
     /// <summary>Capture margin outside the horizon (ruling P3-7).</summary>
     private const double CaptureMargin = 0.01;
@@ -199,19 +218,28 @@ public static class BlackHoleOptics
     /// </summary>
     public static RayResult TraceRay(double spin, Vec3 cameraPosition, Vec3 direction, double escapeRadius,
                                      double surfaceRadius = 0)
-        => Trace(spin, cameraPosition, direction, escapeRadius, surfaceRadius, MaxSteps);
+        => Trace(spin, cameraPosition, direction, escapeRadius, surfaceRadius, MaxSteps, farCameras: true);
 
     /// <summary>
     /// <see cref="TraceRay"/> with a different step budget. Only the tests use another budget (rays fired from
-    /// r = 1,000 need more than 400 steps of 2.0 just to arrive); everything else is identical.
+    /// r = 1,000 need more than 400 steps of 2.0 just to arrive), and they integrate the whole way: the far-camera rule
+    /// (class notes, item 4) is on only when <paramref name="farCameras"/> is, as <see cref="TraceRay"/> has it.
+    /// Everything else is identical.
     /// </summary>
     internal static RayResult Trace(double spin, Vec3 cameraPosition, Vec3 direction, double escapeRadius,
-                                    double surfaceRadius, int maxSteps)
+                                    double surfaceRadius, int maxSteps, bool farCameras = false)
     {
         double a = -spin; // time reversal: the future-directed ray around −a (see the class notes, item 2)
         double rPlus = HorizonRadius(spin);
         double rCapture = rPlus + CaptureMargin;
         Vec3 d = direction.Normalized();
+        if (farCameras && cameraPosition.Length > FarCameraRadius)
+        {
+            if (!FarStart(cameraPosition, d, out Vec3 onSphere, out Vec3 bent))
+                return new(RayFate.Escaped, cameraPosition, bent, 0);
+            cameraPosition = onSphere;
+            escapeRadius = FarCameraRadius;
+        }
         double x = cameraPosition.X, y = cameraPosition.Y, z = cameraPosition.Z;
 
         // Step 0 at the camera, before the momentum is set up (it does not exist inside the horizon).
@@ -295,6 +323,29 @@ public static class BlackHoleOptics
 
     // ---- The tracer's pieces (mirrored by lensing.frag) ----
 
+    /// <summary>
+    /// Ruling R-P3-6 (class notes, item 4): where the straight line from a far camera <paramref name="c"/> along unit
+    /// <paramref name="d"/> first meets the sphere |x| = <see cref="FarStartRadius"/> (true), or, when its forward half
+    /// misses it, the direction after the analytic weak-field deflection toward the hole (false).
+    /// </summary>
+    private static bool FarStart(Vec3 c, Vec3 d, out Vec3 onSphere, out Vec3 bent)
+    {
+        double cd = c.Dot(d), c2 = c.Dot(c);
+        Vec3 perp = c - cd * d;                   // from the hole to the line's closest point
+        double b = perp.Length;
+        if (cd < 0 && b < FarStartRadius)
+        {
+            onSphere = c + (-cd - Math.Sqrt(FarStartRadius * FarStartRadius - b * b)) * d;
+            bent = d;
+            return true;
+        }
+        double cosG = cd / Math.Sqrt(c2);
+        double delta = cosG > 0 ? 2 * b / (c2 * (1 + cosG)) : 2 / b * (1 - cosG);
+        onSphere = c;
+        bent = b > 0 ? (Math.Cos(delta) * d - Math.Sin(delta) / b * perp).Normalized() : d;
+        return false;
+    }
+
     /// <summary>h = 0.05 · max(r − r₊, 0.5) · (1 + r/20), capped at 2.0 (ruling P3-7).</summary>
     private static double StepSize(double r, double rPlus)
         => Math.Min(0.05 * Math.Max(r - rPlus, 0.5) * (1 + r / 20), MaxStep);
@@ -324,7 +375,7 @@ public static class BlackHoleOptics
     }
 
     /// <summary>
-    /// p_i for a future-directed null ray leaving (x, y, z) along unit d, scaled to p_t = −1 (class notes, item 4).
+    /// p_i for a future-directed null ray leaving (x, y, z) along unit d, scaled to p_t = −1 (class notes, item 5).
     /// False if no such ray exists there (inside the ergosphere).
     /// </summary>
     private static bool InitialMomentum(double a, double x, double y, double z, Vec3 d,
