@@ -326,6 +326,34 @@ public class CloseUpWindowTests
         closeUp.Dispose();
     }
 
+    /// <summary>
+    /// Review fix 1: however far the wheel zooms in, the camera stays at least 3 GM/c² from a black hole (outside the ergosphere, so
+    /// the tracer's camera assumption holds and the view never goes silently black) and 1.1 radii from a neutron star.
+    /// </summary>
+    [Fact]
+    public void Zoom_NeverPutsTheCameraInsideTheHoleOrTheStar()
+    {
+        var bh = OpenCloseUp("n6946bh1", out _);
+        var c = new CloseUpSceneController(bh, () => new FakeHost());
+        double rgKm = bh.State.GravitationalRadiusKm;
+        for (int k = 0; k < 20; k++) c.Zoom(10);
+        Assert.Equal(3 * rgKm, c.Camera.DistanceMpc, 9);
+        Assert.Equal(3 * rgKm, c.MinCameraDistanceKm, 9);
+        Assert.True(c.Camera.Eye.Length * 1e5 / Core.Compact.BlackHoleOptics.GravitationalRadiusCm(bh.State.MassMsun) >= 3 - 1e-9);
+        c.Zoom(-3);
+        Assert.True(c.Camera.DistanceMpc > 3 * rgKm);   // zooming out again is free
+        c.Dispose();
+
+        var ns = OpenCloseUp("sn1054", out _);   // the Crab: a neutron star
+        Assert.Equal(CloseUpEra.NeutronStar, ns.State.Era);
+        var star = new CloseUpSceneController(ns, () => new FakeHost());
+        for (int k = 0; k < 20; k++) star.Zoom(10);
+        double expected = Math.Max(3 * ns.State.GravitationalRadiusKm, 1.1 * ns.State.SurfaceRadiusKm);
+        Assert.Equal(1.1 * ns.State.SurfaceRadiusKm, expected, 9);   // for a neutron star the surface sets the limit
+        Assert.Equal(expected, star.Camera.DistanceMpc, 9);
+        star.Dispose();
+    }
+
     private static Window OffScreen(Window w)
     {
         w.WindowStartupLocation = WindowStartupLocation.Manual;

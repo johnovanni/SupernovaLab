@@ -142,6 +142,19 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     private bool _forceAnimating;
 
+    /// <summary>
+    /// The bench's baseline switch (<c>--bench-baseline</c>): false skips the lensing pass and the environment capture, so a frame is
+    /// only the HDR clear, the rings and the tone map. It separates the lensing's cost from the cost of a second GL window. On by
+    /// default.
+    /// </summary>
+    public bool LensingEnabled
+    {
+        get => _lensingEnabled;
+        set { _lensingEnabled = value; RequestRender(); }
+    }
+
+    private bool _lensingEnabled = true;
+
     // ---- Lensing level (ruling P3-9) ----
 
     private readonly LensingGovernor _governor = new(LensingLevel.Full);
@@ -239,6 +252,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         if (notches == 0) return;
         _frozenHalfHeightCm ??= Director.HalfHeightCm;
         Camera.Zoom(notches);
+        ClampDistance();
         IsAutoFraming = false;
         UpdateAnimating();
         UpdateRings();
@@ -269,6 +283,36 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     {
         if (_frozenHalfHeightCm is null && Director.HalfHeightCm > 0)
             Camera.DistanceMpc = SceneController.AutoDistance * Director.HalfHeightCm / UnitCm;
+        ClampDistance();
+    }
+
+    /// <summary>The closest camera, in multiples of GM/c²: outside the ergosphere (2 GM/c² at the equator) with room to spare.</summary>
+    public const double MinCameraGravitationalRadii = 3;
+
+    /// <summary>The closest camera, in multiples of a neutron star's radius.</summary>
+    public const double MinCameraSurfaceRadii = 1.1;
+
+    /// <summary>
+    /// The closest the camera may come (km): max(3 GM/c², 1.1 × the surface radius) of the object drawn now, so a zoom can never put
+    /// it inside the horizon, the ergosphere or a neutron star (where every ray would be captured at step 0, or hit the surface, and
+    /// the view would go silently black or flat; BlackHoleOptics' tracer assumes a camera beyond 2 GM/c²). With nothing lensed, the
+    /// camera's own floor.
+    /// </summary>
+    public double MinCameraDistanceKm
+    {
+        get
+        {
+            var s = _vm.State;
+            if (!s.IsLensed) return OrbitCamera.MinDistanceMpc;
+            return Math.Max(OrbitCamera.MinDistanceMpc,
+                Math.Max(MinCameraGravitationalRadii * s.GravitationalRadiusKm, MinCameraSurfaceRadii * s.SurfaceRadiusKm));
+        }
+    }
+
+    private void ClampDistance()
+    {
+        double min = MinCameraDistanceKm;
+        if (Camera.DistanceMpc < min) Camera.DistanceMpc = min;
     }
 
     private void OnStateChanged(object? sender, bool rebuilt)
@@ -283,6 +327,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             Director.Jump(_vm.State.FrameRadiusKm * UnitCm);
             ApplyAutoDistance();
         }
+        ClampDistance();
         UpdateAnimating();
         UpdateRings();
         RequestRender();
@@ -363,9 +408,10 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         FramesDrawn++;
         var state = _vm.State;
         _gpuTimer?.Begin();
-        if (state.IsLensed) RefreshEnvironment();
+        bool lens = state.IsLensed && _lensingEnabled;
+        if (lens) RefreshEnvironment();
         _hdr.Begin(viewportPx);
-        if (state.IsLensed && viewportPx.Width > 0 && viewportPx.Height > 0)
+        if (lens && viewportPx.Width > 0 && viewportPx.Height > 0)
             _lensing.Render(viewportPx, Level, Uniforms(state, viewportPx), _environment.Texture);
         if (state.IsLensed)
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / UnitCm, ring.Opacity);

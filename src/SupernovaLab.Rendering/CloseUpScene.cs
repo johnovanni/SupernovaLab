@@ -78,7 +78,7 @@ public sealed class CloseUpScene
 
     /// <summary>What the lensing pass bends, said once.</summary>
     public const string SurroundingsNote =
-        "The surroundings are the main view's scene seen from the remnant, with their light bent exactly as general relativity says (each pixel's ray traced through the hole's spacetime).";
+        "The surroundings are the main view's scene seen from the remnant, with their light bent as computed from general relativity (each pixel's ray traced through the hole's spacetime).";
 
     /// <summary>The black hole is framed at this many shadow radii (the shadow fills about a third of the view's height).</summary>
     public const double BlackHoleFrameShadowRadii = 1.5;

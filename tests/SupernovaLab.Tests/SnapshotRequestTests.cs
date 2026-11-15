@@ -272,4 +272,18 @@ public class SnapshotRequestTests
     [InlineData("fast")]
     public void BadBenchSpin_Throws(string spin)
         => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench-spin", spin }));
+
+    /// <summary>Review fix 1: <c>--bench-baseline</c> runs the Close-up hidden, with its lensing off, and at 1/4 (one launch).</summary>
+    [Fact]
+    public void BenchBaseline_IsAFlag_ThatOpensTheCloseUp_AndRunsTheBaseline()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20", "--bench-baseline" })!;
+        Assert.True(r.BenchBaseline);
+        Assert.True(r.OpenCloseUp);
+        Assert.Equal(new[] { CloseUpBenchRun.Hidden, CloseUpBenchRun.LensingOff, CloseUpBenchRun.Quarter }, r.CloseUpBenchRuns);
+        var plain = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20", "--closeup" })!;
+        Assert.False(plain.BenchBaseline);
+        Assert.Equal(new[] { CloseUpBenchRun.Governed, CloseUpBenchRun.Full, CloseUpBenchRun.Half, CloseUpBenchRun.Quarter },
+            plain.CloseUpBenchRuns);
+    }
 }
