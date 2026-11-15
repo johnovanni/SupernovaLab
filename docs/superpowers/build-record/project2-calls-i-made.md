@@ -81,6 +81,22 @@ plain words. Each has a number so you can find its full wording, reason and cost
 - **R1 and R2 are fixed** (#51's cause corrected; the caption no longer covers the slice).
 - **App launches:** this follow-up used 3 + 3 launches against budgets of 1–2; no screen capture, nothing flagged.
 
+## Mixing that looks like mixing (Task 16, issue SN-001, approved by you on 2026-11-14)
+
+- **Why it took three rounds.** The lab's nickel core is tiny (about 4% of the radius) and its mixing cones are
+  narrow (about 18°), so anything drawn inside them came out as long thin spokes (about 1:6) rather than the 1:2–1:3
+  plumes of the simulations.
+- **Two scales (R-P2-35).** Small Rayleigh–Taylor fingers along every layer boundary, pushing both ways, plus broad
+  nickel plumes (allowed up to twice their cone's width at the cut face) with oxygen and helium sheaths and hydrogen
+  coming down between them. Plume shapes, boundary undulation and the small fingers are labelled schematic; only the
+  reach is from the lab's model. Physics unchanged.
+- **Downflows fade with the debris (R-P2-36),** never below half strength; nickel stays solid. Stratified explosions
+  (Type Ia, pair instability) keep smooth layers.
+- **The cut's angle now counts only cones that really cross a face,** so it changed for most presets; the tour's sway
+  follows automatically (60° both ways for 11 of 14 presets, 41° on one side for the other 3).
+- **Known limits:** Cas A's plumes still fan out from a small nickel core; the small fingers are a few pixels at the
+  normal zoom (clear when zoomed in). Cutaway 73.9 fps at 1366×768.
+
 ## Residuals from the final review (now fixed in Task 15)
 
 - **R1.** Inconsistency #51 names the wrong cause. The real one: when the breakout model gives no breakout (dense
@@ -92,7 +108,7 @@ Smaller leftovers (polish) are listed in `project2-ledger.md`.
 
 ## Numbers at the end
 
-- **Tests:** 2,213 passing, 0 build warnings (2,157 before Task 15).
+- **Tests:** 2,242 passing, 0 build warnings (2,157 before Task 15, 2,213 before Task 16).
 - **Spec success criteria:** 1–4 pass in validation tests across all 14 presets; the sweep of 14 presets × 40 times
   found no errors.
 - **Performance (criterion 5):** 67–70 fps at 1366×768 and 62–67 fps at 1920×1080 with 200,000 particles, bloom and

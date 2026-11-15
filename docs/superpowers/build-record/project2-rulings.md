@@ -122,3 +122,5 @@ network. In addition:
 - Ruling R-P2-31 (tour accuracy wording folded in; presets.md 653 → 642 [D]) — see ledger.
 - Ruling R-P2-32 (on-screen notes for #38, #49, #46, #47/#39; tour orbit keeps the view animating) — final fix wave.
 - Ruling R-P2-33 (final wave: mixing tour stop; clamp confined radius; IIn peak-before-breakout logged and its stop dropped; remnant readout relabel; Crab flag) — see final-findings.md.
+- Ruling R-P2-35 (two-scale mixing drawing on the cut faces: small RT fingers on every boundary + broad big plumes within 2× the cone chord; physics unchanged) — see ledger.
+- Ruling R-P2-36 (downflows and sheaths fade with density, floor 0.5; nickel opaque; undulation only for mixing outcomes) — see ledger.
