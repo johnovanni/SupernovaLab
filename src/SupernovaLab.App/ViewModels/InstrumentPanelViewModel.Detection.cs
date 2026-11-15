@@ -152,7 +152,9 @@ public abstract partial class InstrumentPanelViewModel
     /// </summary>
     protected virtual (string Full, string Short) Badge(ISignalModel model, Detection d) => d.Status switch
     {
-        DetectionStatus.Detected => ("Detected", "Detected"),
+        DetectionStatus.Detected => IsNeverObserved(model)
+            ? (NeverObserved.BadgeWord, NeverObserved.BadgeWord)
+            : ("Detected", "Detected"),
         DetectionStatus.TooFaint => ("Too faint at this distance", "Too faint"),
         DetectionStatus.BlockedByDust => ("Blocked by dust", "Blocked by dust"),
         DetectionStatus.NotPointedAtUs => ("Not pointed at us", "Not pointed at us"),
@@ -162,8 +164,18 @@ public abstract partial class InstrumentPanelViewModel
     };
 
     /// <summary>The badge words for a brief signal that is over, by whether the instrument caught it.</summary>
-    protected static (string Full, string Short) OverWords(bool caught)
-        => caught ? ("Over: it was detected", "Over: detected") : ("Over: too faint at this distance", "Over: too faint");
+    protected static (string Full, string Short) OverWords(bool caught, bool neverObserved = false)
+        => caught
+            ? neverObserved ? ("Over: expected to be detected", "Over: expected") : ("Over: it was detected", "Over: detected")
+            : ("Over: too faint at this distance", "Over: too faint");
+
+    /// <summary>
+    /// Whether no instance of this model's signal has been observed from any supernova for this outcome (§C10), so a
+    /// detection is only "Expected". The badge judges the selected instrument, so the neutrino model's channel is that
+    /// instrument's event rate.
+    /// </summary>
+    protected bool IsNeverObserved(ISignalModel model)
+        => NeverObserved.Applies(model.Id, model.Id == "neutrino" ? ChannelId.Compose("rate", SelectedInstrument.Id) : null, Outcome);
 
     /// <summary>
     /// For a brief signal (the neutrino burst, the gravitational waves) whose model has ended: "Over", with whether the
@@ -174,7 +186,7 @@ public abstract partial class InstrumentPanelViewModel
         if (d.Status != DetectionStatus.NotModeled || !model.Applies(Outcome)) return null;
         double end = model.ValidRange(Outcome).EndS;
         if (!(SourceTimeS > end)) return null;
-        return OverWords(DetectCached(model, SelectedInstrument, end).Status == DetectionStatus.Detected);
+        return OverWords(DetectCached(model, SelectedInstrument, end).Status == DetectionStatus.Detected, IsNeverObserved(model));
     }
 
     private static int Rank(DetectionStatus s) => s switch

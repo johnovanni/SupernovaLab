@@ -29,6 +29,22 @@ public static class TourCaptions
         return "In the lab, " + (acronym ? sentence[0] : char.ToLowerInvariant(sentence[0])) + sentence[1..];
     }
 
+    /// <summary>
+    /// "Expected: the shock ...": a lab-model sentence about a signal that has never been observed from any supernova (spec §7.1;
+    /// <see cref="NeverObserved"/>), so it is what the model expects, not something seen.
+    /// </summary>
+    public static string Expected(string text) => "Expected: " + text;
+
+    /// <summary>The glossary key's model Id for the never-observed audit; null for a marker whose signal has no audited model.</summary>
+    private static string? AuditedModelId(string glossaryKey) => glossaryKey switch
+    {
+        nameof(Glossary.NeutrinoBurst) => "neutrino",
+        nameof(Glossary.GravitationalWaves) => "gw",
+        nameof(Glossary.PeakBrightness) or nameof(Glossary.PlateauEnd) => "lightcurve",
+        nameof(Glossary.PulsarEmerges) => "pulsar",
+        _ => null,
+    };
+
     /// <summary>"Observed: ... (recalled)." for a history line; a recalled ([R]) fact says so before its full stop.</summary>
     public static string Observed(string text, bool recalled)
         => "Observed: " + (recalled ? text.TrimEnd().TrimEnd('.') + " (recalled)." : text);
@@ -62,7 +78,7 @@ public static class TourCaptions
     {
         string t = UnitFormat.Time(m.ObserverTimeS);
         string clock = Clock(o);
-        return InTheLab(m.GlossaryKey switch
+        string text = m.GlossaryKey switch
         {
             nameof(Glossary.NeutrinoBurst)
                 => $"A burst of neutrinos streams out of the collapsed core {t} after {clock}, carrying away most of the energy the collapse released.",
@@ -81,7 +97,8 @@ public static class TourCaptions
             nameof(Glossary.RemnantResolvable)
                 => $"The expanding remnant is now at least {RemnantEvolutionModel.ResolvableArcsec.ToString(CultureInfo.InvariantCulture)} arcseconds across from here, so Chandra could resolve it, {t} after {clock}.",
             _ => m.Caption,
-        });
+        };
+        return NeverObserved.Applies(AuditedModelId(m.GlossaryKey) ?? "", null, o) ? Expected(text) : InTheLab(text);
     }
 
     /// <summary>

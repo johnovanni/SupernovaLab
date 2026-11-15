@@ -103,7 +103,7 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
     {
         if (ReferenceEquals(model, _grb) && GrbModel.DetectorIds.Contains(SelectedInstrument.Id) && BurstIsOver(SourceTimeS)
             && d.Status == DetectionStatus.NotModeled && Observer.BeamTowardEarth)
-            return OverWords(TriggerAtPromptEnd(model, SelectedInstrument).Status == DetectionStatus.Detected);
+            return OverWords(TriggerAtPromptEnd(model, SelectedInstrument).Status == DetectionStatus.Detected, IsNeverObserved(model));
         return base.Badge(model, d);
     }
 

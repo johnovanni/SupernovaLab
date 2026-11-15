@@ -258,7 +258,7 @@ public class TourBuilderTests
             Assert.NotEmpty(s.Notes);
             Assert.Equal(s.Notes.Count, s.Sources.Count);
             Assert.All(s.Notes, n => Assert.Contains(n.Source.Citation, s.SourceText));
-            Assert.Equal(s.Notes.Count, s.Caption.Split(new[] { "Observed:", "In the lab," }, StringSplitOptions.None).Length - 1);
+            Assert.Equal(s.Notes.Count, s.Caption.Split(new[] { "Observed:", "In the lab,", "Expected:" }, StringSplitOptions.None).Length - 1);
         });
         var photos = Assert.Single(tour, s => s.Caption.Contains("first photographs"));
         Assert.Contains("(recalled)", photos.Caption);

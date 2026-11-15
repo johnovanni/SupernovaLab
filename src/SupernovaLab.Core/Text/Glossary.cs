@@ -311,7 +311,8 @@ public static class Glossary
     public const string GuidedTour =
         "A narrated walk through this explosion, from the first millisecond onward: the timeline plays between the stops, " +
         "slows down as it nears each one, and rests there while the caption is read. Sentences that begin \"In the lab\" come " +
-        "from the lab's own model; those that begin \"Observed\" are real measurements, marked \"recalled\" when the research " +
+        "from the lab's own model, and those that begin \"Expected\" are the model's expectation of a signal that no supernova has ever " +
+        "been seen to give; those that begin \"Observed\" are real measurements, marked \"recalled\" when the research " +
         "file quotes them from memory and the paper was not re-opened. Hover over a caption to see where each sentence comes " +
         "from and how firm it is. Moving the camera or the timeline pauses the tour; \"Resume tour\" carries on. Choosing a " +
         "new explosion ends it.";

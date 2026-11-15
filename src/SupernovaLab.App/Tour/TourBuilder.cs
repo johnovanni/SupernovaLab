@@ -25,7 +25,7 @@ namespace SupernovaLab.App.Tour;
 /// merges like any stop (so it is usually the peak-light stop itself, now cut away).</item>
 /// <item>A preset line becomes a stop at its source time × (1 + z). Lines outside the timeline are left out.</item>
 /// <item>Merging: stops are sorted by time; a stop less than 0.05 decades after the earliest stop of its group (measured
-/// from that stop, so a chain cannot drift) joins the group. (Each stop's Notes carry the source and confidence of every caption sentence; history sentences are prefixed "Observed:" and model sentences "In the lab,".) The group keeps the earliest time and that stop's cutaway
+/// from that stop, so a chain cannot drift) joins the group. (Each stop's Notes carry the source and confidence of every caption sentence; history sentences are prefixed "Observed:" and model sentences "In the lab," or, for a signal never observed from any supernova, "Expected:".) The group keeps the earliest time and that stop's cutaway
 /// flag, the first non-null highlight, and its captions joined with a space in time order.</item>
 /// </list>
 /// Every stop dwells for <see cref="DwellS"/> seconds.
