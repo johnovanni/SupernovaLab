@@ -207,16 +207,16 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
         foreach (var c in clusters)
             weight = MathF.Max(weight, 1f - SmoothStep(c.HalfWidthRad, c.HalfWidthRad + BoundaryFalloff, MathF.Abs(psi - c.CentreRad)));
         float amp = BoundaryOut + (BoundaryIn - BoundaryOut) * weight;
-        float rag = 1f + EdgeLowAmp * FaceNoise.Fbm2(EdgeSeed + (uint)plane, a * EdgeLowFreq, b * EdgeLowFreq, 2)
-                       + EdgeHighAmp * FaceNoise.Value2(EdgeSeed + 8u + (uint)plane, a * EdgeHighFreq, b * EdgeHighFreq);
+        float rag = 0f;   // the edge noise, computed only where a finger, plume or tongue is tested (EnsureRag)
         int n = sh.Outer.Length, layer = n - 1;
         for (int k = 0; k < n - 1; k++)
-            if (InsideBoundary(k, sh.Boundaries[k], r, psi, amp, rag)) { layer = k; break; }
+            if (InsideBoundary(k, sh.Boundaries[k], r, psi, amp, plane, a, b, ref rag)) { layer = k; break; }
         var unmixed = Layers[layer].Layer;
 
         if (clusters.Count > 0 && unmixed != ElementLayer.NickelIron)
         {
             float rimO = sh.OxygenLayer >= 0 ? RimOxygen : 0f, rimHe = sh.HeliumLayer >= 0 ? RimHelium : 0f;
+            EnsureRag(ref rag, plane, a, b);
             float clump = FaceNoise.Fbm2(ClumpSeed + (uint)plane, a * ClumpFreq, b * ClumpFreq, 2);
             int level = 0;   // 1 nickel, 2 oxygen sheath, 3 helium sheath
             foreach (var c in clusters)
@@ -244,8 +244,8 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
                 }
             // Nickel, then a tongue's hydrogen, then the plumes' sheaths, then a tongue's helium rim.
             if (tongue == 1) return Mixed(ElementLayer.Hydrogen, CutFaceMaterial.HydrogenTongue, unmixed);
-            if (level == 2) return Mixed(ElementLayer.CarbonOxygenCore, CutFaceMaterial.OxygenSheath, unmixed);
-            if (level == 3 || tongue == 2) return Mixed(ElementLayer.Helium, CutFaceMaterial.HeliumSheath, unmixed);
+            if (level == 2 && sh.OxygenLayer >= 0) return Mixed(ElementLayer.CarbonOxygenCore, CutFaceMaterial.OxygenSheath, unmixed);
+            if ((level == 3 || tongue == 2) && sh.HeliumLayer >= 0) return Mixed(ElementLayer.Helium, CutFaceMaterial.HeliumSheath, unmixed);
         }
         return new CutFacePoint(unmixed, CutFaceMaterial.Layer, unmixed);
     }
@@ -258,7 +258,7 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
     /// boundary's inward fingers, or in one of its outward fingers. The face angle is cut into cells of P radians (with the
     /// boundary's own phase); each cell holds an outward finger at its middle and an inward finger at its edge.
     /// </summary>
-    private static bool InsideBoundary(int k, BoundaryFingers bf, float r, float psi, float amp, float rag)
+    private static bool InsideBoundary(int k, BoundaryFingers bf, float r, float psi, float amp, int plane, float a, float b, ref float rag)
     {
         float lo = MathF.Min(amp, bf.UndulationDown), hi = MathF.Min(amp, bf.UndulationUp);
         if (r <= bf.Radius * (1f - lo) - bf.LengthDown) return true;
@@ -272,12 +272,22 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
             float cell = MathF.Floor(u);
             uint s = FaceNoise.Hash(BoundaryFingerSeed + (uint)k * 7919u + unchecked((uint)(int)cell));
             float x = (u - cell - 0.5f - FingerJitter * (2f * FaceNoise.Unit(s + 1u) - 1f)) * bf.Period * bf.Radius;
-            return InBoundaryFinger(x, r - rb, bf.LengthUp, s, rag);
+            return InBoundaryFinger(x, r - rb, bf.LengthUp, s, EnsureRag(ref rag, plane, a, b));
         }
         float j = MathF.Floor(u + 0.5f);
         uint s2 = FaceNoise.Hash(BoundaryFingerSeed + 0x8000u + (uint)k * 7919u + unchecked((uint)(int)j));
         float x2 = (u - j - FingerJitter * (2f * FaceNoise.Unit(s2 + 1u) - 1f)) * bf.Period * bf.Radius;
-        return !InBoundaryFinger(x2, rb - r, bf.LengthDown, s2, rag);
+        return !InBoundaryFinger(x2, rb - r, bf.LengthDown, s2, EnsureRag(ref rag, plane, a, b));
+    }
+
+    /// <summary>The edge noise at a face point, 1 + EdgeLowAmp fbm2 + EdgeHighAmp value2 (at least 0.6), computed the first time it is
+    /// needed (0 means not yet); the shader computes it lazily the same way.</summary>
+    private static float EnsureRag(ref float rag, int plane, float a, float b)
+    {
+        if (rag == 0f)
+            rag = 1f + EdgeLowAmp * FaceNoise.Fbm2(EdgeSeed + (uint)plane, a * EdgeLowFreq, b * EdgeLowFreq, 2)
+                + EdgeHighAmp * FaceNoise.Value2(EdgeSeed + 8u + (uint)plane, a * EdgeHighFreq, b * EdgeHighFreq);
+        return rag;
     }
 
     /// <summary>A boundary finger (seed s) at arc offset x from its base's axis and height y above its base: absent in FingerGap of
@@ -362,14 +372,30 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
 
     /// <summary>The face's opacity at a face point (<see cref="Opacity"/> with the radius and whether it is mixed material); 0 off the face.</summary>
     public double OpacityAt(int plane, float a, float b)
-        => At(plane, a, b) is { } p ? Opacity(MathF.Sqrt(a * a + b * b) * OuterRadiusCm, p.Material != CutFaceMaterial.Layer) : 0;
+        => At(plane, a, b) is { } p ? Opacity(MathF.Sqrt(a * a + b * b) * OuterRadiusCm, p.Material) : 0;
+
+    /// <summary>The smallest opacity of a tongue, a tongue's helium rim or a plume's sheath where the face fades (ruling R-P2-36).</summary>
+    public const double MixedOpacityFloor = 0.5;
+
+    /// <summary>
+    /// The opacity of a face point of this material at this radius (ruling R-P2-36): a nickel plume is opaque; a hydrogen tongue,
+    /// its helium rim and a plume's sheaths take the density fade but never less than <see cref="MixedOpacityFloor"/>; the layer
+    /// takes the fade (<see cref="Opacity(double, bool)"/>).
+    /// </summary>
+    public double Opacity(double radiusCm, CutFaceMaterial material) => material switch
+    {
+        CutFaceMaterial.NickelFinger => 1,
+        CutFaceMaterial.Layer => Opacity(radiusCm, false),
+        _ => Math.Max(Opacity(radiusCm, false), MixedOpacityFloor),
+    };
 
     /// <summary>
     /// The face's opacity at this radius (ruling R-P2-23): the density profile of structure section S1 relative to its value at
     /// v_t, rho(v) / rho(v_t) = 1 inside v_t and (v / v_t)^-n outside, where v is the speed of the debris drawn at this radius
     /// (the free-expansion radius is proportional to speed in <see cref="ParticleKinematics"/>'s rule, so
     /// v / v_t = <see cref="FreeRadiusCm"/>(radius) / <see cref="TransitionRadiusCm"/>; without shocks the free radius is the radius).
-    /// Plume, sheath and tongue pixels are opaque; the rest of the face fades like the cloud, a glowing ball with a slice removed.
+    /// With <paramref name="inFinger"/> (a nickel plume) the pixel is opaque; otherwise it fades like the cloud, a glowing ball with a slice
+    /// removed (mixed material other than nickel: <see cref="Opacity(double, CutFaceMaterial)"/>, ruling R-P2-36).
     /// </summary>
     public double Opacity(double radiusCm, bool inFinger)
     {
@@ -430,7 +456,7 @@ public sealed record CutFaceModel(IReadOnlyList<(ElementLayer Layer, double Oute
                 double down = mixing ? Math.Min(FingerLength, FingerShare * capDown) * rn : 0;
                 (up, down) = (Math.Min(up, FingerBalance * down), Math.Min(down, FingerBalance * up));   // comparable both ways
                 double period = mixing ? FingerPeriod * Math.Max(up, down) / rn : 0;   // a cell's arc, over the radius
-                Boundaries[k] = new BoundaryFingers((float)rn, (float)Math.Min(BoundaryIn, UndulationShare * capUp), (float)Math.Min(BoundaryIn, UndulationShare * capDown),
+                Boundaries[k] = new BoundaryFingers((float)rn, (float)(mixing ? Math.Min(BoundaryIn, UndulationShare * capUp) : 0), (float)(mixing ? Math.Min(BoundaryIn, UndulationShare * capDown) : 0),
                     (float)up, (float)down, (float)period, FaceNoise.Unit(BoundarySeed + 0x100u + (uint)k));
             }
 

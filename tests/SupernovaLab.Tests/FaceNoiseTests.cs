@@ -132,6 +132,8 @@ public class FaceNoiseTests
             Assert.True(m.Success, $"cutface.frag declares {name}");
             Assert.Equal(value, float.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
         }
+        Assert.Contains($"const float MIXED_OPACITY_FLOOR = {CutFaceModel.MixedOpacityFloor:0.0#};", text);
+        Assert.DoesNotContain("u_layerOuter", text);   // review M5: the dead uniform is gone
         Assert.Contains($"const uint EDGE_SEED = {CutFaceModel.EdgeSeed}u;", text);
         Assert.Contains($"const uint BOUNDARY_SEED = {CutFaceModel.BoundarySeed}u;", text);
         Assert.Contains($"const uint CLUMP_SEED = {CutFaceModel.ClumpSeed}u;", text);
@@ -143,7 +145,10 @@ public class FaceNoiseTests
             "uint s = hash(BOUNDARY_FINGER_SEED + uint(k) * 7919u + uint(int(cell)));",
             "float x = (u - cell - 0.5 - FINGER_JITTER * (2.0 * unit(s + 1u) - 1.0)) * b.w * b.x;",
             "uint s2 = hash(BOUNDARY_FINGER_SEED + 0x8000u + uint(k) * 7919u + uint(int(j)));",
-            "return !inBoundaryFinger(x2, rb - r, b.z, s2, rag);",
+            "return !inBoundaryFinger(x2, rb - r, b.z, s2, ensureRag(rag));", "return inBoundaryFinger(x, r - rb, b.y, s, ensureRag(rag));",
+            "if (rag == 0.0)", "float rag = 0.0;", "bool insideBoundary(int k, float r, float psi, float amp, inout float rag)",
+            "else if (level == 2 && u_oxygenLayer >= 0) drawn = u_oxygenLayer;", "else if ((level == 3 || tongue == 2) && u_heliumLayer >= 0) drawn = u_heliumLayer;",
+            "if (drawn != 100 && free > u_transitionRadius)", "alpha *= mixed ? max(fade, MIXED_OPACITY_FLOOR) : fade;",
             "if (!(len > 0.0) || unit(s + 4u) < FINGER_GAP) return false;", "float l = len * (0.5 + 0.5 * unit(s));",
             "float h = l / (2.0 * FINGER_ASPECT) * (0.8 + 0.25 * unit(s + 2u));",
             "x = abs(x - FINGER_LEAN * (2.0 * unit(s + 3u) - 1.0) * y);",
@@ -158,7 +163,7 @@ public class FaceNoiseTests
             "float hw = t.z * (0.15 + 0.85 * s) * rag;", "return arc <= hw + rimHe * r ? 2 : 0;",
             "if (l == 1 && off > band) l = rimO > 0.0 ? 2 : 3;", "r <= u_tongueCut",
             "int first = int(cl.z) + c, count = int(cl.w) + 1;",
-            "float rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)",
+            "rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)",
             "+ EDGE_HIGH_AMP * value2(EDGE_SEED + 8u + uint(u_plane), v_face.x * EDGE_HIGH_FREQ, v_face.y * EDGE_HIGH_FREQ);",
             "float clump = fbm2(CLUMP_SEED + uint(u_plane), v_face.x * CLUMP_FREQ, v_face.y * CLUMP_FREQ, 2);",
             "float psi = atan(v_face.x, v_face.y);", "uniform vec4 u_cluster[10];", "uniform vec4 u_finger[20];", "uniform vec4 u_tongue[30];",

@@ -22,7 +22,6 @@ in vec2 v_face;                  // (a, b) over the debris' outer radius
 uniform float u_extent;          // the debris' outer radius, scene units: nothing is drawn beyond it
 uniform int u_plane;
 uniform int u_layerCount;
-uniform float u_layerOuter[6];   // outer radius of each layer over the outer radius, centre outward (the last is 1)
 uniform vec4 u_boundary[6];      // per interior boundary: radius, finger length outward, inward, cell period (rad)
 uniform vec4 u_boundary2[6];     // per interior boundary: largest undulation outward, inward (relative), cell phase, unused
 uniform vec3 u_layerColor[6];    // HDR colours, in the same order
@@ -58,6 +57,7 @@ const float FINGER_LEAN = 0.15;
 const float FINGER_GAP = 0.2;
 const float FINGER_JITTER = 0.08;
 const float BAND = 2.0;
+const float MIXED_OPACITY_FLOOR = 0.5;
 const float STALK_NARROW = 0.15;
 const float STALK_ROOT = 0.3;
 const float BASE_LENGTH = 0.45;
@@ -195,8 +195,17 @@ bool inBoundaryFinger(float x, float y, float len, uint s, float rag)
     return inHead(x, y, capW, capH, capC);
 }
 
+// CutFaceModel.EnsureRag: the edge noise, computed the first time it is needed (0: not yet).
+float ensureRag(inout float rag)
+{
+    if (rag == 0.0)
+        rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)
+            + EDGE_HIGH_AMP * value2(EDGE_SEED + 8u + uint(u_plane), v_face.x * EDGE_HIGH_FREQ, v_face.y * EDGE_HIGH_FREQ);
+    return rag;
+}
+
 // CutFaceModel.InsideBoundary: whether the point is inside boundary k (in layer k or below).
-bool insideBoundary(int k, float r, float psi, float amp, float rag)
+bool insideBoundary(int k, float r, float psi, float amp, inout float rag)
 {
     vec4 b = u_boundary[k];
     vec4 b2 = u_boundary2[k];
@@ -212,12 +221,12 @@ bool insideBoundary(int k, float r, float psi, float amp, float rag)
         float cell = floor(u);
         uint s = hash(BOUNDARY_FINGER_SEED + uint(k) * 7919u + uint(int(cell)));
         float x = (u - cell - 0.5 - FINGER_JITTER * (2.0 * unit(s + 1u) - 1.0)) * b.w * b.x;
-        return inBoundaryFinger(x, r - rb, b.y, s, rag);
+        return inBoundaryFinger(x, r - rb, b.y, s, ensureRag(rag));
     }
     float j = floor(u + 0.5);
     uint s2 = hash(BOUNDARY_FINGER_SEED + 0x8000u + uint(k) * 7919u + uint(int(j)));
     float x2 = (u - j - FINGER_JITTER * (2.0 * unit(s2 + 1u) - 1.0)) * b.w * b.x;
-    return !inBoundaryFinger(x2, rb - r, b.z, s2, rag);
+    return !inBoundaryFinger(x2, rb - r, b.z, s2, ensureRag(rag));
 }
 
 // CutFaceModel.InPlume: f = (centre, tip, stalk half-width (arc), seed). 0 outside, 1 nickel, 2 oxygen sheath, 3 helium sheath.
@@ -285,8 +294,7 @@ void main()
     for (int c = 0; c < u_clusterCount; c++)
         weight = max(weight, 1.0 - sstep(u_cluster[c].y, u_cluster[c].y + BOUNDARY_FALLOFF, abs(psi - u_cluster[c].x)));
     float amp = BOUNDARY_OUT + (BOUNDARY_IN - BOUNDARY_OUT) * weight;
-    float rag = 1.0 + EDGE_LOW_AMP * fbm2(EDGE_SEED + uint(u_plane), v_face.x * EDGE_LOW_FREQ, v_face.y * EDGE_LOW_FREQ, 2)
-        + EDGE_HIGH_AMP * value2(EDGE_SEED + 8u + uint(u_plane), v_face.x * EDGE_HIGH_FREQ, v_face.y * EDGE_HIGH_FREQ);
+    float rag = 0.0;   // the edge noise, computed only where a finger, plume or tongue is tested (ensureRag)
     int layer = u_layerCount - 1;
     for (int k = 0; k < u_layerCount - 1; k++)
         if (insideBoundary(k, r, psi, amp, rag)) { layer = k; break; }
@@ -303,6 +311,7 @@ void main()
             vec4 cl = u_cluster[c];
             float off = abs(psi - cl.x), band = BAND * cl.y;
             if (off > band + rimO + rimHe) continue;
+            ensureRag(rag);
             int first = int(cl.z), count = int(cl.w);
             for (int j = 0; j < count; j++)
             {
@@ -327,15 +336,19 @@ void main()
         // Nickel, then a tongue's hydrogen, then the plumes' sheaths, then a tongue's helium rim; each only where it intrudes.
         if (level == 1) drawn = 100;
         else if (tongue == 1) drawn = 101;
-        else if (level == 2) drawn = u_oxygenLayer;
-        else if (level == 3 || tongue == 2) drawn = u_heliumLayer;
+        else if (level == 2 && u_oxygenLayer >= 0) drawn = u_oxygenLayer;
+        else if ((level == 3 || tongue == 2) && u_heliumLayer >= 0) drawn = u_heliumLayer;
         mixed = drawn != layer;
     }
     vec3 color = drawn == 100 ? u_nickelColor : drawn == 101 ? u_hydrogenColor : u_layerColor[drawn];
 
-    // Ruling R-P2-23: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (free radius ~ speed); plumes,
-    // sheaths and tongues are opaque.
+    // Rulings R-P2-23 and R-P2-36: opacity follows the density profile, 1 inside v_t and (v / v_t)^-n outside (free radius ~ speed);
+    // a nickel plume is opaque; tongues, their helium rims and the plumes' sheaths fade too but never below MIXED_OPACITY_FLOOR.
     float free = freeRadius(rho);
-    if (!mixed && free > u_transitionRadius) alpha *= clamp(pow(free / u_transitionRadius, -u_densityIndex), 0.0, 1.0);
+    if (drawn != 100 && free > u_transitionRadius)
+    {
+        float fade = clamp(pow(free / u_transitionRadius, -u_densityIndex), 0.0, 1.0);
+        alpha *= mixed ? max(fade, MIXED_OPACITY_FLOOR) : fade;
+    }
     o_color = vec4(color, alpha);   // the alpha is also the face mask the tone map reads
 }

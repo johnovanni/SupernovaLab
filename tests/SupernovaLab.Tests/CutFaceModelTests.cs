@@ -1,6 +1,7 @@
 using SupernovaLab.App.ViewModels;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Presets;
+using SupernovaLab.Core.Progenitors;
 using SupernovaLab.Core.Structure;
 using SupernovaLab.Rendering;
 
@@ -11,7 +12,7 @@ namespace SupernovaLab.Tests;
 /// Task 16 and ruling R-P2-35: mixing at two scales, small fingers both ways along every layer boundary and broad nickel plumes
 /// with sheaths and hydrogen downflows within twice each cone's chord on a face; grazing cones draw no plumes.
 /// </summary>
-public class CutFaceModelTests
+public class CutFaceModelTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     private const double Day = 86400;
 
@@ -226,22 +227,19 @@ public class CutFaceModelTests
         // where a thin layer caps the finger length).
         var faces = SceneFaces(preset == "default" ? null : preset, days * Day);
         var order = faces.Layers.Select(l => l.Layer).ToList();
-        Assert.InRange(CutFaceModel.FingerAspect, 1.5f, 4f);
-        Assert.InRange(CutFaceModel.FingerAspect / 1.05f, 1.5f, 4f);   // the widest finger of the width factor range 0.8 to 1.05
-        Assert.InRange(CutFaceModel.FingerAspect / 0.8f, 1.5f, 4f);    // the narrowest
         for (int k = 0; k < faces.Boundaries.Count; k++)
         {
             var bf = faces.Boundaries[k];
             Assert.True(bf.LengthUp > 0 && bf.LengthDown > 0 && bf.Period > 0, $"{preset}: boundary {k} has no fingers");
-            Assert.InRange(bf.Period * bf.Radius / bf.Radius, 0.02f, 0.25f);
-            if (Math.Abs(bf.LengthUp - CutFaceModel.FingerLength * bf.Radius) < 1e-6f && bf.LengthDown >= bf.LengthUp - 1e-6f)
-                Assert.InRange(bf.Period, 0.15f, 0.25f);
             // The boundary's profile along each face: the radius rho(psi) where a ray first leaves layers 0..k. A finger is where the
             // profile stands out from its own moving average over one cell (so the slow undulation does not count): outward by more
             // than 0.2 of the outward nominal length, or inward by more than 0.2 of the inward one.
             float rLo = bf.Radius * (1f - bf.UndulationDown) - bf.LengthDown - 0.002f, rHi = bf.Radius * (1f + bf.UndulationUp) + bf.LengthUp + 0.002f;
             const float step = 0.002f;
             int half = Math.Max(2, (int)(0.5f * bf.Period / step));
+            bool Inside(int plane, float r, float psi) => faces.At(plane, r * MathF.Sin(psi), r * MathF.Cos(psi)) is { } p && order.IndexOf(p.Unmixed) <= k;
+            var spacings = new List<float>();
+            var ratios = new List<double>();
             for (int plane = 0; plane < 2; plane++)
             {
                 var rho = new List<float>();
@@ -252,26 +250,64 @@ public class CutFaceModelTests
                     for (int j = 0; j <= 300; j++)
                     {
                         float r = rLo + (rHi - rLo) * j / 300f;
-                        if (faces.At(plane, r * MathF.Sin(psi), r * MathF.Cos(psi)) is { } p && order.IndexOf(p.Unmixed) > k) { found = r; break; }
+                        if (!Inside(plane, r, psi)) { found = r; break; }
                     }
                     rho.Add(found);
                 }
-                int outward = 0, inward = 0;
-                bool inOut = false, inIn = false;
+                float Psi(int i) => (i - 750) * step;
+                // Runs that stand out from the moving average, each with its extreme (the finger's top or bottom).
+                var outward = new List<int>();
+                var inward = new List<int>();
+                int upAt = -1, downAt = -1;
                 for (int i = half; i < rho.Count - half; i++)
                 {
                     float avg = 0;
                     for (int j = i - half; j <= i + half; j++) avg += rho[j];
                     avg /= 2 * half + 1;
                     bool up = rho[i] - avg > 0.2f * bf.LengthUp, down = avg - rho[i] > 0.2f * bf.LengthDown;
-                    if (up && !inOut) outward++;
-                    if (down && !inIn) inward++;
-                    inOut = up;
-                    inIn = down;
+                    if (up) upAt = upAt < 0 || rho[i] > rho[upAt] ? i : upAt;
+                    else if (upAt >= 0) { outward.Add(upAt); upAt = -1; }
+                    if (down) downAt = downAt < 0 || rho[i] < rho[downAt] ? i : downAt;
+                    else if (downAt >= 0) { inward.Add(downAt); downAt = -1; }
                 }
-                Assert.True(outward >= 4, $"{preset}: boundary {k}, face {plane}: {outward} outward fingers");
-                Assert.True(inward >= 4, $"{preset}: boundary {k}, face {plane}: {inward} inward fingers");
+                Assert.True(outward.Count >= 4, $"{preset}: boundary {k}, face {plane}: {outward.Count} outward fingers");
+                Assert.True(inward.Count >= 4, $"{preset}: boundary {k}, face {plane}: {inward.Count} inward fingers");
+
+                // Measured wavelength: the spacing of neighbouring outward fingers (a missing finger makes a double spacing; the
+                // median ignores those).
+                for (int j = 1; j < outward.Count; j++) spacings.Add(Psi(outward[j]) - Psi(outward[j - 1]));
+
+                // Measured shape: length = the extreme's distance from the local base (the profile's median over two cells, where
+                // the base dominates), width = the run across the finger at 0.4 of its length from the base, sampled with At().
+                int cell = (int)(bf.Period / step);
+                foreach (var (list, sign) in new[] { (outward, 1f), (inward, -1f) })
+                    foreach (int i in list)
+                    {
+                        var window = rho.Skip(Math.Max(0, i - cell)).Take(2 * cell + 1).OrderBy(v => v).ToList();
+                        float baseR = window[window.Count / 2], length = sign * (rho[i] - baseR);
+                        if (length < 0.3f * (sign > 0 ? bf.LengthUp : bf.LengthDown)) continue;   // too short to sample
+                        float r = baseR + sign * 0.4f * length, psi0 = Psi(i);
+                        bool InFinger(float psi) => sign > 0 ? Inside(plane, r, psi) : !Inside(plane, r, psi);
+                        if (!InFinger(psi0)) continue;   // leaning away from its top's angle at this height
+                        float lo = psi0, hi = psi0;
+                        while (InFinger(lo - 1e-4f) && psi0 - lo < bf.Period) lo -= 1e-4f;
+                        while (InFinger(hi + 1e-4f) && hi - psi0 < bf.Period) hi += 1e-4f;
+                        ratios.Add(length / ((hi - lo) * r));
+                    }
             }
+            spacings.Sort();
+            float wavelength = spacings[spacings.Count / 2];
+            bool uncapped = Math.Abs(Math.Max(bf.LengthUp, bf.LengthDown) - CutFaceModel.FingerLength * bf.Radius) < 1e-6f;
+            if (uncapped)
+                Assert.InRange(wavelength, 0.15f, 0.25f);
+            else   // capped by a thin neighbouring layer: the cell shrinks with the finger, so check against its own period
+                Assert.InRange(wavelength, 0.7f * bf.Period, 1.3f * bf.Period);
+            ratios.Sort();
+            double median = ratios[ratios.Count / 2], inRange = ratios.Count(x => x >= 1.5 && x <= 4) / (double)ratios.Count;
+            output.WriteLine($"{preset} {days} d, boundary {k}: wavelength {wavelength:F3} rad (period {bf.Period:F3}, {(uncapped ? "uncapped" : "capped")}), length/width median {median:F2} of {ratios.Count}, {inRange:P0} within 1.5-4");
+            Assert.True(ratios.Count >= 8, $"{preset}: boundary {k}: only {ratios.Count} fingers measured");
+            Assert.InRange(median, 1.5, 4.0);
+            Assert.True(inRange >= 0.7, $"{preset}: boundary {k}: {inRange:P0} of {ratios.Count} fingers within 1:1.5-1:4 (median {median:F2})");
         }
     }
 
@@ -351,23 +387,39 @@ public class CutFaceModelTests
         Assert.Contains(Grid(square, 150), g => g.P.Material == CutFaceMaterial.HydrogenTongue);
     }
 
-    [Fact]
-    public void FingersAndTongues_AreOpaque_TheRestFadesWithTheDensity()
+    [Theory]
+    [InlineData("sn1987a", 85.0)]
+    [InlineData("casa", 21.4)]
+    public void NickelIsOpaque_TonguesAndSheathsFadeToAFloor_TheRestFadesWithTheDensity(string preset, double days)
     {
-        var faces = SceneFaces("sn1987a", 85 * Day);
-        bool sawFadedLayer = false;
-        foreach (var (plane, a, b, p) in Grid(faces, 150))
+        // Ruling R-P2-36 (review I1): a nickel plume stays opaque; hydrogen tongues, their helium rims and the plumes' sheaths take the
+        // density fade with a floor of 0.5; the layer takes the fade.
+        var faces = SceneFaces(preset, days * Day);
+        bool fadedLayer = false, nickelBeyond = false, fadedMixed = false;
+        foreach (var (plane, a, b, p) in Grid(faces, 200))
         {
             double alpha = faces.OpacityAt(plane, a, b);
-            double r = MathF.Sqrt(a * a + b * b) * faces.OuterRadiusCm;
-            if (p.Material != CutFaceMaterial.Layer) Assert.Equal(1, alpha);
-            else
+            double r = MathF.Sqrt(a * a + b * b) * faces.OuterRadiusCm, fade = faces.Opacity(r, false);
+            switch (p.Material)
             {
-                Assert.Equal(faces.Opacity(r, false), alpha);
-                if (alpha < 0.5) sawFadedLayer = true;
+                case CutFaceMaterial.NickelFinger:
+                    Assert.Equal(1, alpha);
+                    if (fade < 1) nickelBeyond = true;
+                    break;
+                case CutFaceMaterial.Layer:
+                    Assert.Equal(fade, alpha);
+                    if (alpha < 0.5) fadedLayer = true;
+                    break;
+                default:
+                    Assert.Equal(Math.Max(fade, CutFaceModel.MixedOpacityFloor), alpha);
+                    Assert.InRange(alpha, 0.5, 1.0);
+                    if (fade < 1) fadedMixed = true;
+                    break;
             }
         }
-        Assert.True(sawFadedLayer);
+        Assert.True(fadedLayer, $"{preset}: no faded layer pixel");
+        Assert.True(nickelBeyond, $"{preset}: no nickel pixel beyond v_t (to show it stays opaque)");
+        if (preset == "casa") Assert.True(fadedMixed, "casa: a tongue or sheath pixel beyond v_t has alpha < 1");
     }
 
     [Fact]
@@ -412,6 +464,15 @@ public class CutFaceModelTests
         Assert.Equal(ElementLayer.UnburnedCarbonOxygen, faces.At(1, 0.999f, 0)!.Value.Layer);
         Assert.DoesNotContain(Grid(faces, 100), g => g.P.Material != CutFaceMaterial.Layer);
         Assert.All(faces.Boundaries, bf => Assert.True(bf.LengthUp == 0 && bf.LengthDown == 0 && bf.Period == 0));   // stratified: no fingers
+        // R-P2-36: no undulation either; the layers are smooth circles, exactly at their radii at every face angle.
+        Assert.All(faces.Boundaries, bf => Assert.True(bf.UndulationUp == 0 && bf.UndulationDown == 0));
+        for (int k = 0; k < faces.Boundaries.Count; k++)
+            for (int i = -150; i <= 150; i += 3)
+            {
+                float psi = i * 0.01f, R = faces.Boundaries[k].Radius;
+                Assert.Equal(faces.Layers[k].Layer, faces.At(i % 2 == 0 ? 0 : 1, 0.999f * R * MathF.Sin(psi), 0.999f * R * MathF.Cos(psi))!.Value.Unmixed);
+                Assert.Equal(faces.Layers[k + 1].Layer, faces.At(i % 2 == 0 ? 0 : 1, 1.001f * R * MathF.Sin(psi), 1.001f * R * MathF.Cos(psi))!.Value.Unmixed);
+            }
     }
 
     [Fact]
@@ -472,9 +533,25 @@ public class CutFaceModelTests
     [Fact]
     public void TheCutawayNote_SaysTheSmallFingersAreSchematic()
     {
-        // R-P2-35: the overlay note says the small boundary fingers are schematic and their size is not from the lab's model.
+        // R-P2-35 and R-P2-36: the overlay note says the plume shapes, the undulation and the small boundary fingers are schematic.
         Assert.StartsWith("Cutaway: colours show elements (schematic)", SupernovaLab.App.Controllers.SceneController.CutawayNote);
-        Assert.Contains("the small fingers along every layer boundary are schematic: their size is not from the lab's model",
+        Assert.Contains("the plume shapes, the boundary undulation and the small fingers along every layer boundary are schematic: " +
+            "only the reach of the nickel plumes and hydrogen downflows is from the lab's model",
             SupernovaLab.App.Controllers.SceneController.CutawayNote);
+    }
+
+    [Fact]
+    public void PairInstability_StaysSmoothlyStratified()
+    {
+        // R-P2-36: no mixing (R-P2-17), so no plumes, no boundary fingers and no undulation.
+        var outcome = TestOutcomes.Engine.Compute(LabInputs.Default with { InitialMass = 200, Metallicity = 0.1 });
+        var s = EjectaStructureModel.For(outcome)!;
+        Assert.False(s.Mixing.HasFingers);
+        var (faces, _, _, _) = Faces(s, 100 * Day, 1e13);
+        Assert.Empty(faces.ClustersOn(0));
+        Assert.Empty(faces.ClustersOn(1));
+        Assert.All(faces.Boundaries, bf => Assert.True(bf.LengthUp == 0 && bf.LengthDown == 0 && bf.Period == 0
+            && bf.UndulationUp == 0 && bf.UndulationDown == 0));
+        Assert.DoesNotContain(Grid(faces, 100), g => g.P.Material != CutFaceMaterial.Layer);
     }
 }

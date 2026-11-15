@@ -109,14 +109,12 @@ public sealed class CutFaceRenderer : IDisposable
         var faces = u.Faces;
         int n = Math.Min(Math.Min(faces.Layers.Count, u.LayerColorList.Count), LayerColors.Count);
         if (n == 0 || !(extent > 0)) return;
-        var outer = new float[LayerColors.Count];
         var bnd = new float[4 * LayerColors.Count];
         var bnd2 = new float[4 * LayerColors.Count];
         var colors = new float[3 * LayerColors.Count];
         int nickel = -1, oxygen = -1, helium = -1, hydrogen = -1;
         for (int i = 0; i < n; i++)
         {
-            outer[i] = faces.NormalisedOuter[i];
             if (i < faces.Boundaries.Count)
             {
                 var bf = faces.Boundaries[i];
@@ -135,7 +133,6 @@ public sealed class CutFaceRenderer : IDisposable
         _program.SetCamera(cam, viewportPx);
         _program.Set("u_extent", extent);
         _program.Set("u_layerCount", n);
-        GL.Uniform1(_program.Location("u_layerOuter"), LayerColors.Count, outer);
         GL.Uniform4(_program.Location("u_boundary"), LayerColors.Count, bnd);
         GL.Uniform4(_program.Location("u_boundary2"), LayerColors.Count, bnd2);
         GL.Uniform3(_program.Location("u_layerColor"), LayerColors.Count, colors);
