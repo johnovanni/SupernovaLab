@@ -16,7 +16,8 @@ number (§C1–§C11).
   schematic.
 
 Units: cgs unless stated. G = 6.674 × 10⁻⁸, c = 2.99792458 × 10¹⁰ cm/s, M☉ = 1.989 × 10³³ g (signals §0.2), so
-GM☉/c² = 1.47670 km. 1 yr = 3.156 × 10⁷ s; 1 pc = 3.0857 × 10¹⁸ cm. "t" is time after core bounce (the lab's t = 0).
+GM☉/c² = 1.47700 km with the lab's constants (the IAU nominal value is 1.47662 km; every figure here uses 1.47700).
+1 yr = 3.156 × 10⁷ s; 1 pc = 3.0857 × 10¹⁸ cm. "t" is time after core bounce (the lab's t = 0).
 Black-hole lengths are in units of M = GM/c² unless stated. T_s is the **local** surface temperature; T_s^∞ =
 T_s √(1 − r_g/R) the temperature seen from afar (r_g = 2GM/c²).
 
@@ -26,7 +27,7 @@ T_s √(1 − r_g/R) the temperature seen from afar (r_g = 2GM/c²).
 
 | # | Spec or plan said | Sources say | Section |
 |---|---|---|---|
-| K1 | Spec §1 criterion 3 and inconsistency #54: Cas A's neutron star is "about 2.0–2.1 × 10⁶ K", so the lab's 1.8 MK is "about 10% low" | **Wrong frame, and the sign flips.** Heinke & Ho's 2.12 → 2.04 MK are the **local** (unredshifted) T_s of a carbon atmosphere for M = 1.648 M☉, R = 10.3 km (their Table 1 note; L_bol is the redshifted one) [V]; Shternin et al. 2023 call the fitted T_s "(non-redshifted)" [V]. Seen from afar that is T_s^∞ = **1.48–1.54 MK** [D]; Shternin et al. 2023's joint fit (M = 1.53 M☉, R = 13.5 km, log T_s ≈ 6.23–6.25) gives **1.39–1.44 MK** [D]. The lab's T_s^∞ at 340 yr is 1.60–1.89 MK for 2.0–1.2 M☉ (1.82 for 1.4 M☉, 12 km) [D], so the lab is **about 20–30% warm**, not 10% cool. Its local T_s (2.25 MK) is also above the observed local 1.70–2.12 MK. | §C9 |
+| K1 | Spec §1 criterion 3 and inconsistency #54: Cas A's neutron star is "about 2.0–2.1 × 10⁶ K", so the lab's 1.8 MK is "about 10% low" | **Wrong frame, and the sign flips.** Heinke & Ho's 2.12 → 2.04 MK are the **local** (unredshifted) T_s of a carbon atmosphere for M = 1.648 M☉, R = 10.3 km (their Table 1 note; L_bol is the redshifted one) [V]; Shternin et al. 2023 call the fitted T_s "(non-redshifted)" [V]. Seen from afar that is T_s^∞ = **1.48–1.54 MK** [D]; Shternin et al. 2023's joint fit (M = 1.53 M☉, R = 13.5 km; per-epoch log T_s 6.224–6.251) gives **1.37–1.45 MK** [D]. The lab's T_s^∞ at 340 yr is 1.60–1.89 MK for 2.0–1.2 M☉ (1.82 for 1.4 M☉, 12 km) [D], so the lab is **about 20–30% warm**, not 10% cool. Its local T_s (2.25 MK) is also above the observed local 1.70–2.12 MK. | §C9 |
 | K2 | Plan §C4 example: ρ ≈ 5.4° P^(−1/2) "(Rankin 1993 / Kramer et al.)" | Published 10%-intensity half-widths at ≈ 1.4 GHz: **bimodal 4.9° and 6.3° P^(−1/2)** (Gil, Kijak & Seiradakis 1993; Kramer et al. 1994; 4.9° preferred for 80% of pulsars with P < 0.7 s), **5.6° P^(−0.5)** (Biggs 1990), 5.8° P^(−0.33) (Lyne & Manchester 1988 scaled) [all V via Kolonko, Gil & Maciesiak 2004]. 5.4° is not a published coefficient. Use 5.6° (single fit, inside the bimodal pair). | §C4 |
 | K3 | Spec §4.3: the Crab's tilt is schematic 45° unless published | A published model value exists: **α = 62°** (Romani & Yadigaroglu 1995, tabulated by Ng & Romani 2004 Table 2 [V via NR04]); other light-curve models give 40°–70°. The torus gives the Crab's viewing angle **ζ = 61.3°** (inner torus) and its spin-axis position angle **124.0°** [V, NR04 Tables 1–2]. | §C4 |
 | K4 | Spec §4.2: crust "about 1 km thick, about 8% of the radius" | True for **1.4 M☉** at 12 km (0.99 km, 8.3%) [D]. At the lab's fixed 12 km it is 1.22 km (10.2%) at 1.2 M☉ and **0.46 km (3.9%)** at 2.2 M☉ [D]. The drip line lies 0.43 km deep at 1.4 M☉ (0.19–0.53 km over 2.2–1.2 M☉) [D]. | §C5 |
@@ -184,6 +185,15 @@ of t_BH, because the track is stretched to end at `FormationTimeS` (spec §3.2).
 - For 1 s ≤ t ≤ 60 s, a neutron-star outcome's PNS radius = the formula above. At 1 s it equals the §C1 typical 25 km,
   so the tracks join. From 60 s the radius is `Remnant.RadiusKm`.
 - Test: R(60 s) within 1% of R_f (the plan's 11.9–12.1 km). Confidence `ModelDependent`.
+- **A fallback black hole** (`RemnantModel.FallbackFormationTime`, t_BH = 3.0 s): it follows the exploding track to the
+  stage's end (≈ 1 s), then this R(t) until `FormationTimeS`, then collapses to r₊ over 1 ms, as the failed track does.
+  A black hole has no `Remnant.RadiusKm`, so use R_f = 12 km (the lab's neutron-star radius, outcomes §6). At 3 s that
+  gives 14.0 km [D].
+  - Reasoning [APPROX]: fallback is accretion onto a proto-neutron star that has already exploded. The material falls
+    back "over a period of minutes to hours" (MacFadyen, Woosley & Heger 2001) [V]. Until it tips the star over the
+    maximum mass, the star cools and contracts like any other.
+  - **NOT FOUND:** a published radius history for a proto-neutron star approaching fallback collapse.
+  - The neutrino panel cuts its cooling curve at the same t_BH (signals §1.3), so the two views agree.
 
 ---
 
@@ -287,8 +297,10 @@ Potekhin 2001; Yakovlev & Pethick 2004; the lab's slow-cooling law extended [APP
   - Earlier: PA 292° ± 10° (Caraveo & Mignani 1999) [V via NR04]. The spin axis lies at PA 124.0° (and 304°) (NR04)
     [V].
 - **Cas A's central compact object** (Holland-Ashford, Slane & Long 2024) [V]:
-  - Gaia-corrected astrometry: 436 ± 89 km/s at **158° ± 12°**.
-  - Uncorrected astrometry: 275 ± 121 km/s at 177° ± 22°.
+  - Method 2, with the astrometry corrected using Gaia counterparts: heliocentric 436 ± 89 km/s at 158° ± 12°. After
+    correcting for galactic rotation and the Sun's peculiar motion: **433 km/s at 151°** (no separate error quoted; take
+    ±12°).
+  - Method 1, uncorrected astrometry: heliocentric 275 ± 121 km/s at 177° ± 22°; corrected 256 km/s at 167°.
   - Both match the explosion-centre estimate of ≈ 350 km/s [V]; its direction, 168° ± 8°, is from a search summary [R].
   - Earlier: 570 ± 260 km/s (Mayer & Becker 2021) [R].
 - **SN 1987A:** no neutron star detected directly, so no proper motion. **NOT FOUND.**
@@ -299,17 +311,43 @@ Potekhin 2001; Yakovlev & Pethick 2004; the lab's slow-cooling law extended [APP
   4.9°–6.3° (Gil, Kijak & Seiradakis 1993; Kramer et al. 1994)". The Crab gets 30.6°.
 - `LightCylinderKm(P) = cP / 2π`: 1,593.6 km at 33.4 ms [D].
 - `MagnetosphereFormsS = 30 s` [APPROX] (range 10–100 s).
+- **Angle convention** for `kickPositionAngleDeg` (θ): an astronomical position angle, measured on the sky **from north
+  through east** (anticlockwise on a north-up, east-left sky image as seen from Earth). The lab's "north" is the scene's
+  north, not celestial north.
+- **The mapping to the scene** (ruling P3-3) [D]:
+  - The spin axis is +z.
+  - Earth's direction, at angle ζ from +z and azimuth −y, is E = (0, −sin ζ, cos ζ).
+  - The sky plane is perpendicular to E, viewed from Earth looking along −E.
+  - Scene north is +z projected onto that plane and normalised: N = (0, cos ζ, sin ζ). This is continuous as ζ → 0,
+    where N → +y.
+  - Scene east is East = E × N = (−1, 0, 0): **east is −x** for every ζ. This follows the sky's rule East = North ×
+    (line of sight from Earth to the object), with that line of sight = −E.
+  - The kick direction in the sky plane is
+
+        d(θ) = cos θ · N + sin θ · East = (−sin θ,  cos θ cos ζ,  cos θ sin ζ)
+
+    with the line-of-sight part set to zero (spec §4.6). Check: d · E = 0 for every θ and ζ.
 - Preset pins (ruling P3-4):
   - **sn1054**:
     - `magneticInclinationDeg = 62`, source "Romani & Yadigaroglu 1995 (outer-gap fit), via Ng & Romani 2004, ApJ 601,
       479, Table 2; other models 40°–70°".
-    - `kickPositionAngleDeg = −14.3` (about 345.7°), measured from the projected spin axis's 304° end, because the lab's
-      scene "north" is the projected spin axis (P3-3). Source "Kaplan et al. 2008, ApJ 677, 1201 (PA 289.7° [D]); spin
-      axis PA 124°/304° (Ng & Romani 2004)".
+    - `kickPositionAngleDeg = −14.3` (about 345.7°).
+      - This is measured from the projected spin axis, because scene north is the projected spin axis. The sky PA
+        289.7° [D from Kaplan et al. 2008] minus the axis PA 304.0° (the 124° axis's other end, Ng & Romani 2004)
+        gives −14.3°.
+      - The choice of which end is +z is schematic: the spin's sense is not measured. Taking +z at the 304° end puts
+        the kick 14.3° west of +z's projection, matching Kaplan et al.'s 14° ± 2° ± 9° misalignment.
+      - With the checkbox on, ζ = α = 62° and d = (+0.247, +0.455, +0.856) [D].
+    - Source text: "Kaplan et al. 2008, ApJ 677, 1201 (PA 289.7°); spin axis PA 124°/304° (Ng & Romani 2004)".
     - With the beam checkbox on, ζ = α = 62°, consistent with the torus's measured ζ = 61.3°.
-  - **casa**: `kickPositionAngleDeg = 158`, source "Holland-Ashford, Slane & Long 2024, ApJ 962, 82 (Gaia-corrected,
-    436 ± 89 km/s at 158° ± 12°)". The CCO's spin axis is unknown, so this angle is measured from a schematic scene north;
-    the readout says so.
+  - **casa**: `kickPositionAngleDeg = 151`.
+    - This is the direction corrected for galactic rotation and the Sun's peculiar motion (Holland-Ashford, Slane &
+      Long 2024, method 2, 433 km/s at 151°). The kick is the star's motion relative to its birthplace, and the
+      correction removes the motion that the remnant shares; the heliocentric 158° ± 12° does not.
+    - The CCO's spin axis is unknown, so θ = 151° is applied from scene north as if it were celestial north
+      (schematic). The readout says so.
+    - Source text: "Holland-Ashford, Slane & Long 2024, ApJ 962, 82 (433 km/s at 151° east of north, corrected for
+      galactic rotation; heliocentric 158° ± 12°)".
   - No other preset gets a pin.
 
 ---
@@ -538,7 +576,8 @@ Kerr, spin a = Jc/GM² (0 ≤ a < 1), lengths in M = GM/c².
 ### App implementation (§C7)
 
 - Constants: `SchwarzschildShadowRadius = √27 = 5.196152422706632`; `PhotonSphereRadius = 3`;
-  `GravitationalRadiusCm(M) = 1.47670 × 10⁵ cm × M/M☉` [D from signals §0.2 constants].
+  `GravitationalRadiusCm(M)` = G·M☉/c² × M/M☉, computed from `PhysicalConstants` (= 1.47700 × 10⁵ cm per M☉ with the
+  lab's constants; signals §0.2) [D]. Do not hard-code 1.4767 or the IAU's 1.47662.
 - `HorizonRadius`, `ErgosphereRadius`, `IscoRadius`, `KerrShadowOutline`: the formulas above. Test values: the ISCO
   table, the a = 0.9 outline table (1% of 5.2), ergosphere 2 at the equator and r₊ at the pole.
 - `WeakFieldDeflection(b) = 4/b`.
@@ -649,10 +688,11 @@ All `Confidence.Speculative` (no birth-spin model; spec §6.4). Plan placeholder
     10³³].
   - Age ≈ 330 yr at the time.
 - Shternin et al. 2023 (all Chandra ACIS-S to 2020) [V]:
-  - M = 1.55 ± 0.25 M☉, R = 13.5 ± 1.5 km.
-  - Fitted log T_s ≈ 6.22–6.25 (the "(non-redshifted) surface temperature").
+  - Abstract: M = 1.55 ± 0.25 M☉, R = 13.5 ± 1.5 km. The joint fit of all data (N_H free, their Table 3 "All") gives
+    M = 1.53 M☉ and R = 13.5 km, which are used here.
+  - Per-epoch fitted log T_s 6.224–6.251 (the "(non-redshifted) surface temperature"); joint value 6.23.
   - Cooling 2.2 ± 0.3% per 10 yr (N_H free) or 1.6 ± 0.2% (N_H fixed).
-- **Seen from afar** [D]: T_s^∞ = 1.48–1.54 MK (Heinke & Ho's M, R); 1.39–1.44 MK (Shternin's).
+- **Seen from afar** [D]: T_s^∞ = 1.48–1.54 MK (Heinke & Ho's M, R); 1.37–1.45 MK (Shternin's joint M, R; redshift factor 0.8156).
 - **The lab at 340 yr** [D, 12 km]: T_s^∞ = 1.89 (1.2 M☉), 1.82 (1.4), 1.75 (1.6), 1.60 (2.0) MK; local T_s 2.25 MK
   for every mass (the lab's g₁₄ is fixed at 2.4).
 
@@ -687,7 +727,7 @@ panel.
 | neutrino | lum_nue | **never observed** | No ν_e signal has been identified, including the neutronization burst. Expected burst count in Kamiokande-II ≈ 0.03 events [D] (2 × 10⁵¹ erg at 12 MeV, 51.4 kpc, ν–e scattering on 7.2 × 10³² electrons) |
 | neutrino | lum_nux | **never observed** | never separately identified |
 | neutrino | rate@dune, cumulative@dune | **never observed** | ν_e charged-current on argon: no supernova ν_e ever detected |
-| neutrino | all | **never observed** when the remnant is a black hole | the only supernova neutrinos (SN 1987A) came from a collapse that left a neutron star (JWST evidence, Fransson et al. 2024; signals §8.3); no failed or BH-forming collapse has been seen in neutrinos |
+| neutrino | all | **never observed** when the remnant is a black hole | the only supernova neutrinos (SN 1987A) came from a collapse that left a neutron star (JWST evidence, Fransson et al. 2024; signals §8.3); no failed or BH-forming collapse has been seen in neutrinos. Deliberate: this includes a fallback black hole's first ≈ 3 s, which look like an ordinary supernova's neutrinos until the cutoff, because no collapse that went on to make a black hole has been observed |
 | breakout | lum, temp | observed | SN 2008D's X-ray flash, interpreted as breakout (signals §3; inconsistency #5) [R]; KSN 2011d in the optical [R] |
 | lightcurve | all | observed | every supernova type the lab draws |
 | gammalines | line847, line1238 | observed | ⁵⁶Co: SN 1987A (SMM), SN 2014J (INTEGRAL) (signals §5.3) |
