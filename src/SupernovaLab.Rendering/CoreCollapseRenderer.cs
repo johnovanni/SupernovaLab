@@ -31,7 +31,10 @@ public sealed class CoreCollapseRenderer : IDisposable
     public static readonly Vector3 ShockColor = new(1.0f, 0.78f, 0.45f), GainColor = new(0.45f, 0.95f, 0.65f),
         InfallColor = new(0.55f, 0.68f, 0.95f);
 
-    /// <summary>[Presentation] The translucent layers' opacity face-on (edge-on they reach about 3 times this).</summary>
+    /// <summary>
+    /// [Presentation] The translucent layers' opacity seen edge-on, at the limb (<c>sheet()</c> in coreshock.frag); face-on they are 0.15
+    /// times this. The particles' opacity at a dot's centre.
+    /// </summary>
     public const float ShockAlpha = 0.28f, GainAlpha = 0.12f, InfallAlpha = 0.55f;
 
     /// <summary>
@@ -100,8 +103,9 @@ public sealed class CoreCollapseRenderer : IDisposable
     }
 
     /// <summary>
-    /// Draws the core's stage (<see cref="CloseUpState.IsCoreStage"/>): the infalling particles first (the surfaces in front of them
-    /// cover them), then the surfaces. <paramref name="sloshPhaseRad"/> swings the shock's shape; <paramref name="infallCycles"/> is the
+    /// Draws the core's stage (<see cref="CloseUpState.IsCoreStage"/>): the infalling particles beyond the centre's plane, then the
+    /// surfaces (composited over them), then the particles on the near side (fix round 1: so the opaque sphere never erases a particle
+    /// in front of it). <paramref name="sloshPhaseRad"/> swings the shock's shape; <paramref name="infallCycles"/> is the
     /// particles' accumulated fall phase (cycles, wrapped to [0, 1)); <paramref name="gain"/> scales every colour into the HDR target.
     /// </summary>
     public void Render(OrbitCamera cam, Size viewportPx, double pxPerDip, CloseUpState s, double sloshPhaseRad, double infallCycles, float gain)
@@ -110,21 +114,8 @@ public sealed class CoreCollapseRenderer : IDisposable
         bool shock = double.IsFinite(core.ShockRadiusKm) && core.ShockRadiusKm > 0;
         GL.Enable(EnableCap.Blend);
 
-        if (shock && double.IsFinite(core.InfallSpeedKmS) && s.Era == CloseUpEra.FirstSecond)
-        {
-            _infall.Use();
-            _infall.SetCamera(cam, viewportPx);
-            _infall.Set("u_rIn", (float)core.ShockRadiusKm);
-            _infall.Set("u_rOut", (float)(CoreAnimation.InfallOuterFactor * core.ShockRadiusKm));
-            _infall.Set("u_cycles", (float)(infallCycles - Math.Floor(infallCycles)));
-            _infall.Set("u_pointPx", (float)(ParticleDip * pxPerDip));
-            _infall.Set("u_color", InfallColor * gain);
-            _infall.Set("u_alpha", InfallAlpha);
-            GL.Enable(EnableCap.ProgramPointSize);
-            GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
-            GL.BindVertexArray(_pointVao);
-            GL.DrawArrays(PrimitiveType.Points, 0, InfallParticles);
-        }
+        bool infall = shock && double.IsFinite(core.InfallSpeedKmS) && s.Era == CloseUpEra.FirstSecond;
+        if (infall) RenderInfall(cam, viewportPx, pxPerDip, core, infallCycles, gain, side: 1);
 
         var (right, up) = cam.ScreenAxes();
         double tanY = Math.Tan(cam.FieldOfViewDeg * Math.PI / 360);
@@ -149,6 +140,36 @@ public sealed class CoreCollapseRenderer : IDisposable
         GL.BindVertexArray(_quadVao);
         GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
         GL.BindVertexArray(0);
+        if (infall) RenderInfall(cam, viewportPx, pxPerDip, core, infallCycles, gain, side: 2);
+    }
+
+    /// <summary>The infalling particles on one side of the centre's plane (1: far, 2: near; coreinfall.vert's u_side).</summary>
+    private void RenderInfall(OrbitCamera cam, Size viewportPx, double pxPerDip, CoreState core, double infallCycles, float gain, int side)
+    {
+        _infall.Use();
+        _infall.SetCamera(cam, viewportPx);
+        _infall.Set("u_rIn", (float)core.ShockRadiusKm);
+        _infall.Set("u_rOut", (float)(CoreAnimation.InfallOuterFactor * core.ShockRadiusKm));
+        _infall.Set("u_cycles", (float)(infallCycles - Math.Floor(infallCycles)));
+        _infall.Set("u_pointPx", (float)(ParticleDip * pxPerDip));
+        _infall.Set("u_color", InfallColor * gain);
+        _infall.Set("u_alpha", InfallAlpha);
+        _infall.Set("u_side", side);
+        GL.Enable(EnableCap.ProgramPointSize);
+        GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
+        GL.BindVertexArray(_pointVao);
+        GL.DrawArrays(PrimitiveType.Points, 0, InfallParticles);
+        GL.BindVertexArray(0);
+    }
+
+    /// <summary>Ruling R-P3-21: clears the current target to the haze inside the star (before the rings and the core are drawn).</summary>
+    public void ClearToHaze((float R, float G, float B) haze)
+    {
+        var previous = new float[4];
+        GL.GetFloat(GetPName.ColorClearValue, previous);
+        GL.ClearColor(haze.R, haze.G, haze.B, 0f);
+        GL.Clear(ClearBufferMask.ColorBufferBit);
+        GL.ClearColor(previous[0], previous[1], previous[2], previous[3]);
     }
 
     private static float Finite(double v) => double.IsFinite(v) && v > 0 ? (float)v : 0f;

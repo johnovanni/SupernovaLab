@@ -33,10 +33,10 @@ uniform float u_phase;        // the sloshing's phase, radians
 out vec4 o_color;
 
 const int MARCH_STEPS = 48;
-// The shape below has |g| <= 1 and an rms of about 0.3 over the sphere at the sloshing's peak; scaled by SHAPE_SCALE its rms
-// deformation is about u_amp (Hanke et al. 2013's rms deformation, compact C1.1), its largest about 2.5 u_amp. Retuned after Task 9's
-// launch, where an unscaled 10% read as round.
-const float SHAPE_SCALE = 2.5;
+// The shape below has |g| <= 1 and an rms of about 0.30 over the sphere at the sloshing's peak; scaled by SHAPE_SCALE its rms
+// deformation there is u_amp (Hanke et al. 2013 rms deformation, compact C1.1; 0.54 u_amp between swings), its largest 2 u_amp.
+// Retuned after Task 9's launch, where an unscaled 10% read as round; 3.3 in fix round 1 so the drawing matches the stated 10%.
+const float SHAPE_SCALE = 3.3;
 const int BISECT_STEPS = 6;
 
 // The schematic distortion, |g| <= 1 for a unit vector n.
@@ -98,11 +98,12 @@ void addLayer(float t, vec3 c, float a)
     count++;
 }
 
-// A translucent sheet seen at this angle: brighter edge-on.
+// A translucent sheet seen at this angle: brighter edge-on. Fix round 1 (after its launch, where the limb read weakly against the
+// haze): 0.15 face-on, rising as the cube of 1 - |cos| to 1 at the limb.
 float sheet(float alpha, vec3 n, vec3 d)
 {
     float rim = 1.0 - abs(dot(n, d));
-    return alpha * (0.3 + 0.7 * rim * rim);
+    return alpha * (0.15 + 0.85 * rim * rim * rim);
 }
 
 void main()

@@ -183,6 +183,13 @@ public static class CoreCollapseHistory
             ? RemnantModel.BaryonicMass(m.Value)
             : RemnantModel.MinBlackHoleMass;
 
+    /// <summary>
+    /// The horizon the collapse ends at, km: r₊ = 2 G M / c² (no spin yet) of the proto-neutron star's gravitational mass (2.2 M☉ for
+    /// the heaviest neutron star, 6.50 km). Fix round 1: the gravitational, not the baryonic, mass.
+    /// </summary>
+    public static double HorizonAtFormationKm(Outcome o)
+        => 2 * BlackHoleOptics.GravitationalRadiusCm(RemnantModel.GravitationalMass(ProtoNsMassMsun(o))) / 1e5;
+
     /// <summary>§C1 App: the infall speed √(G M / r), km/s, for a mass in M☉ at a radius in km.</summary>
     public static double InfallSpeedKmS(double massMsun, double radiusKm)
         => Math.Sqrt(PhysicalConstants.G * massMsun * PhysicalConstants.MSun / (radiusKm * 1e5)) / 1e5;
@@ -263,7 +270,7 @@ public static class CoreCollapseHistory
         double t0 = tbh - CollapseDurationS;
         var start = t0 > 0 ? Before(o, track, tbh, t0) : Before(o, track, tbh, ExpT[0]);
         double u = Math.Clamp((t - t0) / CollapseDurationS, 0, 1);
-        double horizonKm = 2 * BlackHoleOptics.GravitationalRadiusCm(ProtoNsMassMsun(o)) / 1e5;   // r₊ = 2 GM/c² (no spin yet)
+        double horizonKm = HorizonAtFormationKm(o);
         double pns = start.ProtoNsRadiusKm + (horizonKm - start.ProtoNsRadiusKm) * u;
         double shock = double.IsFinite(start.ShockRadiusKm)
             ? start.ShockRadiusKm + (ShockAtCollapseKm - start.ShockRadiusKm) * u

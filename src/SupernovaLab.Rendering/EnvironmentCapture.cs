@@ -132,6 +132,19 @@ public sealed class EnvironmentCapture : IDisposable
         Captures++;
     }
 
+    /// <summary>
+    /// Ruling R-P3-21: fills all six faces with one colour (the haze inside the star before the shock breaks out), drawing nothing.
+    /// Counted in <see cref="Fills"/>, not <see cref="Captures"/>.
+    /// </summary>
+    public void Fill((float R, float G, float B) color)
+    {
+        Clear(color);
+        Fills++;
+    }
+
+    /// <summary>How many times the map has been filled with one colour (<see cref="Fill"/>).</summary>
+    public int Fills { get; private set; }
+
     private void Clear((float R, float G, float B) bg)
     {
         if (!Available) return;

@@ -596,6 +596,43 @@ public class CloseUpWindowTests
     }
 
     [Fact]
+    public void Controller_FallbackCooling_StopsAnimating_WhenNoShockIsDrawn()   // fix round 1: nothing moves at 1-3 s
+    {
+        var (main, _) = NewMain();
+        main.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");
+        var fallback = TestOutcomes.Custom(Core.Outcomes.SupernovaType.IIP, 1e51, 10, 0.07, 3e13, TestOutcomes.BlackHole(3, 3.0), Fate.Supernova);
+        var vm = new CloseUpViewModel(main);
+        var c = new CloseUpSceneController(vm, () => new FakeHost());
+        var scene = new CloseUpScene(fallback, main.CurrentObserver, 1);
+        Assert.Equal(CloseUpEra.FirstSecond, scene.At(2).Era);
+        Assert.True(double.IsNaN(scene.At(2).Core!.ShockRadiusKm));
+        // The rule itself, on the view model's own outcome: a shock drawn at 0.05 s keeps the view moving; the neutron star at 100 s does not.
+        main.Timeline.ObserverTimeS = 0.05 * main.CurrentObserver.TimeDilation;
+        Assert.True(c.CoreMoves);
+        Assert.False(CloseUpSceneController.CoreMovesIn(scene.At(2)));
+        Assert.True(CloseUpSceneController.CoreMovesIn(scene.At(0.5)));
+        c.Dispose();
+    }
+
+    [Fact]
+    public void Controller_InsideTheStar_UsesTheHaze()   // ruling R-P3-21
+    {
+        var (main, _) = NewMain();
+        main.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");
+        main.Timeline.ObserverTimeS = 2 * main.CurrentObserver.TimeDilation;   // the neutron star, before breakout
+        var vm = new CloseUpViewModel(main);
+        Assert.True(vm.State.InsideStar);
+        Assert.True(vm.State.IsLensed);
+        var c = new CloseUpSceneController(vm, () => new FakeHost());
+        Assert.Equal(CloseUpScene.InsideStarHazeSrgb, c.HazeColor);   // no GL yet: the no-HDR colour
+        Assert.Contains(vm.Notes, n => n.StartsWith("Inside the star until the shock breaks out"));
+        main.Timeline.ObserverTimeS = SettledObserverTimeS * 1e6;   // long after breakout
+        Assert.False(vm.State.InsideStar);
+        Assert.DoesNotContain(vm.Notes, n => n.StartsWith("Inside the star"));
+        c.Dispose();
+    }
+
+    [Fact]
     public void CloseUpViewModel_AtTheTimelinesStart_ShowsTheCoreBeforeCollapse()
     {
         var (main, _) = NewMain();

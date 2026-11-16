@@ -158,6 +158,13 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private int _envRun;
     private double _envWallS = double.NegativeInfinity;
     private bool _envPending;
+    private bool _envHaze;   // ruling R-P3-21: the cube map holds the haze inside the star
+
+    /// <summary>Ruling R-P3-21: whether the lensing environment is the haze inside the star now (the test hook).</summary>
+    public bool EnvironmentIsHaze => _envHaze;
+
+    /// <summary>Ruling R-P3-21: the haze's colour in this view's target (linear HDR, or sRGB without it).</summary>
+    public (float R, float G, float B) HazeColor => HdrEnabled ? CloseUpScene.InsideStarHazeHdr : CloseUpScene.InsideStarHazeSrgb;
     private float _exposure = 1f;
 
     /// <param name="envSceneFactory">Builds the environment's scene of an outcome at a time dilation; null for <see cref="ExplosionScene"/>'s own.</param>
@@ -633,9 +640,12 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     /// <summary>
     /// Plan Task 9 (R-P3-11's condition): the first second moves on its own (the shock's sloshing and the infalling matter, on the wall
-    /// clock, paused or not, as the beams do), so it keeps the view drawing.
+    /// clock, paused or not, as the beams do), so it keeps the view drawing; fix round 1: only while a shock is drawn (a fallback's cooling proto-neutron star at 1-3 s has none, and nothing moves).
     /// </summary>
-    public bool CoreMoves => _vm.State.Era == CloseUpEra.FirstSecond && _vm.State.Core is not null;
+    public bool CoreMoves => CoreMovesIn(_vm.State);
+
+    /// <summary>Whether this state's first second moves on its own: a shock is drawn (it sloshes, and matter falls onto it).</summary>
+    public static bool CoreMovesIn(CloseUpState s) => s.Era == CloseUpEra.FirstSecond && s.Core is { } core && double.IsFinite(core.ShockRadiusKm);
 
     /// <summary>Whether something drawn turns with the spin now: a neutron star (its surface markings, field lines and beams).</summary>
     private bool Turns => _vm.State.NeutronStar is not null && _vm.State.IsLensed;
@@ -662,6 +672,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         _planner.Invalidate();
         _uploadEnvParticles = true;
         _envOutcome = null;
+        _envHaze = false;
     }
 
     private void OnFrameFailed(Exception ex) => Fail(ex.Message);
@@ -710,6 +721,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         long tracedTag = LensingFrameTag.Encode(default, captured);
         if (lens && viewportPx.Width > 0 && viewportPx.Height > 0)
             tracedTag = DrawLensing(state, viewportPx, captured);
+        // Ruling R-P3-21: inside the star the first second stands in the same dim haze the lensed surroundings show later.
+        if (state.IsCoreStage && state.InsideStar) _coreRenderer?.ClearToHaze(HazeColor);
         if (state.DrawsScene)
             foreach (var ring in CurrentRings()) _rings?.Render(Camera, viewportPx, ring.RadiusCm / UnitCm, ring.Opacity);
         if (state.IsCoreStage) DrawCore(state, viewportPx);
@@ -891,10 +904,31 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// </summary>
     private void RefreshEnvironment()
     {
-        if (_envScene is null || _environment is null || _painter is null) return;
+        if (_environment is null) return;
         double t = _vm.SourceTimeS;
         double logT = Math.Log10(Math.Max(t, 1e-9));
         var main = _vm.Main;
+        // Ruling R-P3-21: before the shock breaks out the surroundings are the star's opaque inside, drawn as a dim uniform haze at the
+        // main view's base exposure (the same as behind the first second), not the star sphere seen from within.
+        if (_vm.State.InsideStar)
+        {
+            if (!_envHaze)
+            {
+                _environment.Fill(HazeColor);
+                _envHaze = true;
+            }
+            if (_envPending) { _envPending = false; UpdateAnimating(); }
+            _exposure = ExplosionScene.BaseExposure;
+            (_envLogT, _envOutcome, _envObserver, _envRun) = (logT, main.CurrentOutcome, main.CurrentObserver, main.RunNumber);
+            return;
+        }
+        if (_envHaze)
+        {
+            _envHaze = false;
+            _envOutcome = null;   // out of the star: capture the surroundings now
+            _envWallS = double.NegativeInfinity;
+        }
+        if (_envScene is null || _painter is null) return;
         bool same = ReferenceEquals(_envOutcome, main.CurrentOutcome) && ReferenceEquals(_envObserver, main.CurrentObserver)
                     && _envRun == main.RunNumber;
         double now = _clock();

@@ -244,8 +244,10 @@ public class CoreCollapseHistoryTests
         var end = CoreCollapseHistory.At(FailedSn, tbh - 1e-9);
         Assert.Equal(CorePhase.Collapsing, start.Phase);
         Assert.Equal(C1.ShockAtCollapseKm, end.ShockRadiusKm, 3);
-        double horizonKm = 2 * BlackHoleOptics.GravitationalRadiusCm(RemnantModel.MinBlackHoleMass) / 1e5;
+        double horizonKm = 2 * BlackHoleOptics.GravitationalRadiusCm(RemnantModel.MaxNeutronStarMass) / 1e5;   // 2.2 M☉ gravitational
+        Assert.Equal(6.50, horizonKm, 2);
         Assert.Equal(horizonKm, end.ProtoNsRadiusKm, 3);
+        Assert.Equal(horizonKm, CoreCollapseHistory.HorizonAtFormationKm(FailedSn), 9);
         Assert.True(start.ProtoNsRadiusKm > end.ProtoNsRadiusKm);
         var bh = CoreCollapseHistory.At(FailedSn, tbh);
         Assert.True(double.IsNaN(bh.ShockRadiusKm) && double.IsNaN(bh.ProtoNsRadiusKm));
@@ -354,7 +356,7 @@ public class CoreCollapseHistoryTests
             Assert.False(string.IsNullOrEmpty(byLabel[radius].Value.Source.Citation));
         }
         Assert.Equal(st.Core!.ShockRadiusKm, byLabel["Shock radius"].Value.Value);
-        Assert.Equal(Confidence.Speculative, byLabel["Shock distortion"].Value.Confidence);   // [APPROX] amplitude; shape schematic
+        Assert.Equal(Confidence.ModelDependent, byLabel["Shock distortion"].Value.Confidence);   // the size; the shape is schematic (fix round 1)
         Assert.Equal(Confidence.ModelDependent, byLabel["Neutrinos"].Value.Confidence);
         Assert.Equal(Confidence.ModelDependent, byLabel["Infall speed"].Value.Confidence);
         Assert.All(st.Readouts, r => Assert.False(string.IsNullOrEmpty(r.Value.Source.Citation)));
@@ -401,6 +403,61 @@ public class CoreCollapseHistoryTests
             Assert.True(cycle >= 1.0 / 3);
             Assert.Matches(@"^Infall shown [0-9,]+× slower$", CoreAnimation.InfallLabel(st.Core!));
         }
+    }
+
+    // ---- Fix round 1: rulings R-P3-21 (inside the star) and R-P3-22 (the infall's 0.3c limit) ----
+
+    [Fact]
+    public void InsideTheStar_UntilBreakout_TheSurroundingsAreAHaze_WithItsNote()   // ruling R-P3-21
+    {
+        var o = Preset("sn1987a");
+        double breakout = EjectaKinematics.BreakoutTimeS(o);
+        Assert.True(breakout > 1, $"breakout {breakout} s");
+        var scene = SceneFor(o);
+        Assert.Equal(breakout, scene.InsideStarUntilS);
+        string note = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            "Inside the star until the shock breaks out ({0}): opaque hot gas surrounds the core; drawn as a dim haze (schematic)",
+            UnitFormat.Time(breakout));
+        Assert.Equal(note, scene.InsideStarNote);
+        foreach (double t in new[] { 1e-3, 0.05, 0.9, 2, 0.99 * breakout })   // the core's eras and the neutron star before breakout
+        {
+            var st = scene.At(t);
+            Assert.True(st.InsideStar, $"{t}");
+            Assert.Contains(note, st.Notes);
+        }
+        var after = scene.At(1.01 * breakout);
+        Assert.False(after.InsideStar);
+        Assert.DoesNotContain(note, after.Notes);
+        Assert.Equal(CloseUpEra.NeutronStar, after.Era);
+    }
+
+    [Fact]
+    public void InsideTheStar_AFailedSupernova_UntilTheBlackHoleForms()   // R-P3-21 for a star with no breakout (my call)
+    {
+        Assert.True(double.IsNaN(EjectaKinematics.BreakoutTimeS(FailedSn)));
+        var scene = SceneFor(FailedSn);
+        double tbh = Tbh(FailedSn);
+        Assert.Equal(tbh, scene.InsideStarUntilS);
+        Assert.True(scene.At(0.5 * tbh).InsideStar);
+        Assert.Contains(scene.At(0.5 * tbh).Notes, n => n.StartsWith("Inside the star: it never explodes"));
+        Assert.False(scene.At(tbh * 1.001).InsideStar);
+        Assert.False(SceneFor(Preset("sn2011fe")).At(1e-3).InsideStar);
+        Assert.True(double.IsNaN(SceneFor(Preset("sn2011fe")).InsideStarUntilS));
+    }
+
+    [Fact]
+    public void InfallAbove0p3c_IsFlaggedAsNewtonian()   // ruling R-P3-22
+    {
+        double tbh = Tbh(FailedSn);
+        var fast = SceneFor(FailedSn).At(tbh - 0.5 * C1.CollapseS);
+        Assert.True(fast.Core!.InfallSpeedKmS * 1e5 > 0.3 * PhysicalConstants.C);
+        Assert.Contains(CloseUpScene.RelativisticInfallNote, fast.Notes);
+        Assert.Contains("0.3c", fast.Readouts.Single(r => r.Label == "Infall speed").ToolTip);
+        var slow = SceneFor(Default).At(0.1);
+        Assert.True(slow.Core!.InfallSpeedKmS * 1e5 < 0.3 * PhysicalConstants.C);
+        Assert.DoesNotContain(CloseUpScene.RelativisticInfallNote, slow.Notes);
+        Assert.DoesNotContain("0.3c", slow.Readouts.Single(r => r.Label == "Infall speed").ToolTip);
+        Assert.Equal(0.3, CloseUpScene.RelativisticInfallBeta);
     }
 
     [Fact]

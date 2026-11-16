@@ -133,6 +133,12 @@ public sealed record CloseUpState
     /// <summary>The stage's key on the view, one line each (what each drawn thing is); empty outside the core's eras.</summary>
     public IReadOnlyList<string> StageKey { get; init; } = Array.Empty<string>();
 
+    /// <summary>
+    /// Ruling R-P3-21: the compact object is still inside the star (before the shock breaks out, or, with no explosion, before the black
+    /// hole forms), so its surroundings are drawn as a dim uniform haze (schematic) instead of the main view's star seen from inside.
+    /// </summary>
+    public bool InsideStar { get; init; }
+
     /// <summary>Whether the core is drawn (the PreCollapse or FirstSecond era): unlensed surfaces (plan Task 9, as ruling R-P3-19).</summary>
     public bool IsCoreStage => Core is not null;
 
@@ -259,7 +265,38 @@ public sealed class CloseUpScene
         _track = CoreCollapseHistory.TrackFor(outcome);
         _stageEndS = CoreCollapseHistory.StageEndS(outcome);
         _neutrinoPeak = _track is null ? double.NaN : CoreCollapseHistory.PeakNeutrinoLuminosityErgS(outcome);
+        if (_track is not null)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            double breakout = SupernovaLab.Core.Signals.EjectaKinematics.BreakoutTimeS(outcome);
+            bool breaksOut = breakout > 0 && double.IsFinite(breakout);
+            InsideStarUntilS = breaksOut ? breakout : _stageEndS;
+            InsideStarNote = string.Format(inv, breaksOut ? InsideStarNoteFormat : InsideFailedStarNoteFormat, UnitFormat.Time(InsideStarUntilS));
+        }
+        else InsideStarUntilS = double.NaN;
     }
+
+    /// <summary>Ruling R-P3-21, the coordinator's exact words; {0} is the breakout time.</summary>
+    public const string InsideStarNoteFormat =
+        "Inside the star until the shock breaks out ({0}): opaque hot gas surrounds the core; drawn as a dim haze (schematic)";
+
+    /// <summary>Ruling R-P3-21 for a star that never explodes; {0} is when the black hole forms.</summary>
+    public const string InsideFailedStarNoteFormat =
+        "Inside the star: it never explodes, so opaque hot gas surrounds the core until the black hole forms ({0}); drawn as a dim haze (schematic)";
+
+    /// <summary>
+    /// [Schematic, presentation] Ruling R-P3-21: the haze inside the star, in the HDR target's linear units at the main view's base exposure,
+    /// and as sRGB for the no-HDR path (a dim warm brown). Fix round 1's launch: at (0.11, 0.06, 0.03) it read as a medium brown (about
+    /// sRGB 0.36, 0.22, 0.12) that competed with the shock, so it was made 5× dimmer (not yet seen in a launch).
+    /// </summary>
+    public static readonly (float R, float G, float B) InsideStarHazeHdr = (0.022f, 0.012f, 0.006f), InsideStarHazeSrgb = (0.12f, 0.08f, 0.05f);
+
+    /// <summary>Ruling R-P3-22: above this fraction of c the infall readout's Newtonian estimate is flagged (Project 1's R28 limit).</summary>
+    public const double RelativisticInfallBeta = 0.3;
+
+    /// <summary>Ruling R-P3-22's note.</summary>
+    public const string RelativisticInfallNote =
+        "Infall speed above 0.3c: the Newtonian estimate √(G M / r) is not accurate this close in (the lab's formulas are trusted only up to 0.3c)";
 
     private readonly CoreTrack? _track;
     private readonly double _stageEndS, _neutrinoPeak;
@@ -274,6 +311,24 @@ public sealed class CloseUpScene
     /// integrates the outline).
     /// </summary>
     public CloseUpState At(double sourceTimeS)
+    {
+        var state = AtTime(sourceTimeS);
+        // Ruling R-P3-21: inside the star until the shock breaks out (or, with no explosion, until the black hole forms).
+        if (!(sourceTimeS < InsideStarUntilS) || state.Era == CloseUpEra.None) return state;
+        return state with { InsideStar = true, Notes = state.Notes.Append(InsideStarNote!).ToList() };
+    }
+
+    /// <summary>
+    /// Ruling R-P3-21: until when (source s) the compact object is inside the star: the shock breakout (EjectaKinematics.BreakoutTimeS);
+    /// for a core collapse with no ejecta (a failed supernova; my call) the end of the first second, when the black hole forms, after which
+    /// the main view's own picture of the vanished star is used. NaN with no core collapse.
+    /// </summary>
+    public double InsideStarUntilS { get; }
+
+    /// <summary>Ruling R-P3-21's note for this outcome (null with no core collapse).</summary>
+    public string? InsideStarNote { get; }
+
+    private CloseUpState AtTime(double sourceTimeS)
     {
         if (_track is not null)
         {
@@ -504,7 +559,7 @@ public sealed class CloseUpScene
 
     /// <summary>Spec §3.2: the shapes.</summary>
     public const string DistortionNote =
-        "Shock distortion (convection plumes and the sloshing SASI): about 10% of its radius (approximate, Hanke et al. 2013); the shape is schematic, and the sloshing is drawn slowed to one swing in 4 s (much faster in the simulations)";
+        "Shock distortion (convection plumes and the sloshing SASI): about 10% of its radius, rms at the sloshing's peak (approximate, Hanke et al. 2013); the shape is schematic, and the sloshing is drawn slowed to one swing in 4 s (much faster in the simulations)";
 
     /// <summary>Spec §3.2: the infalling matter.</summary>
     public const string InfallNote =
@@ -608,11 +663,12 @@ public sealed class CloseUpScene
             new Quantity(sphere, "km", md, core.Phase == CorePhase.Cooling ? CoreCollapseHistory.ContractionSource : src),
             "The hot, swollen newborn neutron star: radius where the density reaches 10¹¹ g/cm³ (bounded by the shock in the first few milliseconds)"));
         if (shock && core.DistortionFraction > 0)
-            readouts.Add(new Readout("Shock distortion", new Quantity(core.DistortionFraction * 100, "%", Confidence.Speculative,
+            readouts.Add(new Readout("Shock distortion", new Quantity(core.DistortionFraction * 100, "%", Confidence.ModelDependent,
                 CoreCollapseHistory.DistortionSource), "Approximate size of the convection plumes and SASI sloshing; their shape is schematic"));
+        bool relativistic = core.InfallSpeedKmS * 1e5 > RelativisticInfallBeta * PhysicalConstants.C;
         if (double.IsFinite(core.InfallSpeedKmS))
             readouts.Add(new Readout("Infall speed", new Quantity(core.InfallSpeedKmS, "km/s", md, CoreCollapseHistory.InfallSource),
-                "How fast matter falls onto the shock"));
+                "How fast matter falls onto the shock" + (relativistic ? ". " + RelativisticInfallNote : "")));
         if (luminosity >= 0)
             readouts.Add(new Readout("Neutrinos", new Quantity(luminosity, "erg/s", md, NeutrinoSource),
                 "Total neutrino luminosity, as on the neutrino panel"));
@@ -631,6 +687,7 @@ public sealed class CloseUpScene
         if (gain) notes.Add(GainNote);
         if (shock) notes.Add(DistortionNote);
         if (shock) notes.Add(InfallNote);
+        if (relativistic) notes.Add(RelativisticInfallNote);
         if (core.Phase == CorePhase.Revived) notes.Add(ShockLeavesNote);
         notes.Add(CoreUnbentNote);
         notes.Add(CoreNotDrawnNote);
