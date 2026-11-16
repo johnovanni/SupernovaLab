@@ -70,8 +70,8 @@ public sealed record CutawayInfo(bool HasCrust, double RadiusKm, IReadOnlyList<S
 
     /// <summary>The cutaway is an analytic drawing, not light traced through the star's spacetime (ruling R-P3-19, as the overlays).</summary>
     public const string UnbentNote =
-        "The cutaway is drawn without the bending of light, as an analytic model of the star's inside; the bent image of its surface is hidden " +
-        "while it is on, so a dark ring round the cutaway is that image's extra width";
+        "The cutaway is drawn without the bending of light, as an analytic model of the star's inside, over the star's bent image: the " +
+        "bent limb shows round it, and the notch is black";
 
     /// <summary>Pasta and the inner core are not settled (spec §4.2).</summary>
     public const string UncertainLayersNote =

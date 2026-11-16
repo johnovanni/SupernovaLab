@@ -1,3 +1,4 @@
+using SupernovaLab.App.Controllers;
 using SupernovaLab.App.Services;
 using SupernovaLab.App.ViewModels;
 using SupernovaLab.Core.Compact;
@@ -140,5 +141,30 @@ public class NeutronStarCutawayTests
         vm.IsCutaway = false;
         Assert.Empty(vm.CutawayKey);
         Assert.DoesNotContain(vm.Notes, n => n.StartsWith("Cutaway:"));
+    }
+
+    [Fact]
+    public void LineWidth_HasAPixelFloor_AtAnyZoom()
+    {
+        // The default framing (the star about 70 px across, the camera about 12 R away): one pixel is about 0.014 R.
+        double px = NeutronStarCutawayRenderer.RadiiPerPixel(12, 45, 705);
+        Assert.InRange(px, 0.0138, 0.0145);
+        Assert.True(NeutronStarCutawayRenderer.LineWidth(0.007, NeutronStarCutawayRenderer.DripMinPx, px) >= 2 * px);
+        Assert.True(NeutronStarCutawayRenderer.LineWidth(0.004, NeutronStarCutawayRenderer.BoundaryMinPx, px) >= px);
+        // Zoomed in far enough that the fraction is wider than the floor, the fraction is kept.
+        double near = NeutronStarCutawayRenderer.RadiiPerPixel(1.1, 45, 705);
+        Assert.Equal(0.007, NeutronStarCutawayRenderer.LineWidth(0.007, 2, near), 12);
+    }
+
+    [Fact]
+    public void CutawayPitch_GivesTheUsersPitchBack()
+    {
+        var on = CloseUpSceneController.CutawayPitch(true, 12, null);
+        Assert.Equal(CloseUpSceneController.CutawayPitchDeg, on.Pitch);
+        Assert.Equal(12, on.Saved);
+        var off = CloseUpSceneController.CutawayPitch(false, 55, on.Saved);
+        Assert.Equal(12, off.Pitch);
+        Assert.Null(off.Saved);
+        Assert.Equal(CloseUpSceneController.DefaultPitchDeg, CloseUpSceneController.CutawayPitch(false, 40, null).Pitch);
     }
 }

@@ -4,7 +4,7 @@
 // bloom over the lensed scene (whose star is hidden while the cutaway is on). The two flat cut faces are coloured by the layer at
 // each radius (schematic colours, radii to scale); the neutron drip line is a ring on each face; the atmosphere is a thin
 // bright line along the cut edge of the surface. Before the crust forms (u_layered = 0) the inside is one hot liquid, brighter
-// toward the centre. Pixels the sphere does not cover are discarded.
+// toward the centre. Pixels the sphere does not cover are discarded; rays that cross the removed wedge without meeting a face are opaque black (the notch).
 
 uniform vec3 u_eye;            // the camera, in radii
 uniform vec3 u_forward;        // the camera's basis (unit vectors) and tan of half the field of view across and up
@@ -12,6 +12,7 @@ uniform vec3 u_right;
 uniform vec3 u_up;
 uniform vec2 u_tanHalf;
 uniform vec2 u_viewport;       // pixels
+uniform float u_radiiPerPx;    // one pixel's size across the star, in radii: the lines keep a least width in pixels
 uniform int u_layered;         // 1: the crust has formed (layers and the drip line); 0: the hot uniform proto-neutron star
 uniform float u_bound[5];      // the layers' outer radii over the star's: inner core, outer core, pasta, inner crust, outer crust (1)
 uniform vec3 u_color[5];       // their colours (tone-mapped by the caller)
@@ -23,8 +24,9 @@ uniform vec3 u_surfaceColor;   // the surface's colour (the blackbody colour, to
 
 out vec4 o_color;
 
-const float BOUNDARY_WIDTH = 0.004;   // radii, half-width of the dark line between layers
-const float ATMOSPHERE_WIDTH = 0.007;
+const float BOUNDARY_WIDTH = 0.004;   // radii, the dark line between layers; at least 1 pixel (NeutronStarCutawayRenderer.BoundaryMinPx)
+const float DRIP_WIDTH = 0.007;       // radii, the drip ring; at least 2 pixels
+const float ATMOSPHERE_WIDTH = 0.007; // radii; at least 1.5 pixels
 
 // The interval of t over which the ray is inside the half-space e + t d > 0.
 vec2 positive(float e, float d)
@@ -43,15 +45,19 @@ vec3 layerColor(float r, float ring)
     else if (r < u_bound[2]) c = u_color[2];
     else if (r < u_bound[3]) c = u_color[3];
     // A thin dark line at each boundary between layers.
+    float bw = max(BOUNDARY_WIDTH, 1.0 * u_radiiPerPx);
     float edge = 0.0;
-    for (int i = 0; i < 4; i++) edge = max(edge, 1.0 - smoothstep(0.5 * BOUNDARY_WIDTH, BOUNDARY_WIDTH, abs(r - u_bound[i])));
+    for (int i = 0; i < 4; i++) edge = max(edge, 1.0 - smoothstep(0.5 * bw, bw, abs(r - u_bound[i])));
     c *= 1.0 - 0.6 * edge;
-    // The drip line, over it.
-    float drip = 1.0 - smoothstep(0.6 * BOUNDARY_WIDTH, 1.6 * BOUNDARY_WIDTH, abs(r - u_drip));
+    // The atmosphere, a line along the edge of the cut face (the drip line is drawn over it: it lies only a few pixels below the surface).
+    float aw = max(ATMOSPHERE_WIDTH, 1.5 * u_radiiPerPx);
+    float atmo = smoothstep(1.0 - aw, 1.0 - 0.5 * aw, r);
+    c = mix(c, u_atmoColor, atmo);
+    // The drip line, over everything.
+    float dw = max(DRIP_WIDTH, 2.0 * u_radiiPerPx);
+    float drip = 1.0 - smoothstep(0.6 * dw, dw, abs(r - u_drip));
     c = mix(c, u_dripColor, drip);
-    // The atmosphere, a line along the edge of the cut face.
-    float atmo = smoothstep(1.0 - ATMOSPHERE_WIDTH, 1.0 - 0.5 * ATMOSPHERE_WIDTH, r);
-    return mix(c, u_atmoColor, atmo);
+    return c;
 }
 
 void main()
@@ -76,7 +82,7 @@ void main()
     if (inWedge)
     {
         // The ray enters the sphere inside the removed wedge: it sees nothing until it leaves the wedge through a cut face.
-        if (wb >= t1) discard;
+        if (wb >= t1) { o_color = vec4(0.0, 0.0, 0.0, 1.0); return; }   // the notch: nothing behind it but the black
         vec3 p = u_eye + wb * d;
         float r = length(p);
         // Which face: the upper bound came from x (the plane x = 0) or from z (the plane z = 0).

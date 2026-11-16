@@ -28,6 +28,20 @@ public sealed class NeutronStarCutawayRenderer : IDisposable
         return b;
     }
 
+    /// <summary>Plan Task 7 fix round 1: the drip ring's least width on screen, pixels (full width of its soft edge).</summary>
+    public const double DripMinPx = 2, BoundaryMinPx = 1, AtmosphereMinPx = 1.5;
+
+    /// <summary>
+    /// A line's half-width in radii: its width as a fraction of the radius, but never narrower than <paramref name="minPx"/> pixels
+    /// (<paramref name="radiiPerPixel"/> is one pixel's size across the star, in radii), so it stays visible at any zoom.
+    /// </summary>
+    public static double LineWidth(double fractionOfRadius, double minPx, double radiiPerPixel)
+        => Math.Max(fractionOfRadius, minPx * radiiPerPixel);
+
+    /// <summary>One pixel's size at the star's centre, in radii: the view's height spans 2 tan(fov/2) × the distance.</summary>
+    public static double RadiiPerPixel(double distanceInRadii, double fovDeg, double viewportHeightPx)
+        => 2 * Math.Tan(fovDeg * Math.PI / 360) * distanceInRadii / viewportHeightPx;
+
     /// <summary>
     /// Draws the cutaway. <paramref name="toneMapped"/> turns a colour (normalized sRGB) into what the HDR target should hold
     /// (<c>CloseUpSceneController.ToneMappedSurface</c>), so the layers read at their key's colours; <paramref name="surface"/> is the
@@ -50,6 +64,7 @@ public sealed class NeutronStarCutawayRenderer : IDisposable
         _program.Set("u_up", (Vector3)up);
         _program.Set("u_tanHalf", new Vector2((float)(tanY * aspect), (float)tanY));
         _program.Set("u_viewport", new Vector2((float)viewportPx.Width, (float)viewportPx.Height));
+        _program.Set("u_radiiPerPx", (float)RadiiPerPixel(eye.Length, camera.FieldOfViewDeg, viewportPx.Height));
         _program.Set("u_layered", info.HasCrust ? 1 : 0);
         var bounds = Bounds(info);
         GL.Uniform1(_program.Location("u_bound"), 5, bounds);

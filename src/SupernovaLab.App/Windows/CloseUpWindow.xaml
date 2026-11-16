@@ -135,7 +135,7 @@
 
                     <!-- Plan Task 7 (spec §4.2): the cutaway's key. Colours are schematic; the layers' radii are to scale. -->
                     <Border Margin="6,4" Padding="6,4" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right"
-                            VerticalAlignment="Top" MaxWidth="300"
+                            VerticalAlignment="Top" MaxWidth="250"
                             Visibility="{Binding DataContext.ShowCutawayKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
                         <StackPanel>
                             <TextBlock Text="Layers (schematic colours)" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
@@ -146,8 +146,8 @@
                                             <Border Width="12" Height="12" Margin="0,1,6,0" VerticalAlignment="Top" BorderBrush="#66FFFFFF" BorderThickness="1"
                                                     Background="{Binding ColorHex}"/>
                                             <StackPanel>
-                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="255" Foreground="{StaticResource TextBrush}"/>
-                                                <TextBlock Text="{Binding Qualifier}" Style="{StaticResource Muted}" FontSize="11"
+                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="210" FontSize="11.5" Foreground="{StaticResource TextBrush}"/>
+                                                <TextBlock Text="{Binding Qualifier}" Style="{StaticResource Muted}" FontSize="10.5"
                                                            Visibility="{Binding Qualifier, Converter={StaticResource VisibleWhen}}"/>
                                             </StackPanel>
                                         </StackPanel>

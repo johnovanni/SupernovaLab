@@ -358,7 +358,7 @@ public static class Glossary
     public const string MagnifiedStrip =
         "The crust is only about a kilometre thick, so a strip of the outermost layers is drawn larger than the rest, which is to scale. " +
         "The label gives how many times larger.";
-    public const string CloseUpLabels ="Shows or hides the labels on the view, such as the measuring rings' distances.";
+    public const string CloseUpLabels = "Shows or hides the labels on the view, such as the measuring rings' distances.";
     public const string CloseUpFocusView = "Shows the view alone, without the column of numbers beside it.";
     public const string CloseUpLightBendingDetail =
         "How finely the bending of light round the black hole is worked out. Full is sharpest and slowest. Auto picks a coarser level while the view moves, if the graphics card needs it, and full resolution once it stops.";

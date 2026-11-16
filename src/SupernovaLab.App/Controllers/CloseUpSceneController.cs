@@ -75,6 +75,15 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// </summary>
     public const double CutawayPitchDeg = 30;
 
+    private double? _pitchBeforeCutaway;
+
+    /// <summary>
+    /// The camera's pitch when the cutaway switches: on goes to <see cref="CutawayPitchDeg"/> and remembers the current pitch; off restores
+    /// the remembered one (the default when none). Returns the new pitch and the pitch to remember.
+    /// </summary>
+    public static (double Pitch, double? Saved) CutawayPitch(bool on, double current, double? saved)
+        => on ? (CutawayPitchDeg, current) : (saved ?? DefaultPitchDeg, null);
+
     /// <summary>
     /// [Presentation, spec C12] The surface's tone-map input: its blackbody colour, linearised, at this level ÷ the exposure, so the
     /// surface shows at about 0.88 of full brightness after the tone map whatever the surroundings' exposure. Tuned after Task 6's
@@ -547,7 +556,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         if (_disposed) return;
         var state = _vm.State;
         var switches = DrawnSwitches();
-        if (switches.Item3 != _drawnSwitches.Cutaway) Camera.PitchDeg = switches.Item3 ? CutawayPitchDeg : DefaultPitchDeg;   // Task 7: look into the wedge
+        if (switches.Item3 != _drawnSwitches.Cutaway)   // Task 7: look into the wedge, then give the user's pitch back
+            (Camera.PitchDeg, _pitchBeforeCutaway) = CutawayPitch(switches.Item3, Camera.PitchDeg, _pitchBeforeCutaway);
         if (!rebuilt)
         {
             var main = _vm.Main;
@@ -820,13 +830,12 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         double aspect = viewportPx.Width / viewportPx.Height;
         // Plan Task 6: the surface's shading (its colour, and the markings turned by the spin phase), applied when the map is sampled.
         bool star = state.NeutronStar is not null;
-        bool hidden = CutawayDrawn(state);   // Task 7: the cutaway replaces the bent image of the surface (black here), see CutawayInfo.UnbentNote
         double phase = star ? BeamPhaseRad % (2 * Math.PI) : 0;
         return new LensingUniforms((float)state.Spin, (Vector3)eye, (Vector3)forward, (Vector3)right, (Vector3)up,
             new Vector2((float)(tanY * aspect), (float)tanY), (float)BlackHoleOptics.EscapeRadiusFor(eye.Length),
             (float)(state.SurfaceRadiusKm * UnitCm / rgCm),
-            hidden ? default : ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure), _vm.ShowGrid,
-            (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star && !hidden);
+            ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure), _vm.ShowGrid,
+            (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star);
     }
 
     /// <summary>
@@ -948,13 +957,14 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
                 break;
             }
         }
-        // Plan Task 7 (spec §4.2): the neutron drip line's name and density, on its ring on the z = 0 cut face (the face's 50° round
-        // from +x toward -y), when the cutaway is drawn and the crust has formed.
+        // Plan Task 7 (spec §4.2): the neutron drip line's name and density, beside the star on its screen-right (the star is small at
+        // the default framing, so a label on the ring would hide the faces), pointing back to the ring, when the cutaway is drawn and
+        // the crust has formed.
         if (CutawayDrawn(s) && s.Cutaway is { HasCrust: true, DripLabel: { } dripLabel } cut)
         {
-            double rd = cut.DripRadiusFraction * s.SurfaceRadiusKm, a = -50 * Math.PI / 180;
-            if (ProjectDip(new Vector3d(rd * Math.Cos(a), rd * Math.Sin(a), 0)) is { } dripAt)
-                labels.Add(new RingLabel(dripLabel, dripAt.X, dripAt.Y, 1));
+            var (screenRight, _) = Camera.ScreenAxes();
+            if (EdgeDip(screenRight * (1.12 * s.SurfaceRadiusKm)) is { } dripAt)
+                labels.Add(new RingLabel("◄ " + dripLabel, dripAt.X, dripAt.Y, 1));
         }
         if (!labels.SequenceEqual(_viewLabels)) ViewLabels = labels;
     }
