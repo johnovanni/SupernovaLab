@@ -332,7 +332,33 @@ public static class Glossary
     public const string LightCylinder =
         "Where the neutron star's field would have to turn as fast as light to keep up with the spin: the edge of the region it drags round with it.";
     public const string CloseUpCutaway = "Cuts the neutron star open to show its layers: the crust, and the core below it.";
-    public const string CloseUpLabels = "Shows or hides the labels on the view, such as the measuring rings' distances.";
+    public const string NeutronDrip =
+        "The neutron drip line: deep in the crust, where the density reaches about 4.3 × 10¹¹ g/cm³ (Baym, Pethick & Sutherland 1971; " +
+        "modern models 4.3–4.4 × 10¹¹) and the nuclei can hold no more neutrons, so neutrons start to leak out and run free between them. " +
+        "Established theory, observed indirectly: pulsar glitches (Link, Epstein & Lattimer 1999), which need superfluid neutrons in the " +
+        "inner crust, and the crusts of neutron stars cooling after accretion outbursts (KS 1731−260, MXB 1659−29; Cackett et al. 2006).";
+    public const string NuclearPasta =
+        "Near the crust's base, where the nuclei are nearly touching, theory says they merge into rods and slabs, named for spaghetti and " +
+        "lasagna. Model-dependent: some models have a thick pasta layer (its share of the inner crust is drawn as 30%, a median), some none.";
+    public const string InnerCrust =
+        "The deeper part of the crust, from the neutron drip line down to the core: a lattice of nuclei bathed in free neutrons, which " +
+        "become superfluid as the star cools.";
+    public const string OuterCrust = "The upper part of the crust, above the neutron drip line: a lattice of nuclei and electrons.";
+    public const string Superfluid =
+        "A fluid that flows with no friction. Neutrons in the inner crust are thought to turn superfluid as the star cools; its " +
+        "loose, frictionless flow explains the sudden speed-ups (glitches) seen in pulsars such as Vela.";
+    public const string OuterCore = "The star's outer core: neutrons, with some protons, electrons and muons.";
+    public const string InnerCore =
+        "Inner core: unknown. At the centre, more than twice nuclear density, what lies there is not settled: nucleons only, particles " +
+        "with strange quarks (hyperons), condensates of pions or kaons, or free quark matter. A low-mass star may have no inner core.";
+    public const string NeutronStarAtmosphere = "The star's atmosphere is only centimetres thick: drawn as a labelled line at the surface.";
+    public const string ProtoNeutronStar =
+        "The newborn neutron star: hot and liquid right through. Its crust crystallises as it cools, about a day after the bounce " +
+        "(approximate: from an hour to a month).";
+    public const string MagnifiedStrip =
+        "The crust is only about a kilometre thick, so a strip of the outermost layers is drawn larger than the rest, which is to scale. " +
+        "The label gives how many times larger.";
+    public const string CloseUpLabels ="Shows or hides the labels on the view, such as the measuring rings' distances.";
     public const string CloseUpFocusView = "Shows the view alone, without the column of numbers beside it.";
     public const string CloseUpLightBendingDetail =
         "How finely the bending of light round the black hole is worked out. Full is sharpest and slowest. Auto picks a coarser level while the view moves, if the graphics card needs it, and full resolution once it stops.";

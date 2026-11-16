@@ -155,4 +155,33 @@ public static class CompactResearch
         /// <summary>§C9.3: the lab at 340 yr, 12 km, 1.4 M☉: 1.82 MK seen from afar.</summary>
         public const double CasALabAt340yrMK = 1.82;
     }
+
+    /// <summary>compact.md §C5, the neutron star's layers (1.2–2.2 M☉, the lab's fixed 12 km).</summary>
+    public static class C5
+    {
+        /// <summary>§C5.1 / App: drip density 4.3 × 10¹¹ g/cm³; the plan's range 4.0–4.4 × 10¹¹.</summary>
+        public const double DripDensityGcm3 = 4.3e11, DripDensityLow = 4.0e11, DripDensityHigh = 4.4e11;
+        /// <summary>§C5.2 table (Eq. 8): (M☉, drip depth km, crust km, crust/R). Accuracy under 1% of the crust.</summary>
+        public static readonly (double Mass, double DripKm, double CrustKm, double CrustOverR)[] Table =
+        [
+            (1.2, 0.531, 1.220, 0.102),
+            (1.4, 0.427, 0.993, 0.083),
+            (1.6, 0.348, 0.817, 0.068),
+            (1.8, 0.286, 0.676, 0.056),
+            (2.0, 0.236, 0.560, 0.047),
+            (2.2, 0.194, 0.464, 0.039),
+        ];
+        /// <summary>§C5.2: the table's tolerance on lengths (km): its 3 decimals plus the 1% Eq. 8 accuracy.</summary>
+        public const double LengthToleranceKm = 0.01;
+        /// <summary>§C5 App: DripDepthKm(1.4, 12) test range 0.40–0.47 km (Eq. 8 to Hempel &amp; Schaffner-Bielich).</summary>
+        public const double DripDepth14Low = 0.40, DripDepth14High = 0.47;
+        /// <summary>§C5 App: drip depth over 2.2–1.2 M☉: 0.19–0.53 km.</summary>
+        public const double DripDepthLowKm = 0.19, DripDepthHighKm = 0.53;
+        /// <summary>§C5 App: crust 8.3% of the radius at 1.4 M☉ (10.2% at 1.2, 3.9% at 2.2).</summary>
+        public const double Crust14Fraction = 0.083, Crust12Fraction = 0.102, Crust22Fraction = 0.039;
+        /// <summary>§C5 App: the crust forms at 86,400 s (1 day) [D/APPROX]; range 1 h – 1 month.</summary>
+        public const double CrustFormationTimeS = 86_400;
+        /// <summary>§C5 App: pasta is 0.30 of the inner crust's thickness; the inner core ends at 0.5 R_cc.</summary>
+        public const double PastaFractionOfInnerCrust = 0.30, InnerCoreFractionOfCoreRadius = 0.5;
+    }
 }

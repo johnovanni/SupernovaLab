@@ -1055,6 +1055,8 @@ public static class SnapshotRenderer
             PlaceOffScreen(opened);
             w = opened;
         }
+        // Plan Task 7: --cutaway also turns on the Close-up's cutaway (a neutron star's layers, spec §4.2).
+        if (request.Cutaway && w.DataContext is CloseUpViewModel cutVm && !cutVm.IsCutaway) cutVm.IsCutaway = true;
         await NextFrame(w);
         await NextFrame(w);
         if (w.DataContext is CloseUpViewModel vm)

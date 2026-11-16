@@ -19,6 +19,12 @@ public sealed record ReadoutRow(string Label, string? LabelToolTip, string Value
     }
 }
 
+/// <summary>One line of the cutaway's key (spec §4.2): a schematic colour, the layer's label, and its confidence qualifier (empty for none).</summary>
+public sealed record CutawayKeyRow(string Label, string ColorHex, string ToolTip, string Qualifier);
+
+/// <summary>One piece of the magnified strip, placed in DIP from the strip's left (deep) end.</summary>
+public sealed record CutawayStripPiece(double XDip, double WidthDip, string ColorHex, string ToolTip);
+
 /// <summary>
 /// The Close-up window's view model (spec §2). It has no timeline of its own: it follows the shared <see cref="MainViewModel"/>'s
 /// outcome, observer, timeline and run number, as the Instruments window does. A new outcome, observer or run makes a new
@@ -68,7 +74,7 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     /// "Light bending: half resolution (your setting)", or "(automatic)" for Auto.
     /// </summary>
     public IReadOnlyList<string> Notes => _modelError is not null ? new[] { _modelError }
-        : State.IsLensed ? State.Notes.Append(LightBendingNote).ToList()
+        : State.IsLensed ? State.Notes.Concat(ActiveCutaway?.Notes ?? Array.Empty<string>()).Append(LightBendingNote).ToList()
         : State.Notes;
 
     /// <summary>The light-bending note for the level shown (or, before the view has drawn, the level it settles at).</summary>
@@ -152,7 +158,63 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     private void ToggleFocus() => IsFocusView = !IsFocusView;
 
     partial void OnShowGridChanged(bool value) => StateChanged?.Invoke(this, false);
-    partial void OnIsCutawayChanged(bool value) => StateChanged?.Invoke(this, false);
+    partial void OnIsCutawayChanged(bool value)
+    {
+        UpdateCutaway();
+        StateChanged?.Invoke(this, false);
+    }
+
+    // ---- Plan Task 7: the neutron star's cutaway (spec §4.2) ----
+
+    /// <summary>The magnified strip's length, DIP.</summary>
+    public const double StripWidthDip = 250;
+
+    /// <summary>The cutaway being shown: the neutron star's, while the Cutaway switch is on; null otherwise.</summary>
+    public CutawayInfo? ActiveCutaway => IsCutaway && HasRemnant && State.NeutronStar is not null ? State.Cutaway : null;
+
+    /// <summary>The cutaway's key (empty with it off).</summary>
+    public IReadOnlyList<CutawayKeyRow> CutawayKey { get; private set; } = Array.Empty<CutawayKeyRow>();
+
+    /// <summary>The magnified strip's pieces, deep to the surface (empty with the cutaway off or before the crust forms).</summary>
+    public IReadOnlyList<CutawayStripPiece> CutawayStrip { get; private set; } = Array.Empty<CutawayStripPiece>();
+
+    /// <summary>The numbers the column adds while the cutaway is on, each with its confidence and source.</summary>
+    public IReadOnlyList<ReadoutRow> CutawayReadouts { get; private set; } = Array.Empty<ReadoutRow>();
+
+    /// <summary>The strip's drip-line marker, DIP from its left end (NaN: none).</summary>
+    public double CutawayDripXDip { get; private set; } = double.NaN;
+
+    public string? MagnifiedLabel => ActiveCutaway?.MagnifiedLabel;
+    public string? DripLabel => ActiveCutaway?.DripLabel;
+    public string? CutawayStateLabel => ActiveCutaway?.StateLabel;
+    public bool ShowCutawayKey => ActiveCutaway is not null;
+    public bool ShowStrip => ActiveCutaway is { HasCrust: true };
+
+    private CutawayInfo? _shownCutaway;
+
+    private void UpdateCutaway()
+    {
+        var info = ActiveCutaway;
+        var rows = info is null ? Array.Empty<ReadoutRow>() : info.Readouts.Select(ReadoutRow.From).ToArray();
+        if (!rows.SequenceEqual(CutawayReadouts))
+        {
+            CutawayReadouts = rows;
+            OnPropertyChanged(nameof(CutawayReadouts));
+        }
+        if (ReferenceEquals(info, _shownCutaway)) return;
+        _shownCutaway = info;
+        CutawayKey = info is null ? Array.Empty<CutawayKeyRow>() : info.Legend.Select(KeyRow).ToArray();
+        CutawayStrip = info is null ? Array.Empty<CutawayStripPiece>()
+            : info.Strip.Select(p => new CutawayStripPiece(p.StartFraction * StripWidthDip, (p.EndFraction - p.StartFraction) * StripWidthDip,
+                p.ColorHex, p.ToolTip)).ToArray();
+        CutawayDripXDip = info is { HasCrust: true } ? info.DripStripFraction * StripWidthDip : double.NaN;
+        foreach (var name in new[] { nameof(CutawayKey), nameof(CutawayStrip), nameof(CutawayDripXDip), nameof(MagnifiedLabel), nameof(DripLabel),
+                     nameof(CutawayStateLabel), nameof(ShowCutawayKey), nameof(ShowStrip), nameof(ActiveCutaway), nameof(Notes) })
+            OnPropertyChanged(name);
+    }
+
+    private static CutawayKeyRow KeyRow(CutawayLegendEntry e) => new(e.Label, e.ColorHex, e.ToolTip,
+        e.ConfidenceText ?? e.Confidence switch { Confidence.ModelDependent => "model-dependent", Confidence.Speculative => "speculative", _ => "" });
     partial void OnShowLabelsChanged(bool value) => StateChanged?.Invoke(this, false);
     // Plan Task 6 (ruling R-P3-11's condition): the field lines and the light cylinder are drawn, so their switches redraw the view.
     partial void OnShowFieldLinesChanged(bool value) => StateChanged?.Invoke(this, false);
@@ -279,6 +341,7 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         if (before._modelError != _modelError || !before.State.Notes.SequenceEqual(State.Notes)) OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(NoRemnantMessage));
         OnPropertyChanged(nameof(HasRemnant));
+        UpdateCutaway();
     }
 
     private string ModelErrorText(Exception e)

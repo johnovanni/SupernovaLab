@@ -30,7 +30,7 @@ public sealed record Readout(string Label, Quantity Value, string? ToolTip = nul
         "" => UnitFormat.Number(q.Value),
         "s" => UnitFormat.Time(q.Value),
         "K" => Kelvin(q),
-        "G" or "s/s" => UnitFormat.Scientific(q.Value, q.Unit),
+        "G" or "s/s" or "g/cm³" => UnitFormat.Scientific(q.Value, q.Unit),
         "cm" => UnitFormat.Distance(q.Value),
         _ => $"{UnitFormat.Number(q.Value)} {q.Unit}",
     };
@@ -102,6 +102,12 @@ public sealed record CloseUpState
 
     /// <summary>The dipole field, G (the number of field lines drawn grows with it, schematic).</summary>
     public double FieldG { get; init; } = double.NaN;
+
+    /// <summary>
+    /// Plan Task 7 (spec §4.2): what the cutaway shows for this star now (its layers, the neutron drip line, the magnified strip, or the
+    /// proto-neutron star before the crust forms); null for any other object. Drawn only while the Cutaway switch is on.
+    /// </summary>
+    public CutawayInfo? Cutaway { get; init; }
 
     /// <summary>GM/c² in km for <see cref="MassMsun"/>; NaN without a compact object.</summary>
     public double GravitationalRadiusKm => MassMsun > 0 ? BlackHoleOptics.GravitationalRadiusCm(MassMsun) / 1e5 : double.NaN;
@@ -231,6 +237,9 @@ public sealed class CloseUpScene
     public CloseUpState At(double sourceTimeS) => _isNeutronStar ? NeutronStarAt(sourceTimeS) : _settled ??= Settled();
 
     private CloseUpState? _settled;
+
+    // Plan Task 7: the cutaway's two forms (a star's layers do not change; only whether the crust has formed), made once each.
+    private CutawayInfo? _cutawayWithCrust, _cutawayProto;
 
     private CloseUpState Settled()
     {
@@ -378,6 +387,8 @@ public sealed class CloseUpScene
             BeamCanCrossEarth = Magnetosphere.BeamCanCrossEarth(o, Observer),
             PolarCapRad = FieldLines.PolarCapRad(radius, lightCylinder),
             FieldG = ns.FieldG,
+            Cutaway = ns.HasCrust ? _cutawayWithCrust ??= CutawayInfo.Build(o, ns.MassMsun, radius, true)
+                : _cutawayProto ??= CutawayInfo.Build(o, ns.MassMsun, radius, false),
         };
     }
 

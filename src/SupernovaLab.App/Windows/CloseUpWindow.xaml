@@ -7,6 +7,27 @@
         Title="{Binding WindowTitle}" Width="900" Height="640" MinWidth="560" MinHeight="400"
         WindowStartupLocation="CenterOwner" TextOptions.TextFormattingMode="Display"
         Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}" FontSize="13">
+    <Window.Resources>
+        <!-- One readout: its label (tooltip), the value, and the confidence badges; shared by the column's rows and the cutaway's. -->
+        <DataTemplate x:Key="ReadoutRowTemplate">
+                                    <Grid Margin="0,3,0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition/>
+                                            <RowDefinition/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.ColumnSpan="2" Text="{Binding Label}" Style="{StaticResource Muted}" ToolTip="{Binding LabelToolTip}"/>
+                                        <TextBlock Grid.Row="1" Text="{Binding ValueText}" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <ContentPresenter ContentTemplate="{StaticResource PublishedBadge}" Content="{Binding}"/>
+                                            <ContentPresenter ContentTemplate="{StaticResource ConfidenceBadge}" Content="{Binding}" Margin="4,0,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+        </DataTemplate>
+    </Window.Resources>
     <!-- DataContext: the CloseUpViewModel (spec §2.1's layout): the view on the left, the readouts column (with Notes) on the
          right, the pulse-trace row at the bottom (collapsed until the pulse trace exists, Task 8). -->
     <DockPanel>
@@ -112,6 +133,75 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Plan Task 7 (spec §4.2): the cutaway's key. Colours are schematic; the layers' radii are to scale. -->
+                    <Border Margin="6,4" Padding="6,4" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Right"
+                            VerticalAlignment="Top" MaxWidth="300"
+                            Visibility="{Binding DataContext.ShowCutawayKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
+                        <StackPanel>
+                            <TextBlock Text="Layers (schematic colours)" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                            <ItemsControl ItemsSource="{Binding DataContext.CutawayKey, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0" ToolTip="{Binding ToolTip}">
+                                            <Border Width="12" Height="12" Margin="0,1,6,0" VerticalAlignment="Top" BorderBrush="#66FFFFFF" BorderThickness="1"
+                                                    Background="{Binding ColorHex}"/>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Label}" TextWrapping="Wrap" MaxWidth="255" Foreground="{StaticResource TextBrush}"/>
+                                                <TextBlock Text="{Binding Qualifier}" Style="{StaticResource Muted}" FontSize="11"
+                                                           Visibility="{Binding Qualifier, Converter={StaticResource VisibleWhen}}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Plan Task 7: the magnified strip of the outermost layers (deep at the left, the surface at the right). -->
+                    <Border Margin="6,4,6,34" Padding="6,4" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Visibility="{Binding DataContext.ShowStrip, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding DataContext.MagnifiedLabel, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" ToolTip="{x:Static text:Glossary.MagnifiedStrip}"/>
+                            <Grid Width="253" Height="26" Margin="0,3,0,0" HorizontalAlignment="Left">
+                                <ItemsControl ItemsSource="{Binding DataContext.CutawayStrip, RelativeSource={RelativeSource AncestorType=Window}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <Canvas/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="Canvas.Left" Value="{Binding XDip}"/>
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Width="{Binding WidthDip}" Height="26" Background="{Binding ColorHex}" ToolTip="{Binding ToolTip}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <!-- The drip line, and the atmosphere (a line at the surface end). -->
+                                <Canvas>
+                                    <Rectangle Canvas.Left="{Binding DataContext.CutawayDripXDip, RelativeSource={RelativeSource AncestorType=Window}}"
+                                               Width="2" Height="26" Fill="#5CF2FF" ToolTip="{x:Static text:Glossary.NeutronDrip}"/>
+                                    <Rectangle Canvas.Left="250" Width="3" Height="26" Fill="#F2F0E6" ToolTip="{x:Static text:Glossary.NeutronStarAtmosphere}"/>
+                                </Canvas>
+                            </Grid>
+                            <TextBlock Style="{StaticResource Muted}" FontSize="11" Foreground="{StaticResource TextBrush}"
+                                       Text="{Binding DataContext.DripLabel, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Plan Task 7: before the crust forms, the cutaway's one label. -->
+                    <Border Margin="6,4,6,34" Padding="6,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom" IsHitTestVisible="True" ToolTip="{x:Static text:Glossary.ProtoNeutronStar}"
+                            Visibility="{Binding DataContext.CutawayStateLabel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
+                        <TextBlock Text="{Binding DataContext.CutawayStateLabel, RelativeSource={RelativeSource AncestorType=Window}}"
+                                   FontWeight="SemiBold" Foreground="#FF9A4D"/>
+                    </Border>
+
                     <!-- Spec §6.5: the view's honest label, whenever a remnant is drawn. -->
                     <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
                             VerticalAlignment="Bottom" IsHitTestVisible="False"
@@ -156,26 +246,14 @@
                                    Foreground="{StaticResource AccentBrush}"/>
                         <ItemsControl ItemsSource="{Binding Readouts}" Margin="0,6,0,0">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,3,0,2">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition/>
-                                            <RowDefinition/>
-                                        </Grid.RowDefinitions>
-                                        <TextBlock Grid.ColumnSpan="2" Text="{Binding Label}" Style="{StaticResource Muted}" ToolTip="{Binding LabelToolTip}"/>
-                                        <TextBlock Grid.Row="1" Text="{Binding ValueText}" FontSize="14.5" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <ContentPresenter ContentTemplate="{StaticResource PublishedBadge}" Content="{Binding}"/>
-                                            <ContentPresenter ContentTemplate="{StaticResource ConfidenceBadge}" Content="{Binding}" Margin="4,0,0,0"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
+                                <StaticResource ResourceKey="ReadoutRowTemplate"/>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                        <!-- Plan Task 7 (spec §4.2): the cutaway's numbers, each with its confidence and source. -->
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowCutawayKey, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock Text="Cutaway" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                            <ItemsControl ItemsSource="{Binding CutawayReadouts}" ItemTemplate="{StaticResource ReadoutRowTemplate}"/>
+                        </StackPanel>
                         <Expander Header="Notes" Margin="0,10,0,0" IsExpanded="{Binding IsNotesExpanded, Mode=TwoWay}"
                                   Foreground="{StaticResource TextBrush}">
                             <ItemsControl ItemsSource="{Binding Notes}" Margin="0,4,0,0">

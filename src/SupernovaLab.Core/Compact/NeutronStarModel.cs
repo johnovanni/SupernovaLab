@@ -34,12 +34,6 @@ public static class NeutronStarModel
     /// <summary>§C3: the early temperature band starts here, 1 minute after bounce.</summary>
     public const double EarlyStartS = 60;
 
-    /// <summary>
-    /// §C5.3 / App: the crust crystallises about 1 day after bounce [D/APPROX], the same for every neutron star (range 1 h to
-    /// 1 month). Ledger ruling S1: held here until Task 7 moves it to <c>NeutronStarLayers.CrustFormationTimeS</c>.
-    /// </summary>
-    public const double CrustFormationTimeS = 86_400;
-
     private const double Year = PhysicalConstants.Year;
     private const double CasAObservationFromS = 300 * Year, CasAObservationToS = 380 * Year;   // §C9.3: ≈ 330 yr (HH10) to ≈ 350 yr (S23), with margin
     private const double PlateauK = 2.9e6;                   // §C3: Gnedin et al.'s ≈ 250 eV plateau
@@ -63,7 +57,7 @@ public static class NeutronStarModel
         var r = o.Remnant;
         return new NeutronStarState(sourceTimeS, r.Mass!.Value, r.RadiusKm!.Value, SurfaceTemperature(o, sourceTimeS),
             spin.PeriodS(sourceTimeS), spin.PeriodDerivative(sourceTimeS), r.MagneticFieldG!.Value,
-            r.Kind == RemnantKind.Magnetar, sourceTimeS >= CrustFormationTimeS, sourceTimeS,
+            r.Kind == RemnantKind.Magnetar, NeutronStarLayers.HasCrust(o, sourceTimeS), sourceTimeS,
             KickDrift.OffsetCm(o, obs, runNumber, sourceTimeS));
     }
 

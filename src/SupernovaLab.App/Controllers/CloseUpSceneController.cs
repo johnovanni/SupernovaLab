@@ -18,7 +18,8 @@ namespace SupernovaLab.App.Controllers;
 /// give the controller a fake <see cref="ILensingPass"/> (and nothing else) and drive its per-frame lensing decisions without OpenGL.
 /// </summary>
 public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, EnvironmentCapture? Environment = null,
-    ExplosionPainter? Painter = null, RingRenderer? Rings = null, GpuTimer? Timer = null, NeutronStarRenderer? NeutronStar = null)
+    ExplosionPainter? Painter = null, RingRenderer? Rings = null, GpuTimer? Timer = null, NeutronStarRenderer? NeutronStar = null,
+    NeutronStarCutawayRenderer? Cutaway = null)
 {
     /// <summary>The real objects (call with the GL context current).</summary>
     public static CloseUpGpu Create()
@@ -29,7 +30,8 @@ public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, E
         var rings = new RingRenderer();
         var timer = new GpuTimer();
         var neutronStar = new NeutronStarRenderer();
-        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer, neutronStar);
+        var cutaway = new NeutronStarCutawayRenderer();
+        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer, neutronStar, cutaway);
     }
 }
 /// <summary>
@@ -66,6 +68,12 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     /// <summary>The camera's default yaw.</summary>
     public const double DefaultYawDeg = 30;
+
+    /// <summary>
+    /// Plan Task 7: the camera's pitch while the cutaway is on, so the camera looks into the removed wedge (x &gt; 0, z &gt; 0) and sees
+    /// both cut faces (a side-on camera sees the z = 0 face edge-on).
+    /// </summary>
+    public const double CutawayPitchDeg = 30;
 
     /// <summary>
     /// [Presentation, spec C12] The surface's tone-map input: its blackbody colour, linearised, at this level ÷ the exposure, so the
@@ -113,6 +121,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private RingRenderer? _rings;
     private GpuTimer? _gpuTimer;
     private NeutronStarRenderer? _neutronStar;
+    private NeutronStarCutawayRenderer? _cutawayRenderer;
 
     // Task 4b review carry-over: failures in a row, and what was given up (reset with a new context or viewport).
     private int _bandFailuresInRow, _traceFailuresInRow;
@@ -456,7 +465,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     {
         _frozenHalfHeightCm = null;
         Camera.YawDeg = DefaultYawDeg;
-        Camera.PitchDeg = DefaultPitchDeg;
+        Camera.PitchDeg = _vm.IsCutaway ? CutawayPitchDeg : DefaultPitchDeg;
         IsAutoFraming = true;
         Director.Jump(_vm.State.FrameRadiusKm * UnitCm);
         ApplyAutoDistance();
@@ -538,6 +547,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         if (_disposed) return;
         var state = _vm.State;
         var switches = DrawnSwitches();
+        if (switches.Item3 != _drawnSwitches.Cutaway) Camera.PitchDeg = switches.Item3 ? CutawayPitchDeg : DefaultPitchDeg;   // Task 7: look into the wedge
         if (!rebuilt)
         {
             var main = _vm.Main;
@@ -614,6 +624,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         var gpu = _gpuFactory();
         (_hdr, _environment, _painter, _rings, _gpuTimer, _lensing) = (gpu.Hdr, gpu.Environment, gpu.Painter, gpu.Rings, gpu.Timer, gpu.Lensing);
         _neutronStar = gpu.NeutronStar;
+        _cutawayRenderer = gpu.Cutaway;
         ResetFailures();
         _planner.Invalidate();
         _uploadEnvParticles = true;
@@ -679,6 +690,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             _neutronStar.RenderBeams(Camera, viewportPx, state, phase, BeamLengthHalfHeights * HalfHeightCm / UnitCm, Gain(BeamLevel), occluder);
             _linesFrame = (viewportPx, state, phase, occluder, gain);
             lines = _drawLinesNow ??= DrawLinesNow;
+            _cutawayFrame = CutawayDrawn(state) ? state.Cutaway : null;
         }
         _hdr?.End(_exposure, BloomStrength, lines);
         if (_hdr is null) lines?.Invoke();
@@ -758,10 +770,18 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     // This frame's inputs for the lines drawn after the bloom (one cached delegate, no closure per frame).
     private (Size Viewport, CloseUpState State, double Phase, StarOccluder Occluder, float Gain) _linesFrame;
     private Action? _drawLinesNow;
+    private CutawayInfo? _cutawayFrame;
+
+    /// <summary>Plan Task 7: whether the cutaway (spec §4.2) is drawn now: its switch is on, and a neutron star is lensed.</summary>
+    private bool CutawayDrawn(CloseUpState state)
+        => _vm.IsCutaway && state.Cutaway is not null && state.NeutronStar is not null && _cutawayRenderer is not null;
 
     private void DrawLinesNow()
     {
         var (viewport, state, phase, occluder, gain) = _linesFrame;
+        if (_cutawayFrame is { } cutaway && _cutawayRenderer is not null)
+            _cutawayRenderer.Render(Camera, viewport, cutaway, ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure),
+                c => ToneMappedSurface(c, HdrEnabled, _exposure));
         _neutronStar?.RenderLines(Camera, viewport, state, phase, _vm.ShowFieldLines, _vm.ShowLightCylinder, gain, occluder);
     }
 
@@ -800,11 +820,13 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         double aspect = viewportPx.Width / viewportPx.Height;
         // Plan Task 6: the surface's shading (its colour, and the markings turned by the spin phase), applied when the map is sampled.
         bool star = state.NeutronStar is not null;
+        bool hidden = CutawayDrawn(state);   // Task 7: the cutaway replaces the bent image of the surface (black here), see CutawayInfo.UnbentNote
         double phase = star ? BeamPhaseRad % (2 * Math.PI) : 0;
         return new LensingUniforms((float)state.Spin, (Vector3)eye, (Vector3)forward, (Vector3)right, (Vector3)up,
             new Vector2((float)(tanY * aspect), (float)tanY), (float)BlackHoleOptics.EscapeRadiusFor(eye.Length),
-            (float)(state.SurfaceRadiusKm * UnitCm / rgCm), ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure), _vm.ShowGrid,
-            (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star);
+            (float)(state.SurfaceRadiusKm * UnitCm / rgCm),
+            hidden ? default : ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure), _vm.ShowGrid,
+            (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star && !hidden);
     }
 
     /// <summary>
@@ -926,6 +948,14 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
                 break;
             }
         }
+        // Plan Task 7 (spec §4.2): the neutron drip line's name and density, on its ring on the z = 0 cut face (the face's 50° round
+        // from +x toward -y), when the cutaway is drawn and the crust has formed.
+        if (CutawayDrawn(s) && s.Cutaway is { HasCrust: true, DripLabel: { } dripLabel } cut)
+        {
+            double rd = cut.DripRadiusFraction * s.SurfaceRadiusKm, a = -50 * Math.PI / 180;
+            if (ProjectDip(new Vector3d(rd * Math.Cos(a), rd * Math.Sin(a), 0)) is { } dripAt)
+                labels.Add(new RingLabel(dripLabel, dripAt.X, dripAt.Y, 1));
+        }
         if (!labels.SequenceEqual(_viewLabels)) ViewLabels = labels;
     }
 
@@ -1015,6 +1045,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
                 GlReleased = host.Shutdown(() =>
                 {
                     _gpuTimer?.Dispose();
+                    _cutawayRenderer?.Dispose();
                     _neutronStar?.Dispose();
                     _lensing?.Dispose();
                     _rings?.Dispose();
@@ -1031,6 +1062,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         }
         _gpuTimer = null;
         _neutronStar = null;
+        _cutawayRenderer = null;
         _lensing = null;
         _rings = null;
         _painter = null;
