@@ -344,7 +344,7 @@ public sealed class CloseUpScene
         if (noPulsesSeen) notes.Add(NoPulsesSeenNote);
         notes.AddRange(new[]
         {
-            Magnetosphere.SpeedLabel(period) + (period < Magnetosphere.MinDrawnPeriodS
+            Magnetosphere.SlowdownLabel(period, Observer.TimeDilation) + (period < Magnetosphere.MinDrawnPeriodS
                 ? ": the drawn spin never turns faster than once in 2 s, so no beam crosses Earth more than once a second"
                 : ""),
             SurfaceColourNote,
@@ -377,7 +377,7 @@ public sealed class CloseUpScene
             SurfaceRadiusKm = radius,
             NeutronStar = ns,
             DrawnPeriodS = Magnetosphere.DrawnPeriodS(period),
-            SpeedLabel = Magnetosphere.SpeedLabel(period),
+            SpeedLabel = Magnetosphere.SlowdownLabel(period, Observer.TimeDilation),
             LightCylinderKm = lightCylinder,
             SurfaceColor = BlackbodyColor.FromTemperature(ns.SurfaceTemperatureK.Value),
             ShowBeams = beams,

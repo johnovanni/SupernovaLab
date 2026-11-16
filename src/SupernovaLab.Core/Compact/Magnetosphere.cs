@@ -28,13 +28,22 @@ public static class Magnetosphere
     public static double DrawnPeriodS(double realPeriodS) => Math.Max(realPeriodS, MinDrawnPeriodS);
 
     /// <summary>"Shown N× slower" (N to two significant figures) when the drawing is slowed, else "Shown at real speed".</summary>
-    public static string SpeedLabel(double realPeriodS)
+    public static string SpeedLabel(double realPeriodS) => SlowdownLabel(realPeriodS, 1);
+
+    /// <summary>
+    /// The same label relative to the clock a telescope on Earth keeps: N = drawn period ÷ received period (P (1 + z)), so the picture's
+    /// factor and the sound's rate refer to one clock (Task 8 fix round 1). Two significant figures, so a figure under 10 keeps a
+    /// decimal ("2.5×"). Not slowed (N ≤ 1): "Shown at real speed".
+    /// </summary>
+    public static string SlowdownLabel(double realPeriodS, double timeDilation)
     {
-        if (!(realPeriodS < MinDrawnPeriodS) || !(realPeriodS > 0)) return "Shown at real speed";
-        double n = MinDrawnPeriodS / realPeriodS;
+        double received = realPeriodS * timeDilation;
+        if (!(realPeriodS > 0) || !(received > 0)) return "Shown at real speed";
+        double n = DrawnPeriodS(realPeriodS) / received;
+        if (!(n > 1 + 1e-9)) return "Shown at real speed";
         double scale = Math.Pow(10, Math.Floor(Math.Log10(n)) - 1);
         double rounded = Math.Round(n / scale, MidpointRounding.AwayFromZero) * scale;
-        return $"Shown {rounded.ToString("N0", CultureInfo.InvariantCulture)}× slower";
+        return $"Shown {rounded.ToString(rounded < 10 ? "0.#" : "N0", CultureInfo.InvariantCulture)}× slower";
     }
 
     /// <summary>The light cylinder, c P / 2π, in km (§C4 App: 1,593.6 km at 33.4 ms).</summary>

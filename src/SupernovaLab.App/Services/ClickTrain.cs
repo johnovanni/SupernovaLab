@@ -42,7 +42,7 @@ public sealed class ClickTrain
         lock (_lock)
         {
             double? p = periodS is { } v && v > 0 && double.IsFinite(v) ? v : null;
-            if (p is not null && _periodS is null) _pos = 0;
+            if (p is not null && _periodS is null && _pos >= ClickS * _rate) _pos = 0;   // a click in flight is not cut
             _periodS = p;
         }
     }

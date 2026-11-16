@@ -108,3 +108,30 @@ public class PulseScheduleTests
         Assert.Empty(PulseSchedule.CrossingPhasesRad(Crab, Obs(false)));
     }
 }
+
+public class PulseScheduleFixTests
+{
+    [Theory]
+    [InlineData(1 / 1.5, "1.5 a second")]
+    [InlineData(1 / 2.5, "2.5 a second")]
+    [InlineData(1 / 7.26, "7.3 a second")]
+    [InlineData(1 / 30.0, "30 a second")]
+    [InlineData(5, "one every 5 s")]
+    [InlineData(1 / 0.2, "one every 5 s")]
+    [InlineData(1, "1 a second")]
+    public void RateText_KeepsADecimalUnderTen(double periodS, string expected) => Assert.Equal(expected, PulseSchedule.RateText(periodS));
+
+    [Fact]
+    public void RateText_PointTwoARate_IsOneEveryFive() => Assert.Equal("one every 5 s", PulseSchedule.RateText(5));
+
+    [Fact]
+    public void TraceText_PictureFactorIsDrawnOverReceived()
+    {
+        var p = PresetCatalog.Get("sn1054");
+        var crab = TestOutcomes.Engine.Compute(p.Inputs, p.Pins);
+        var far = ObserverSetup.Default with { DistancePc = 4e8 };
+        double period = PulsarModel.Spin.Of(crab).PeriodS(2.9568e10);
+        string expected = Magnetosphere.SlowdownLabel(period, far.TimeDilation);
+        Assert.EndsWith("Picture: " + char.ToLowerInvariant(expected[0]) + expected[1..], PulseSchedule.TraceText(crab, far, 2.9568e10));
+    }
+}

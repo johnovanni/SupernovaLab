@@ -342,3 +342,88 @@ public class PulseAudioTests
         return w;
     }
 }
+
+/// <summary>Task 8 fix round 1: a failing or unplugged device, and a clean stop.</summary>
+public class PulseAudioFixTests
+{
+    private sealed class FakePlayer : NAudio.Wave.IWavePlayer
+    {
+        public NAudio.Wave.PlaybackState PlaybackState { get; private set; } = NAudio.Wave.PlaybackState.Stopped;
+        public float Volume { get; set; } = 1;
+        public NAudio.Wave.WaveFormat OutputWaveFormat => NAudio.Wave.WaveFormat.CreateIeeeFloatWaveFormat(44100, 1);
+        public event EventHandler<NAudio.Wave.StoppedEventArgs>? PlaybackStopped;
+        public int Stops, Disposes;
+        public void Init(NAudio.Wave.IWaveProvider waveProvider) { }
+        public void Play() => PlaybackState = NAudio.Wave.PlaybackState.Playing;
+        public void Pause() => PlaybackState = NAudio.Wave.PlaybackState.Paused;
+        public void Stop() { Stops++; PlaybackState = NAudio.Wave.PlaybackState.Stopped; }
+        public void Dispose() => Disposes++;
+        public void Fail(Exception e) => PlaybackStopped?.Invoke(this, new NAudio.Wave.StoppedEventArgs(e));
+    }
+
+    [Fact]
+    public void AFailedOpen_IsLatched_NotRetriedEveryTick_UntilToggled()
+    {
+        int made = 0;
+        var audio = new NAudioPulseAudio(() => { made++; throw new InvalidOperationException("no device"); });
+        audio.Enabled = true;
+        for (int i = 0; i < 100; i++) audio.SetPulsePeriod(0.03 + i * 1e-4);
+        Assert.Equal(1, made);
+        Assert.NotNull(audio.Problem);
+        audio.Enabled = false;
+        audio.Enabled = true;
+        audio.SetPulsePeriod(0.03);
+        Assert.Equal(2, made);                    // a toggle retries once
+        audio.Dispose();
+    }
+
+    [Fact]
+    public void ADeviceLostMidPlay_ShowsAProblem_AndIsNotReopenedEveryTick()
+    {
+        var players = new List<FakePlayer>();
+        var audio = new NAudioPulseAudio(() => { var p = new FakePlayer(); players.Add(p); return p; });
+        audio.Enabled = true;
+        audio.SetPulsePeriod(0.03);
+        Assert.Single(players);
+        Assert.Null(audio.Problem);
+        players[0].Fail(new InvalidOperationException("unplugged"));
+        Assert.NotNull(audio.Problem);
+        for (int i = 0; i < 50; i++) audio.SetPulsePeriod(0.03 + i * 1e-4);
+        Assert.Single(players);
+        audio.Dispose();
+    }
+
+    [Fact]
+    public void Disabling_StopsAndReleasesTheDevice_SoNothingStaleSoundsOnReEnable()
+    {
+        var players = new List<FakePlayer>();
+        var audio = new NAudioPulseAudio(() => { var p = new FakePlayer(); players.Add(p); return p; });
+        audio.Enabled = true;
+        audio.SetPulsePeriod(0.5);
+        audio.Enabled = false;
+        Assert.Equal(1, players[0].Stops);
+        Assert.Equal(1, players[0].Disposes);
+        audio.Enabled = true;
+        audio.SetPulsePeriod(0.5);
+        Assert.Equal(2, players.Count);           // a fresh device with empty buffers
+        audio.Dispose();
+    }
+
+    [Fact]
+    public void ClickTrain_ANewPeriodDuringAClick_DoesNotCutIt()
+    {
+        var t = new ClickTrain(44100) { Volume = 1 };
+        t.SetPeriod(0.5);
+        var a = new float[40];
+        t.Fill(a, 0, 40);                          // 40 samples into the 88-sample click
+        t.SetPeriod(null);
+        t.SetPeriod(0.5);                          // resume mid-click: it carries on, not restarts
+        var b = new float[48];
+        t.Fill(b, 0, 48);
+        var whole = new ClickTrain(44100) { Volume = 1 };
+        whole.SetPeriod(0.5);
+        var ref88 = new float[88];
+        whole.Fill(ref88, 0, 88);
+        Assert.Equal(ref88.Skip(40), b);
+    }
+}

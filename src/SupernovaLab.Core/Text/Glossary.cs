@@ -360,7 +360,7 @@ public static class Glossary
         "The label gives how many times larger.";
     public const string CloseUpLabels = "Shows or hides the labels on the view, such as the measuring rings' distances.";
     public const string CloseUpSound =
-        "Plays the pulsar's pulses as clicks, one per pulse at the real rate, as radio astronomers hear them. Off until you switch it on. It sounds only while the timeline is playing and pulses would reach Earth; the trace says why when it is silent. Nothing here depends on hearing it.";
+        "Plays the pulsar's pulses as clicks, one per pulse at the real rate, as radio astronomers hear pulsars. The click itself is schematic: a short click on a 1 kHz tone, made in code. Off until you switch it on. It sounds only while the timeline is playing and pulses would reach Earth; the trace says why when it is silent. Nothing here depends on hearing it.";
     public const string CloseUpPulseTrace =
         "A radio telescope's trace: a mark each time a drawn beam sweeps across Earth, over the last 10 seconds. The picture is slowed so nothing flashes more than once a second; the sound, if on, plays at the real rate.";
     public const string CloseUpFocusView = "Shows the view alone, without the column of numbers beside it.";

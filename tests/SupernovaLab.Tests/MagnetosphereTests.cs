@@ -103,3 +103,26 @@ public class MagnetosphereTests
         Assert.True(double.IsNaN(Magnetosphere.MagnetosphereFormsS(bh)));
     }
 }
+
+/// <summary>Task 8 fix round 1: the speed label's decimals under 10, and its figure relative to the received clock.</summary>
+public class SlowdownLabelTests
+{
+    [Theory]
+    [InlineData(1.0, "Shown 2× slower")]       // 2 / 1.0
+    [InlineData(0.8, "Shown 2.5× slower")]     // 2 / 0.8
+    [InlineData(1.3333333333, "Shown 1.5× slower")]
+    [InlineData(0.2, "Shown 10× slower")]
+    [InlineData(0.0334, "Shown 60× slower")]
+    public void SpeedLabel_KeepsADecimalUnderTen(double periodS, string expected)
+        => Assert.Equal(expected, Magnetosphere.SpeedLabel(periodS));
+
+    [Fact]
+    public void SlowdownLabel_IsDrawnOverReceived()
+    {
+        Assert.Equal("Shown 60× slower", Magnetosphere.SlowdownLabel(0.0334, 1));
+        Assert.Equal("Shown 54× slower", Magnetosphere.SlowdownLabel(0.0334, 1.1));   // 2 / (0.0334 x 1.1)
+        Assert.Equal("Shown at real speed", Magnetosphere.SlowdownLabel(5, 1));
+        Assert.Equal("Shown at real speed", Magnetosphere.SlowdownLabel(5, 1.2));
+        Assert.Equal(Magnetosphere.SpeedLabel(0.0334), Magnetosphere.SlowdownLabel(0.0334, 1));
+    }
+}

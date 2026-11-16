@@ -66,7 +66,7 @@ public static class PulseSchedule
             case PulseVisibility.BeamMissesEarth: return MissesText;
         }
         double received = ReceivedPeriodS(o, obs, sourceTimeS);
-        string picture = Magnetosphere.SpeedLabel(PulsarModel.Spin.Of(o).PeriodS(sourceTimeS));
+        string picture = Magnetosphere.SlowdownLabel(PulsarModel.Spin.Of(o).PeriodS(sourceTimeS), obs.TimeDilation);
         return $"Sound: real rate, {RateText(received)} · Picture: {char.ToLowerInvariant(picture[0])}{picture[1..]}";
     }
 
@@ -79,6 +79,6 @@ public static class PulseSchedule
         if (rate < 1 - 1e-9) return $"one every {periodS.ToString("0.##", inv)} s";
         double scale = Math.Pow(10, Math.Floor(Math.Log10(rate)) - 1);
         double rounded = Math.Round(rate / scale, MidpointRounding.AwayFromZero) * scale;
-        return $"{rounded.ToString("N0", inv)} a second";
+        return $"{rounded.ToString(rounded < 10 ? "0.#" : "N0", inv)} a second";
     }
 }
