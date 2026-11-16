@@ -153,6 +153,20 @@ public sealed class ExplosionScene
     /// <summary>The faintest ejecta brightness: still visible as a shell.</summary>
     private const float MinBrightness = 0.25f;
 
+    /// <summary>Plan Task 9: the faintest level of <see cref="LogBrightness"/> (the ejecta's faintest brightness), public for its tests.</summary>
+    public const float MinBrightnessLevel = MinBrightness;
+
+    /// <summary>
+    /// Project 2's logarithmic brightness rule, shared with the Close-up's proto-neutron star (plan Task 9, spec §3.2): 1 at the peak
+    /// luminosity, falling linearly with log L to <see cref="MinBrightnessLevel"/> four decades below it (and below that, or with no light).
+    /// </summary>
+    public static float LogBrightness(double luminosity, double peakLuminosity)
+    {
+        if (!(luminosity > 0) || !(peakLuminosity > 0)) return MinBrightness;
+        double x = Math.Clamp(1 + Math.Log10(luminosity / peakLuminosity) / DimmingDecades, 0, 1);
+        return (float)(MinBrightness + (1 - MinBrightness) * x);
+    }
+
     /// <summary>
     /// The quickest a pulsar's beams turn on screen, s. Plan Task 6: both views now draw <see cref="Magnetosphere.DrawnPeriodS"/>,
     /// max(real period, this), so a magnetar of several seconds turns at its real speed; kept equal to Magnetosphere's 2 s.
@@ -824,13 +838,7 @@ public sealed class ExplosionScene
     }
 
     /// <summary>1 at the light curve's peak, falling with log L to <see cref="MinBrightness"/> four decades below it.</summary>
-    private float Brightness(double t)
-    {
-        double l = Luminosity(t);
-        if (!(l > 0) || !(_peakLuminosity > 0)) return MinBrightness;
-        double x = Math.Clamp(1 + Math.Log10(l / _peakLuminosity) / DimmingDecades, 0, 1);
-        return (float)(MinBrightness + (1 - MinBrightness) * x);
-    }
+    private float Brightness(double t) => LogBrightness(Luminosity(t), _peakLuminosity);
 
     /// <summary>The light curve's bolometric luminosity, or the breakout model's before it starts; NaN when neither runs.</summary>
     private double Luminosity(double t)

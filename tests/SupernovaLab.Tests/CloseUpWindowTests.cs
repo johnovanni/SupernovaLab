@@ -52,10 +52,17 @@ public class CloseUpWindowTests
         return (new MainViewModel(TestOutcomes.Engine, fake), fake);
     }
 
+    /// <summary>
+    /// Plan Task 9: the tests of the settled remnant open the Close-up at this observer time, after the core's first second (the
+    /// PreCollapse and FirstSecond eras before it are tested in <see cref="CoreCollapseHistoryTests"/> and below).
+    /// </summary>
+    private const double SettledObserverTimeS = 100;
+
     private static CloseUpViewModel OpenCloseUp(string preset, out MainViewModel main)
     {
         (main, _) = NewMain();
         main.Lab.SelectedPreset = PresetCatalog.Get(preset);
+        main.Timeline.ObserverTimeS = SettledObserverTimeS;
         return new CloseUpViewModel(main);
     }
 
@@ -550,6 +557,56 @@ public class CloseUpWindowTests
             Last = u;
         }
         public void Dispose() { }
+    }
+
+    // ---- Plan Task 9: the first second at the core (spec §3) ----
+
+    [Fact]
+    public void Controller_FirstSecond_IsUnlensed_Animates_AndKeepsTheCameraOutsideTheCore()   // R-P3-11's condition
+    {
+        var (main, _) = NewMain();
+        main.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");
+        main.Timeline.ObserverTimeS = 0.05 * main.CurrentObserver.TimeDilation;
+        var vm = new CloseUpViewModel(main);
+        double wall = 10;
+        var host = new FakeHost();
+        var lensing = new FakeLensing();
+        var c = new CloseUpSceneController(vm, () => host, wallClock: () => wall, gpuFactory: () => new CloseUpGpu(lensing));
+        c.SetViewSize(new Size(900, 600));
+        c.Start();
+        host.FirstFrame("Intel | Intel(R) Iris(R) Xe Graphics | 4.1.0 - Build 30.0.101.1960");
+        Assert.Equal(CloseUpEra.FirstSecond, vm.State.Era);
+        Assert.False(vm.State.IsLensed);
+        Assert.True(c.CoreMoves);
+        Assert.True(c.IsAnimating);
+        Assert.True(host.Animating);
+        Assert.Equal(CloseUpSceneController.MinCameraSurfaceRadii * vm.State.CoreSphereRadiusKm, c.MinCameraDistanceKm, 9);
+        Assert.StartsWith(Core.Compact.CoreCollapseHistory.FromSimulationsLabel, vm.StageLabel);
+        Assert.NotEmpty(vm.StageKey);
+        host.Tick();
+        wall += 0.1;
+        host.Tick();
+        Assert.Equal(0.1 / CoreAnimation.InfallCycleS(vm.State.Core!), c.InfallCycles, 9);   // accumulated by wall time
+        Assert.Empty(lensing.Steps);                                                              // nothing traced: drawn unlensed
+        Assert.NotEmpty(c.RingLabels);                                                            // the distance rings still frame it
+        main.Timeline.ObserverTimeS = SettledObserverTimeS;                                     // the neutron star: lensed, the core stops
+        Assert.False(c.CoreMoves);
+        Assert.Null(vm.StageLabel);
+        c.Dispose();
+    }
+
+    [Fact]
+    public void CloseUpViewModel_AtTheTimelinesStart_ShowsTheCoreBeforeCollapse()
+    {
+        var (main, _) = NewMain();
+        main.Lab.SelectedPreset = PresetCatalog.Get("sn1987a");
+        main.Timeline.ObserverTimeS = Core.Timeline.TimeAxis.MinS;
+        var vm = new CloseUpViewModel(main);
+        Assert.Equal(CloseUpEra.PreCollapse, vm.State.Era);
+        Assert.Equal("Close-up: Iron core before collapse", vm.WindowTitle);
+        Assert.Equal("Before collapse", vm.StageLabel);
+        Assert.Equal(new[] { "Core radius" }, vm.Readouts.Select(r => r.Label));
+        vm.Dispose();
     }
 
     // ---- Plan Task 6: the neutron star's moving parts join the on-demand drawing (ruling R-P3-11's condition) ----

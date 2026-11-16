@@ -19,7 +19,7 @@ namespace SupernovaLab.App.Controllers;
 /// </summary>
 public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, EnvironmentCapture? Environment = null,
     ExplosionPainter? Painter = null, RingRenderer? Rings = null, GpuTimer? Timer = null, NeutronStarRenderer? NeutronStar = null,
-    NeutronStarCutawayRenderer? Cutaway = null)
+    NeutronStarCutawayRenderer? Cutaway = null, CoreCollapseRenderer? Core = null)
 {
     /// <summary>The real objects (call with the GL context current).</summary>
     public static CloseUpGpu Create()
@@ -31,7 +31,8 @@ public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, E
         var timer = new GpuTimer();
         var neutronStar = new NeutronStarRenderer();
         var cutaway = new NeutronStarCutawayRenderer();
-        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer, neutronStar, cutaway);
+        var core = new CoreCollapseRenderer();
+        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer, neutronStar, cutaway, core);
     }
 }
 /// <summary>
@@ -103,6 +104,12 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// </summary>
     public const float BeamLevel = 0.3f;
 
+    /// <summary>
+    /// [Presentation] Plan Task 9: the core's level ÷ the exposure (the proto-neutron star at full neutrino brightness reads at about
+    /// the neutron star's surface level; the translucent shock and gain shell and the particles are scaled the same way).
+    /// </summary>
+    public const float CoreLevel = 0.8f;
+
     /// <summary>[Presentation] The beams' length, in half-heights of the view: they always reach past its edge.</summary>
     public const double BeamLengthHalfHeights = 1.6;
 
@@ -131,6 +138,12 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private GpuTimer? _gpuTimer;
     private NeutronStarRenderer? _neutronStar;
     private NeutronStarCutawayRenderer? _cutawayRenderer;
+    private CoreCollapseRenderer? _coreRenderer;
+
+    // Plan Task 9: the infalling matter's fall phase (cycles, wrapped to [0, 1)), accumulated frame by frame so a change of the shown
+    // slow-down never makes the particles jump (as ruling R-P3-18's beam clock), and the wall time of the last core frame.
+    private double _infallCycles;
+    private double? _lastCoreFrameS;
 
     // Task 4b review carry-over: failures in a row, and what was given up (reset with a new context or viewport).
     private int _bandFailuresInRow, _traceFailuresInRow;
@@ -511,6 +524,9 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         get
         {
             var s = _vm.State;
+            // Plan Task 9: outside the core's sphere (the proto-neutron star, or the core before collapse).
+            if (s.IsCoreStage && s.CoreSphereRadiusKm > 0)
+                return Math.Max(OrbitCamera.MinDistanceMpc, MinCameraSurfaceRadii * s.CoreSphereRadiusKm);
             if (!s.IsLensed) return OrbitCamera.MinDistanceMpc;
             return Math.Max(OrbitCamera.MinDistanceMpc,
                 Math.Max(MinCameraGravitationalRadii * s.GravitationalRadiusKm, MinCameraSurfaceRadii * s.SurfaceRadiusKm));
@@ -613,7 +629,13 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// </summary>
     public bool IsAnimating => !IsFailed && _visible &&
                                (_forceAnimating || (Director.IsEasing && _frozenHalfHeightCm is null) || (_envPending && !_vm.Main.Timeline.IsPlaying)
-                                || RefineOwed || Turns || _vm.PulsesShown);
+                                || RefineOwed || Turns || _vm.PulsesShown || CoreMoves);
+
+    /// <summary>
+    /// Plan Task 9 (R-P3-11's condition): the first second moves on its own (the shock's sloshing and the infalling matter, on the wall
+    /// clock, paused or not, as the beams do), so it keeps the view drawing.
+    /// </summary>
+    public bool CoreMoves => _vm.State.Era == CloseUpEra.FirstSecond && _vm.State.Core is not null;
 
     /// <summary>Whether something drawn turns with the spin now: a neutron star (its surface markings, field lines and beams).</summary>
     private bool Turns => _vm.State.NeutronStar is not null && _vm.State.IsLensed;
@@ -635,6 +657,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         (_hdr, _environment, _painter, _rings, _gpuTimer, _lensing) = (gpu.Hdr, gpu.Environment, gpu.Painter, gpu.Rings, gpu.Timer, gpu.Lensing);
         _neutronStar = gpu.NeutronStar;
         _cutawayRenderer = gpu.Cutaway;
+        _coreRenderer = gpu.Core;
         ResetFailures();
         _planner.Invalidate();
         _uploadEnvParticles = true;
@@ -687,8 +710,9 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         long tracedTag = LensingFrameTag.Encode(default, captured);
         if (lens && viewportPx.Width > 0 && viewportPx.Height > 0)
             tracedTag = DrawLensing(state, viewportPx, captured);
-        if (state.IsLensed)
+        if (state.DrawsScene)
             foreach (var ring in CurrentRings()) _rings?.Render(Camera, viewportPx, ring.RadiusCm / UnitCm, ring.Opacity);
+        if (state.IsCoreStage) DrawCore(state, viewportPx);
         // Plan Task 6: a neutron star's beams glow (drawn before the bloom); its field lines, light cylinder and Earth arrow are
         // drawn after it (crisp, still tone-mapped), as the main view's cut faces are.
         Action? lines = null;
@@ -772,6 +796,28 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         }
         if (step.Work == RayMapWork.RefineStrip) RefineBands++;
         return LensingFrameTag.Encode(step, captured);
+    }
+
+    /// <summary>The infalling matter's fall phase now (cycles, in [0, 1)); the test hook for its frame-by-frame accumulation.</summary>
+    public double InfallCycles => _infallCycles;
+
+    /// <summary>The shock's sloshing phase now (radians): the wall clock over <see cref="CoreAnimation.SloshPeriodS"/>.</summary>
+    public double SloshPhaseRad => 2 * Math.PI * _clock() / CoreAnimation.SloshPeriodS;
+
+    /// <summary>
+    /// Plan Task 9: the core's stage (unlensed surfaces, as ruling R-P3-19; the surroundings, the star's inside, are not drawn): the
+    /// exposure is the main view's base, the fall phase advances by this frame's wall time over the shown fall's duration.
+    /// </summary>
+    private void DrawCore(CloseUpState state, Size viewportPx)
+    {
+        double now = _clock();
+        double dt = _lastCoreFrameS is { } last ? Math.Clamp(now - last, 0, MaxFrameGapS) : 0;
+        _lastCoreFrameS = now;
+        double cycle = state.Core is { } core ? CoreAnimation.InfallCycleS(core) : double.NaN;
+        if (cycle > 0) _infallCycles = (_infallCycles + dt / cycle) % 1;
+        _exposure = ExplosionScene.BaseExposure;
+        double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
+        _coreRenderer?.Render(Camera, viewportPx, pxPerDip, state, SloshPhaseRad, _infallCycles, Gain(CoreLevel));
     }
 
     /// <summary>[Presentation] The bloom strength, the main view's.</summary>
@@ -892,7 +938,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     }
 
     /// <summary>The rings now drawn, outermost first (the ladder runs down to metres for the Close-up's small scales).</summary>
-    private IReadOnlyList<Ring> CurrentRings() => _vm.State.IsLensed && HalfHeightCm > 0 && double.IsFinite(HalfHeightCm)
+    private IReadOnlyList<Ring> CurrentRings() => _vm.State.DrawsScene && HalfHeightCm > 0 && double.IsFinite(HalfHeightCm)
         ? DistanceRings.Rungs(HalfHeightCm)
         : Array.Empty<Ring>();
 
@@ -1055,6 +1101,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
                 GlReleased = host.Shutdown(() =>
                 {
                     _gpuTimer?.Dispose();
+                    _coreRenderer?.Dispose();
                     _cutawayRenderer?.Dispose();
                     _neutronStar?.Dispose();
                     _lensing?.Dispose();
@@ -1073,6 +1120,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         _gpuTimer = null;
         _neutronStar = null;
         _cutawayRenderer = null;
+        _coreRenderer = null;
         _lensing = null;
         _rings = null;
         _painter = null;

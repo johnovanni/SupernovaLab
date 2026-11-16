@@ -72,6 +72,33 @@ public class ShaderSourceTests
     }
 
     /// <summary>
+    /// Plan Task 9: coreshock.frag and coreinfall.vert declare every uniform CoreCollapseRenderer sets, and the infall shader carries
+    /// CoreAnimation's free-fall profile (r^1.5 linear in the fall's phase) and its one fade in and out per fall (flash safety).
+    /// </summary>
+    [Fact]
+    public void CoreShaders_DeclareTheRenderersUniforms_AndTheFallProfile()
+    {
+        string Text(string name) => System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith("." + name)).Bytes);
+        string shock = Text("coreshock.frag");
+        foreach (string needle in new[]
+                 {
+                     "uniform vec3 u_forward", "uniform vec3 u_right", "uniform vec3 u_up", "uniform vec2 u_tanHalf", "uniform vec3 u_eye",
+                     "uniform float u_sphereR", "uniform vec3 u_sphereColor", "uniform float u_gainR", "uniform vec3 u_gainColor",
+                     "uniform float u_gainAlpha", "uniform float u_shockR", "uniform vec3 u_shockColor", "uniform float u_shockAlpha",
+                     "uniform float u_amp", "uniform float u_phase", "in vec2 v_ndc",
+                 })
+            Assert.Contains(needle, shock);
+        string infall = Text("coreinfall.vert");
+        foreach (string needle in new[]
+                 {
+                     "uniform float u_rIn", "uniform float u_rOut", "uniform float u_cycles", "uniform float u_pointPx",
+                     "float r = pow(outer - tau * (outer - inner), 2.0 / 3.0);", "fract(u_cycles + a_seed)",
+                 })
+            Assert.Contains(needle, infall);
+        Assert.Contains("uniform vec3 u_color", Text("coreinfall.frag"));
+    }
+
+    /// <summary>
     /// Plan Task 4: lensing.frag is the GLSL mirror of BlackHoleOptics.TraceRay (ruling P3-7): it declares the uniforms the brief
     /// names (spin, camera position and basis, R_esc, the surface radius, the grid flag) and carries the C# tracer's constants.
     /// </summary>

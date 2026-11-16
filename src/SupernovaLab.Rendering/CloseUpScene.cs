@@ -30,7 +30,8 @@ public sealed record Readout(string Label, Quantity Value, string? ToolTip = nul
         "" => UnitFormat.Number(q.Value),
         "s" => UnitFormat.Time(q.Value),
         "K" => Kelvin(q),
-        "G" or "s/s" or "g/cm³" => UnitFormat.Scientific(q.Value, q.Unit),
+        "G" or "s/s" or "g/cm³" or "erg/s" => UnitFormat.Scientific(q.Value, q.Unit),
+        "%" => $"{UnitFormat.Number(q.Value)}%",
         "cm" => UnitFormat.Distance(q.Value),
         _ => $"{UnitFormat.Number(q.Value)} {q.Unit}",
     };
@@ -109,6 +110,35 @@ public sealed record CloseUpState
     /// </summary>
     public CutawayInfo? Cutaway { get; init; }
 
+    // ---- Plan Task 9: the core before collapse and in its first second (spec §3). NaN or null for any other era. ----
+
+    /// <summary>The core's state now (<see cref="CoreCollapseHistory.At"/>); null outside the PreCollapse and FirstSecond eras.</summary>
+    public CoreState? Core { get; init; }
+
+    /// <summary>The drawn sphere, km: the iron (or O-Ne-Mg) core before collapse, then the proto-neutron star (<see cref="CoreCollapseHistory.DrawnProtoNsRadiusKm"/>).</summary>
+    public double CoreSphereRadiusKm { get; init; } = double.NaN;
+
+    /// <summary>
+    /// Spec §3.2: the proto-neutron star's brightness, Project 2's logarithmic rule (<see cref="ExplosionScene.LogBrightness"/>) of the
+    /// neutrino panel's total luminosity now against its peak; NaN outside the first second.
+    /// </summary>
+    public float ProtoNsBrightness { get; init; } = float.NaN;
+
+    /// <summary>The drawn sphere's colour (schematic), normalized sRGB.</summary>
+    public (float R, float G, float B) CoreColor { get; init; } = (1f, 1f, 1f);
+
+    /// <summary>The stage's label on the view (spec §3.2: "From simulations"); null outside the first second.</summary>
+    public string? StageLabel { get; init; }
+
+    /// <summary>The stage's key on the view, one line each (what each drawn thing is); empty outside the core's eras.</summary>
+    public IReadOnlyList<string> StageKey { get; init; } = Array.Empty<string>();
+
+    /// <summary>Whether the core is drawn (the PreCollapse or FirstSecond era): unlensed surfaces (plan Task 9, as ruling R-P3-19).</summary>
+    public bool IsCoreStage => Core is not null;
+
+    /// <summary>Whether the view draws anything (its rings and the object): every era but None.</summary>
+    public bool DrawsScene => Era != CloseUpEra.None;
+
     /// <summary>GM/c² in km for <see cref="MassMsun"/>; NaN without a compact object.</summary>
     public double GravitationalRadiusKm => MassMsun > 0 ? BlackHoleOptics.GravitationalRadiusCm(MassMsun) / 1e5 : double.NaN;
 
@@ -120,8 +150,10 @@ public sealed record CloseUpState
 /// The single source of what the Close-up draws at each moment (spec §8.2; the counterpart of <see cref="ExplosionScene"/>): a pure
 /// function of the outcome, the observer, the run number and the source time. In this build it gives the no-remnant messages
 /// (spec §2.3), a placeholder black hole (its mass, and spin 0 unless the bench's diagnostic spin is given) and (plan Task 6) the neutron
-/// star at each time (spec §4: its readouts, notes, surface colour, beams, field, light cylinder and Earth's direction); the eras
-/// before the remnant settles come later.
+/// star at each time (spec §4: its readouts, notes, surface colour, beams, field, light cylinder and Earth's direction). Plan Task 9:
+/// for a core collapse, the core before collapse up to 1 ms (the PreCollapse era) and its first second until
+/// <see cref="CoreCollapseHistory.StageEndS"/> (the FirstSecond era: spec §3), then the remnant (from 1 s to 1 minute a neutron star
+/// still contracts to its radius, compact §C2); the black hole's forming and settling eras come later (Task 10).
 /// </summary>
 public sealed class CloseUpScene
 {
@@ -224,7 +256,14 @@ public sealed class CloseUpScene
         RunNumber = runNumber;
         _spin = Math.Clamp(double.IsFinite(placeholderSpin) ? placeholderSpin : 0, 0, 0.998);
         _isNeutronStar = NeutronStarModel.At(outcome, observer, runNumber, 0) is not null;
+        _track = CoreCollapseHistory.TrackFor(outcome);
+        _stageEndS = CoreCollapseHistory.StageEndS(outcome);
+        _neutrinoPeak = _track is null ? double.NaN : CoreCollapseHistory.PeakNeutrinoLuminosityErgS(outcome);
     }
+
+    private readonly CoreTrack? _track;
+    private readonly double _stageEndS, _neutrinoPeak;
+    private CloseUpState? _preCollapse;
 
     public ObserverSetup Observer { get; }
     public int RunNumber { get; }
@@ -234,7 +273,16 @@ public sealed class CloseUpScene
     /// plan Task 6); every other state in this build is the same at all times, so it is made once (the spinning shadow's size
     /// integrates the outline).
     /// </summary>
-    public CloseUpState At(double sourceTimeS) => _isNeutronStar ? NeutronStarAt(sourceTimeS) : _settled ??= Settled();
+    public CloseUpState At(double sourceTimeS)
+    {
+        if (_track is not null)
+        {
+            // Plan ruling P3-12, spec §3: the core before collapse up to the scrubber's left end (1 ms), then its first second.
+            if (!(sourceTimeS > PreCollapseEndS)) return _preCollapse ??= PreCollapse();
+            if (sourceTimeS < _stageEndS) return FirstSecondAt(sourceTimeS);
+        }
+        return _isNeutronStar ? NeutronStarAt(sourceTimeS) : _settled ??= Settled();
+    }
 
     private CloseUpState? _settled;
 
@@ -303,7 +351,9 @@ public sealed class CloseUpScene
         var o = _outcome;
         var r = o.Remnant;
         var ns = NeutronStarModel.At(o, Observer, RunNumber, t)!;
-        double period = ns.PeriodS, radius = ns.RadiusKm;
+        // Plan Task 9 (spec §3.1 item 3, compact §C2): until 1 minute the proto-neutron star is still contracting to the remnant's radius.
+        bool contracting = t < CoreCollapseHistory.ContractionEndS;
+        double period = ns.PeriodS, radius = contracting ? CoreCollapseHistory.ContractionRadiusKm(ns.RadiusKm, t) : ns.RadiusKm;
         double lightCylinder = Magnetosphere.LightCylinderKm(period);
         bool beams = t >= Magnetosphere.MagnetosphereFormsS(o);
         string periodText = UnitFormat.Time(period);
@@ -330,7 +380,10 @@ public sealed class CloseUpScene
         var readouts = new[]
         {
             new Readout("Mass", r.Mass!, "Gravitational mass"),
-            new Readout("Radius", r.RadiusKm!),
+            contracting
+                ? new Readout("Radius", new Quantity(radius, "km", Confidence.ModelDependent, CoreCollapseHistory.ContractionSource),
+                    $"Still contracting: the proto-neutron star shrinks to the remnant's {UnitFormat.Number(ns.RadiusKm)} km by about one minute after bounce (approximate)")
+                : new Readout("Radius", r.RadiusKm!),
             new Readout("Spin", spin,
                 $"The spin period now, and Ṗ, how fast it lengthens ({PdotSource.Citation}). The light cylinder, c P / 2π, grows as the star slows.",
                 pdot, "Ṗ"),
@@ -375,7 +428,7 @@ public sealed class CloseUpScene
             FrameRadiusKm = NeutronStarFrameRadii * radius,
             MassMsun = ns.MassMsun,
             SurfaceRadiusKm = radius,
-            NeutronStar = ns,
+            NeutronStar = contracting ? ns with { RadiusKm = radius } : ns,
             DrawnPeriodS = Magnetosphere.DrawnPeriodS(period),
             SpeedLabel = Magnetosphere.SlowdownLabel(period, Observer.TimeDilation),
             LightCylinderKm = lightCylinder,
@@ -388,6 +441,7 @@ public sealed class CloseUpScene
             PolarCapRad = FieldLines.PolarCapRad(radius, lightCylinder),
             FieldG = ns.FieldG,
             Cutaway = ns.HasCrust ? _cutawayWithCrust ??= CutawayInfo.Build(o, ns.MassMsun, radius, true)
+                : contracting ? CutawayInfo.Build(o, ns.MassMsun, radius, false)
                 : _cutawayProto ??= CutawayInfo.Build(o, ns.MassMsun, radius, false),
         };
     }
@@ -421,6 +475,189 @@ public sealed class CloseUpScene
 
     /// <summary>The less certain of two confidences.</summary>
     private static Confidence Worse(Confidence a, Confidence b) => (Confidence)Math.Max((int)a, (int)b);
+
+    // ---- Plan Task 9: the core before collapse and its first second (spec §3; compact §C1, §C2) ----
+
+    /// <summary>Plan ruling P3-12 and spec §3: up to this source time (the timeline's left end, 1 ms) the core is shown before collapse.</summary>
+    public const double PreCollapseEndS = 1e-3;
+
+    /// <summary>[Presentation] The pre-collapse core is framed at this many radii.</summary>
+    public const double PreCollapseFrameRadii = 1.25;
+
+    /// <summary>[Presentation] With a shock, the view frames this many (distorted) shock radii; the director's ladder covers 1 to 10,000 km.</summary>
+    public const double ShockFrameRadii = 1.15;
+
+    /// <summary>The largest framing radius of the first second, km (the shock leaves the frame at about 3,000 km).</summary>
+    public const double MaxCoreFrameKm = 10_000;
+
+    /// <summary>Spec §3.2: the only observation of this stage.</summary>
+    public const string Sn1987aNeutrinosNote =
+        "Nothing in this stage has been observed directly except SN 1987A's neutrinos (about two dozen, caught in 1987 by Kamiokande-II, IMB and Baksan)";
+
+    /// <summary>Spec §3.2 and §C1.1: the tracks are the simulations' typical ones.</summary>
+    public const string TypicalTracksNote =
+        "From simulations: the shock, gain and proto-neutron-star radii follow typical tracks (no published dependence on the star was found; compact §C1). Radii and times: model-dependent";
+
+    /// <summary>Plan Task 9 (as ruling R-P3-19): the first second is drawn as plain surfaces.</summary>
+    public const string CoreUnbentNote =
+        "Drawn without the bending of light, which near the proto-neutron star is a few degrees; the star around the core is not drawn";
+
+    /// <summary>Spec §3.2: the shapes.</summary>
+    public const string DistortionNote =
+        "Shock distortion (convection plumes and the sloshing SASI): about 10% of its radius (approximate, Hanke et al. 2013); the shape is schematic, and the sloshing is drawn slowed to one swing in 4 s (much faster in the simulations)";
+
+    /// <summary>Spec §3.2: the infalling matter.</summary>
+    public const string InfallNote =
+        "Infalling matter: speeds of about √(G M / r) ahead of the shock (Müller 2020), paths schematic (straight in), slowed down so they can be seen";
+
+    /// <summary>Spec §3.2: the brightness and colour.</summary>
+    public const string ProtoNsBrightnessNote =
+        "Proto-neutron star: its brightness follows the neutrino panel's total luminosity (the 3D view's logarithmic rule); colour schematic. It shines almost only in neutrinos";
+
+    /// <summary>§C1.1: the neutrinospheres start outside the shock.</summary>
+    public const string HotCoreNote =
+        "For the first few milliseconds the shock is still inside the neutrinospheres, so the hot core is drawn bounded by the shock (O'Connor & Ott 2011)";
+
+    /// <summary>The gain shell.</summary>
+    public const string GainNote = "Gain radius (faint shell): outside it, neutrinos heat the gas more than they cool it";
+
+    /// <summary>Spec §3.2: what is left out.</summary>
+    public const string CoreNotDrawnNote = "Not drawn: the neutrino-driven wind, neutrino flavour physics";
+
+    /// <summary>§C1 App: an O-Ne-Mg core revives early; its radii are the iron-core track's (inconsistency #62).</summary>
+    public const string ElectronCaptureTrackNote =
+        "An O-Ne-Mg core revives its shock early, at about 0.07 s (Kitaura et al. 2006), but its radii are drawn from the iron-core track (#62)";
+
+    /// <summary>The revived shock leaving the frame.</summary>
+    public const string ShockLeavesNote =
+        "The revived shock leaves the frame at about 1 s; the main view's cutaway follows it out to the star's surface";
+
+    private static readonly Source NeutrinoSource = new(
+        "The neutrino panel's total luminosity, ν_e + anti-ν_e + 4 ν_x (the lab's neutrino model)", "signals §1");
+    private static readonly Source SinceBounceSource = new("The timeline's time since core bounce, in the source's frame", "spec §3");
+
+    /// <summary>[Schematic] The colours: the iron core and the O-Ne-Mg core.</summary>
+    public static readonly (float R, float G, float B) IronCoreColor = (0.86f, 0.52f, 0.32f), OneMgCoreColor = (0.80f, 0.70f, 0.50f);
+
+    /// <summary>[Schematic] The proto-neutron star's colour: a very hot blackbody's blue-white.</summary>
+    public static readonly (float R, float G, float B) ProtoNsColor = BlackbodyColor.FromTemperature(1e5);
+
+    /// <summary>Plan Task 9: the core before collapse (spec §3: its size from the research, one value per kind of core).</summary>
+    private CloseUpState PreCollapse()
+    {
+        var o = _outcome;
+        bool oneMg = CoreCollapseHistory.IsElectronCapture(o);
+        double radius = CoreCollapseHistory.PreCollapseCoreRadiusKm(o);
+        string kind = oneMg ? "oxygen-neon-magnesium core" : "iron core";
+        var readouts = new[]
+        {
+            new Readout("Core radius", new Quantity(radius, "km", Confidence.ModelDependent, CoreCollapseHistory.PreCollapseSource),
+                $"The {kind}'s radius as collapse begins (stellar-evolution models; one value for every {kind})"),
+        };
+        var notes = new List<string>
+        {
+            $"Before collapse: the star's {kind}, about {UnitFormat.Number(radius)} km in radius, about to fall in on itself. Press Explode or move the time on to see bounce",
+            "Its size is from stellar-evolution models (" + CoreCollapseHistory.PreCollapseSource.Citation + "); colour schematic",
+            CoreUnbentNote,
+        };
+        if (_track == CoreTrack.Magnetorotational) notes.Add(CoreCollapseHistory.MagnetorotationalNote);
+        return new CloseUpState
+        {
+            Era = CloseUpEra.PreCollapse,
+            Title = char.ToUpperInvariant(kind[0]) + kind[1..] + " before collapse",
+            Readouts = readouts,
+            Notes = notes,
+            FrameRadiusKm = PreCollapseFrameRadii * radius,
+            Core = CoreCollapseHistory.At(o, 0),
+            CoreSphereRadiusKm = radius,
+            CoreColor = oneMg ? OneMgCoreColor : IronCoreColor,
+            StageLabel = "Before collapse",
+            StageKey = new[] { $"● {kind} (colour schematic)" },
+        };
+    }
+
+    /// <summary>Plan Task 9: the first second (spec §3.1, §3.2), from bounce to the stage's end.</summary>
+    private CloseUpState FirstSecondAt(double t)
+    {
+        var o = _outcome;
+        var core = CoreCollapseHistory.At(o, t);
+        double sphere = CoreCollapseHistory.DrawnProtoNsRadiusKm(core);
+        bool shock = double.IsFinite(core.ShockRadiusKm), gain = double.IsFinite(core.GainRadiusKm);
+        double tbh = CoreCollapseHistory.BlackHoleFormsS(o);
+        double luminosity = CoreCollapseHistory.NeutrinoLuminosityErgS(o, t);
+        var md = Confidence.ModelDependent;
+        var src = CoreCollapseHistory.TrackSource;
+
+        string title = core.Phase switch
+        {
+            CorePhase.Bounce => "Core bounce: the shock forms",
+            CorePhase.Stalled => _track == CoreTrack.Failed ? "Stalled shock: it never revives" : "Stalled shock round the proto-neutron star",
+            CorePhase.Revived => "Revived shock: the explosion begins",
+            CorePhase.Collapsing => "Proto-neutron star collapsing to a black hole",
+            _ => double.IsFinite(tbh) ? "Proto-neutron star (it collapses to a black hole later)" : "Proto-neutron star",
+        };
+
+        var readouts = new List<Readout>();
+        if (shock)
+            readouts.Add(new Readout("Shock radius", new Quantity(core.ShockRadiusKm, "km", md, src),
+                "The shock's mean radius (typical track from simulations)"));
+        if (gain)
+            readouts.Add(new Readout("Gain radius", new Quantity(core.GainRadiusKm, "km", md, src),
+                "Outside it neutrinos heat the gas more than they cool it"));
+        readouts.Add(new Readout("Proto-neutron star",
+            new Quantity(sphere, "km", md, core.Phase == CorePhase.Cooling ? CoreCollapseHistory.ContractionSource : src),
+            "The hot, swollen newborn neutron star: radius where the density reaches 10¹¹ g/cm³ (bounded by the shock in the first few milliseconds)"));
+        if (shock && core.DistortionFraction > 0)
+            readouts.Add(new Readout("Shock distortion", new Quantity(core.DistortionFraction * 100, "%", Confidence.Speculative,
+                CoreCollapseHistory.DistortionSource), "Approximate size of the convection plumes and SASI sloshing; their shape is schematic"));
+        if (double.IsFinite(core.InfallSpeedKmS))
+            readouts.Add(new Readout("Infall speed", new Quantity(core.InfallSpeedKmS, "km/s", md, CoreCollapseHistory.InfallSource),
+                "How fast matter falls onto the shock"));
+        if (luminosity >= 0)
+            readouts.Add(new Readout("Neutrinos", new Quantity(luminosity, "erg/s", md, NeutrinoSource),
+                "Total neutrino luminosity, as on the neutrino panel"));
+        readouts.Add(new Readout("Since bounce", new Quantity(t, "s", Confidence.Established, SinceBounceSource)));
+
+        var notes = new List<string> { TypicalTracksNote, Sn1987aNeutrinosNote };
+        if (_track == CoreTrack.Magnetorotational) notes.Add(CoreCollapseHistory.MagnetorotationalNote);
+        if (_track == CoreTrack.Failed)
+            notes.Add($"The shock never revives: the proto-neutron star grows by accretion and collapses to a black hole at {UnitFormat.Time(tbh)}, " +
+                      "when the neutrino signal stops. The track's later part is stretched in time to end then");
+        else if (double.IsFinite(tbh))
+            notes.Add($"The explosion succeeds, but matter falling back tips the proto-neutron star over: it collapses to a black hole at {UnitFormat.Time(tbh)}");
+        if (CoreCollapseHistory.IsElectronCapture(o)) notes.Add(ElectronCaptureTrackNote);
+        if (sphere < core.ProtoNsRadiusKm) notes.Add(HotCoreNote);
+        notes.Add(ProtoNsBrightnessNote);
+        if (gain) notes.Add(GainNote);
+        if (shock) notes.Add(DistortionNote);
+        if (shock) notes.Add(InfallNote);
+        if (core.Phase == CorePhase.Revived) notes.Add(ShockLeavesNote);
+        notes.Add(CoreUnbentNote);
+        notes.Add(CoreNotDrawnNote);
+
+        var key = new List<string> { "● proto-neutron star" };
+        if (shock) key.Add("◯ shock (translucent; shape schematic)");
+        if (gain) key.Add("◌ gain radius");
+        if (CoreAnimation.InfallLabel(core) is { } infall) key.Add("· infalling matter, " + infall.Replace("Infall shown", "shown"));
+
+        double frame = shock
+            ? Math.Min(MaxCoreFrameKm, ShockFrameRadii * core.ShockRadiusKm * (1 + core.DistortionFraction))
+            : NeutronStarFrameRadii * sphere;
+        return new CloseUpState
+        {
+            Era = CloseUpEra.FirstSecond,
+            Title = title,
+            Readouts = readouts,
+            Notes = notes,
+            FrameRadiusKm = Math.Max(frame, 1),
+            Core = core,
+            CoreSphereRadiusKm = sphere,
+            ProtoNsBrightness = ExplosionScene.LogBrightness(luminosity, _neutrinoPeak),
+            CoreColor = ProtoNsColor,
+            StageLabel = CoreCollapseHistory.FromSimulationsLabel + " · typical track",
+            StageKey = key,
+        };
+    }
 
     /// <summary>A neutron star the lab cannot model (no spin or field): its size only, as Task 4 drew it.</summary>
     private static CloseUpState NeutronStar(Remnant remnant)

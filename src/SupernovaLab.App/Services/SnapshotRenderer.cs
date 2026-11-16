@@ -1059,6 +1059,8 @@ public static class SnapshotRenderer
         if (request.Cutaway && w.DataContext is CloseUpViewModel cutVm && !cutVm.IsCutaway) cutVm.IsCutaway = true;
         await NextFrame(w);
         await NextFrame(w);
+        // Plan Task 9: a new time can step the director's rings (the first second's shock grows from 15 to 3,000 km); wait out the ease.
+        for (int k = 0; k < 90 && w.Scene is { } easing && easing.Director.IsEasing; k++) await NextFrame(w);
         if (w.DataContext is CloseUpViewModel vm)
             log.Add($"closeup{suffix}: {vm.WindowTitle}; {(vm.NoRemnantMessage ?? string.Join(" | ", vm.Readouts.Select(r => $"{r.Label} {r.ValueText}")))}" +
                     (w.Scene is { } c ? $"; lensing {LensingLevels.Text(c.Level)}, environment refreshes {c.EnvironmentCaptures}" : ""));

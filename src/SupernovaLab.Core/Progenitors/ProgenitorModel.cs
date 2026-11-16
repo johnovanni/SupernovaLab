@@ -50,6 +50,9 @@ public static class ProgenitorModel
     /// </summary>
     public static double HydrogenMassFraction(double initialMass) => initialMass <= 20 ? 0.6 : 0.5;
 
+    /// <summary>Whether a massive star of this initial mass (M☉) lies in the electron-capture window (9.0–9.25 M☉, step 1).</summary>
+    public static bool IsElectronCaptureMass(double initialMass) => initialMass >= EcsnLow && initialMass < EcsnHigh;
+
     /// <summary>Evolves the (clamped) inputs to the star's state at death and its early fate.</summary>
     public static (EarlyFate Fate, PresupernovaStar Star, IReadOnlyList<string> Notes) Evolve(LabInputs inputs, ExplodabilityTable table)
     {

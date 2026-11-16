@@ -1,3 +1,5 @@
+using SupernovaLab.Core.Compact;
+
 namespace SupernovaLab.Tests;
 
 /// <summary>
@@ -183,5 +185,112 @@ public static class CompactResearch
         public const double CrustFormationTimeS = 86_400;
         /// <summary>§C5 App: pasta is 0.30 of the inner crust's thickness; the inner core ends at 0.5 R_cc.</summary>
         public const double PastaFractionOfInnerCrust = 0.30, InnerCoreFractionOfCoreRadius = 0.5;
+    }
+
+    /// <summary>
+    /// compact.md §C1, the first second (C1.2's typical tracks, the App block's rules). The rows before 30 ms are [APPROX] stand-ins
+    /// assembled from the anchors (no published track at those times); the rows marked ✓ in C1.2 are [V] anchors.
+    /// </summary>
+    public static class C1
+    {
+        /// <summary>One C1.2 row: time after bounce (s), then low–high ranges (km) of R_sh, R_gain (NaN: none) and R_PNS.</summary>
+        public readonly record struct Row(double TimeS, double ShockLow, double ShockHigh, double GainLow, double GainHigh,
+            double PnsLow, double PnsHigh, bool Approx);
+
+        /// <summary>§C1.2 exploding core (neutrino-driven; revival ≈ 0.3 s). 1–10 ms are [APPROX] stand-ins.</summary>
+        public static readonly Row[] Exploding =
+        [
+            new(0.001, 10, 25, double.NaN, double.NaN, 50, 90, true),
+            new(0.003, 25, 60, double.NaN, double.NaN, 50, 90, true),
+            new(0.010, 60, 110, double.NaN, double.NaN, 50, 85, true),
+            new(0.030, 90, 140, 50, 90, 45, 80, false),
+            new(0.100, 110, 170, 60, 110, 35, 65, false),
+            new(0.200, 100, 220, 55, 120, 28, 50, false),
+            new(0.300, 150, 500, 40, 100, 24, 45, false),
+            new(0.500, 400, 3000, 28, 70, 22, 37, false),
+            new(1.000, 1400, 13000, 25, 60, 20, 30, false),
+        ];
+
+        /// <summary>§C1.2 failed core after 100 ms: (fraction of t_BH, ranges); the last row is t_BH − 1 ms (fraction NaN).</summary>
+        public static readonly (double FractionOfTbh, double ShockLow, double ShockHigh, double GainLow, double GainHigh, double PnsLow, double PnsHigh)[] FailedLate =
+        [
+            (0.4, 70, 150, 40, 100, 30, 50),
+            (0.7, 40, 110, 25, 70, 22, 40),
+            (0.95, 20, 90, double.NaN, double.NaN, 15, 30),
+            (double.NaN, 12, 25, double.NaN, double.NaN, 12, 20),
+        ];
+
+        /// <summary>§C1 App: a failed track uses the exploding rows up to 100 ms (or below 0.4 t_BH when t_BH &lt; 0.25 s).</summary>
+        public const double FailedJoinS = 0.1;
+
+        /// <summary>§C1 App: the collapse to the horizon is drawn over the last 1 ms before t_BH.</summary>
+        public const double CollapseS = 0.001;
+
+        /// <summary>
+        /// The shock rows a track must pass through (time, low, high): the exploding rows for an exploding or magnetorotational
+        /// track (those before t_BH − 1 ms when a black hole forms by fallback at <paramref name="tBhS"/>), or the failed rows
+        /// stretched to <paramref name="tBhS"/>.
+        /// </summary>
+        public static IEnumerable<(double T, double Lo, double Hi)> ShockTable(CoreTrack track, double tBhS = double.NaN)
+            => Rows(track, tBhS).Select(r => (r.TimeS, r.ShockLow, r.ShockHigh));
+
+        /// <summary>The PNS rows (time, low, high), as <see cref="ShockTable"/>.</summary>
+        public static IEnumerable<(double T, double Lo, double Hi)> ProtoNsTable(CoreTrack track, double tBhS = double.NaN)
+            => Rows(track, tBhS).Select(r => (r.TimeS, r.PnsLow, r.PnsHigh));
+
+        /// <summary>The gain rows that have a gain radius (time, low, high), as <see cref="ShockTable"/>.</summary>
+        public static IEnumerable<(double T, double Lo, double Hi)> GainTable(CoreTrack track, double tBhS = double.NaN)
+            => Rows(track, tBhS).Where(r => !double.IsNaN(r.GainLow)).Select(r => (r.TimeS, r.GainLow, r.GainHigh));
+
+        private static IEnumerable<Row> Rows(CoreTrack track, double tBhS)
+        {
+            if (track != CoreTrack.Failed)
+                return Exploding.Where(r => double.IsNaN(tBhS) || r.TimeS < tBhS - CollapseS);
+            var early = Exploding.Where(r => r.TimeS <= FailedJoinS && r.TimeS < 0.4 * tBhS);
+            var late = FailedLate.Select(f => new Row(double.IsNaN(f.FractionOfTbh) ? tBhS - CollapseS : f.FractionOfTbh * tBhS,
+                f.ShockLow, f.ShockHigh, f.GainLow, f.GainHigh, f.PnsLow, f.PnsHigh, false));
+            return early.Concat(late);
+        }
+
+        /// <summary>§C1 App: revival at 0.3 s for an iron core, 0.07 s for an O-Ne-Mg (electron-capture) core; Stalled from 30 ms.</summary>
+        public const double RevivalIronS = 0.3, RevivalOneMgS = 0.07, StalledFromS = 0.03;
+
+        /// <summary>§C1 App: the stage ends when the typical R_sh passes 3,000 km (≈ 1 s), or at t_BH for the failed track.</summary>
+        public const double StageEndShockKm = 3000, ExplodingStageEndS = 1.0;
+
+        /// <summary>§C1 App: the drawn PNS is at most 0.9 R_sh (the hot core is bounded by the shock in the first ≈ 5 ms).</summary>
+        public const double DrawnProtoNsMaxOfShock = 0.9;
+
+        /// <summary>§C1 App: in the failed track the gain shell is drawn only while R_gain &gt; 1.1 R_PNS.</summary>
+        public const double FailedGainMinOfProtoNs = 1.1;
+
+        /// <summary>§C1 App: DistortionFraction 0.1 [APPROX] (Hanke et al. 2013's figure ranges).</summary>
+        public const double DistortionFraction = 0.1;
+
+        /// <summary>§C1.1 / App: the infall speed √(G M / r): 33,900–36,400 km/s at 150 km for 1.3–1.5 M☉.</summary>
+        public const double InfallAt150KmLow = 33_900, InfallAt150KmHigh = 36_400;
+
+        /// <summary>§C1 App: pre-collapse core radii, km: an iron core 2,300 (MacFadyen &amp; Woosley 1999); O-Ne-Mg 1,100 (Kitaura et al. 2006).</summary>
+        public const double IronCoreKm = 2300, OneMgCoreKm = 1100;
+
+        /// <summary>§C1.1: in the last 1 ms before t_BH the shock recedes to ≈ 12 km (O'Connor &amp; Ott 2011).</summary>
+        public const double ShockAtCollapseKm = 12;
+    }
+
+    /// <summary>compact.md §C2, proto-neutron-star contraction (≈ 1 s to ≈ 1 minute).</summary>
+    public static class C2
+    {
+        /// <summary>§C2 [D]: R(t) for R_f = 12 km: (t s, km). 25.0 (1 s), 16.0 (2 s), 14.0 (3 s), 12.8 (5 s), 12.3 (10 s), 12.04 (30 s), 12.01 (60 s).</summary>
+        public static readonly (double T, double Km)[] Radius12 =
+            [(1, 25.0), (2, 16.0), (3, 14.0), (5, 12.8), (10, 12.3), (30, 12.04), (60, 12.01)];
+
+        /// <summary>§C2's table is given to the decimals shown: within 0.05 km.</summary>
+        public const double ToleranceKm = 0.05;
+
+        /// <summary>§C2 App: R(60 s) within 1% of R_f (the plan's 11.9–12.1 km).</summary>
+        public const double At60Low = 11.9, At60High = 12.1;
+
+        /// <summary>§C2 App: a fallback black hole at t_BH = 3.0 s has a PNS of 14.0 km just before (R_f = 12 km).</summary>
+        public const double FallbackAt3sKm = 14.0;
     }
 }

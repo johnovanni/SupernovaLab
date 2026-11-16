@@ -230,6 +230,12 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     /// <summary>The view's speed label (spec §2.1, §4.3): "Shown 60× slower" for a neutron star; null for anything else.</summary>
     public string? SpeedLabel => State.SpeedLabel;
 
+    /// <summary>Plan Task 9 (spec §3.2): the stage's label on the view ("From simulations · typical track"); null outside the core's eras.</summary>
+    public string? StageLabel => State.StageLabel;
+
+    /// <summary>Plan Task 9: the stage's key on the view, one line per drawn thing (the proto-neutron star, the shock, the gain shell, the infall).</summary>
+    public IReadOnlyList<string> StageKey => State.StageKey;
+
     private bool _refineFailed;
 
     /// <summary>
@@ -355,6 +361,8 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(SpeedLabel));
+        if (before.State.StageLabel != State.StageLabel) OnPropertyChanged(nameof(StageLabel));
+        if (!before.State.StageKey.SequenceEqual(State.StageKey)) OnPropertyChanged(nameof(StageKey));
         if (rowsChanged) OnPropertyChanged(nameof(Readouts));
         if (before._modelError != _modelError || !before.State.Notes.SequenceEqual(State.Notes)) OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(NoRemnantMessage));
