@@ -28,6 +28,14 @@
                                         </StackPanel>
                                     </Grid>
         </DataTemplate>
+        <!-- Task 18: a volume slider that cannot act (the sound is off) is dimmed, so it does not look broken. -->
+        <Style TargetType="Slider" BasedOn="{StaticResource {x:Type Slider}}">
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.35"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <!-- DataContext: the CloseUpViewModel (spec §2.1's layout): the view on the left, the readouts column (with Notes) on the
          right, the pulse-trace row at the bottom (collapsed until the pulse trace exists, Task 8). -->
@@ -76,14 +84,21 @@
         <!-- Task 15 (the owner could not tell the sound was on): while the sound is on, its state shows here for every outcome, with the
              reason for any silence ("silent: no pulsar in this outcome", "silent until the pulsar's pulses reach Earth (10 years)") and
              the volume; the pulse-trace row below exists only for a pulsar or magnetar. -->
+        <!-- Task 18: always shown; the speaker is a labelled button (it was a picture, and the owner's clicks on it did nothing). -->
         <Border x:Name="SoundStatusRow" DockPanel.Dock="Top" Margin="8,4,8,0" Padding="8,3" Style="{StaticResource Panel}"
-                Visibility="{Binding ShowSoundStatus, Converter={StaticResource VisibleWhen}}" ToolTip="{x:Static text:Glossary.CloseUpSound}">
+                ToolTip="{x:Static text:Glossary.CloseUpSound}">
             <DockPanel>
-                <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Margin="0,0,8,0"
-                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                <Button DockPanel.Dock="Left" Command="{Binding ToggleSoundCommand}" Margin="0,0,10,0" Padding="8,3" VerticalAlignment="Center"
+                        ToolTip="{x:Static text:Glossary.CloseUpSoundButton}" AutomationProperties.Name="{Binding SoundButtonText}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Margin="0,0,6,0"
+                                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SoundButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
                 <Slider DockPanel.Dock="Right" Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Width="140" Margin="12,0,0,0"
                         VerticalAlignment="Center" SmallChange="0.05" LargeChange="0.1" ToolTip="{x:Static text:Glossary.CloseUpVolume}"
-                        AutomationProperties.Name="Sound volume (top)"/>
+                        IsEnabled="{Binding IsVolumeEnabled}" AutomationProperties.Name="Sound volume (top)"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="{Binding SpeakerState}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
                                ToolTip="{Binding SpeakerStateToolTip}" AutomationProperties.Name="Sound state"/>
@@ -106,12 +121,16 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Width="230" Margin="0,0,12,0">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Margin="0,0,8,0"
-                                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding SpeakerState}" Style="{StaticResource Muted}" Width="190" VerticalAlignment="Center"
+                        <Button Command="{Binding ToggleSoundCommand}" Margin="0,0,6,0" Padding="4,1" VerticalAlignment="Center"
+                                ToolTip="{x:Static text:Glossary.CloseUpSoundButton}" AutomationProperties.Name="{Binding SoundButtonText}">
+                            <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                       Foreground="{StaticResource AccentBrush}"/>
+                        </Button>
+                        <TextBlock Text="{Binding SpeakerState}" Style="{StaticResource Muted}" Width="176" VerticalAlignment="Center"
                                    TextWrapping="Wrap" FontSize="11" ToolTip="{Binding SpeakerStateToolTip}" AutomationProperties.Name="Speaker state"/>
                     </StackPanel>
                     <Slider Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Width="200" Margin="0,4,0,0" HorizontalAlignment="Left"
+                            IsEnabled="{Binding IsVolumeEnabled}"
                             SmallChange="0.05" LargeChange="0.1" ToolTip="{x:Static text:Glossary.CloseUpVolume}" AutomationProperties.Name="Sound volume"/>
                 </StackPanel>
                 <Grid Grid.Column="1">

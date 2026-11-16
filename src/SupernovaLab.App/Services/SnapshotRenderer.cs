@@ -1259,7 +1259,7 @@ public static class SnapshotRenderer
             log.Add($"lab-change check: main view: star {s.ShowStar}, ejecta {s.ShowEjecta}, particles {s.ShowParticles}, marker {s.Marker}, " +
                     $"shock in star {(double.IsFinite(s.ShockInStarRadiusCm) ? UnitFormat.Distance(s.ShockInStarRadiusCm) : "none")}; notes: {string.Join(" | ", s.Notes)}");
         log.Add("lab-change check: panels: " + string.Join("; ", vm.Panels.Select(p => $"{p.Title} {p.DetectionText} / tile {p.StripBadgeText}")));
-        log.Add($"lab-change check: Close-up: {cu.WindowTitle}, era {cu.State.Era}; sound status shown {cu.ShowSoundStatus}");
+        log.Add($"lab-change check: Close-up: {cu.WindowTitle}, era {cu.State.Era}; sound button \"{cu.SoundButtonText}\", state \"{cu.SpeakerState}\"");
         await Capture(request, main, windows, "-after-lab-change", log);
         vm.Lab.SelectedPreset = crab;   // a preset is an outcome change too: back to t = 0
         log.Add($"lab-change check: chose the Crab again: {Timeline()}");

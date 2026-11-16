@@ -284,11 +284,12 @@ public class OwnerFirstLookTests
     private static void AtSource(MainViewModel main, double sourceTimeS) => main.Timeline.ObserverTimeS = sourceTimeS * main.CurrentObserver.TimeDilation;
 
     /// <summary>
-    /// The diagnosis, kept as a test: with the sound on, Explode then playing the whole timeline gives the Crab's clicks only while the
-    /// pulses reach Earth, from 10 yr to the axis's end, about 6 of the run's 40 s; then playback stops at 1,000 yr.
+    /// The diagnosis, kept as a test and revised by Task 19: with the sound on, Explode then playing the whole timeline gave the Crab's
+    /// clicks only while the pulses reached Earth, about 6 of the run's 40 s. Now they start when the beams form, 30 s after bounce:
+    /// the log axis runs 1 ms to 1,000 yr (13.5 decades), so the last 9 decades, about 27 s, click.
     /// </summary>
     [Fact]
-    public void Diagnosis_AWholePlayback_GivesOnlyAFewSecondsOfPulses()
+    public void Diagnosis_AWholePlayback_NowClicksFromTheBeamsOn()
     {
         var (cu, audio, main) = CloseUp("sn1054");
         cu.IsSoundOn = true;
@@ -301,7 +302,7 @@ public class OwnerFirstLookTests
             if (audio.LastPeriod is not null) sounding += Frame.TotalSeconds;
         }
         Assert.InRange(total, 39, 42);
-        Assert.InRange(sounding, 5, 7);
+        Assert.InRange(sounding, 24, 30);
         cu.Dispose();
     }
 
@@ -313,7 +314,7 @@ public class OwnerFirstLookTests
         Assert.False(main.Timeline.IsPlaying);
         cu.IsSoundOn = true;
         Assert.NotNull(audio.LastPeriod);
-        Assert.Equal(PulseSchedule.ReceivedPeriodS(main.CurrentOutcome, main.CurrentObserver, cu.SourceTimeS), audio.LastPeriod!.Value, 12);
+        Assert.Equal(PulseSchedule.CloseUpPeriodS(main.CurrentOutcome, cu.SourceTimeS), audio.LastPeriod!.Value, 12);   // Task 19
         Assert.Contains("clicking", cu.SpeakerState);
         Assert.DoesNotContain("paused", cu.SpeakerState);
         cu.Dispose();
@@ -337,32 +338,28 @@ public class OwnerFirstLookTests
     public void TheSoundsState_IsShownForEveryOutcome_NotOnlyInThePulseTraceRow(string? preset, string reason)
     {
         var (cu, audio, _) = CloseUp(preset);
-        Assert.False(cu.ShowSoundStatus);
-        cu.IsSoundOn = true;
-        Assert.True(cu.ShowSoundStatus);
+        cu.IsSoundOn = true;   // Task 18: the sound row is always shown now (its button is the switch)
         Assert.False(cu.ShowPulseTrace);                        // the trace row is hidden here...
         Assert.StartsWith("Sound on, volume 80%", cu.SpeakerState);   // ...but the state shows at the top of the window
         Assert.Contains(reason, cu.SpeakerState);
         Assert.Null(audio.LastPeriod);
         cu.IsSoundOn = false;
-        Assert.False(cu.ShowSoundStatus);
+        Assert.Equal("Sound off", cu.SpeakerState);
         cu.Dispose();
     }
 
     [Fact]
-    public void TheSoundsState_NamesWhenThePulsesWillArrive()
+    public void TheSoundsState_NamesWhenTheBeamsForm()   // Task 19: it named when the pulses reach Earth
     {
         var (cu, _, main) = CloseUp("sn1054");
         cu.IsSoundOn = true;
         AtSource(main, 3 * Year);
-        Assert.Contains("hidden by debris until about 10 years (a speculative estimate)", cu.SpeakerState);
-        Assert.Contains("Confidence: Speculative", cu.SpeakerStateToolTip);   // the shown number keeps its confidence and source
-        Assert.Contains("Pulses shown from 10 yr", cu.SpeakerStateToolTip);
+        Assert.Contains("clicking", cu.SpeakerState);
+        Assert.Null(cu.SpeakerStateToolTip);
         AtSource(main, 0.5);
-        Assert.Contains("silent until the pulsar's pulses reach Earth (about 10 years, a speculative estimate)", cu.SpeakerState);
-        Assert.NotNull(cu.SpeakerStateToolTip);
-        AtSource(main, 960 * Year);
-        Assert.Null(cu.SpeakerStateToolTip);   // "clicking …" names no model time
+        Assert.Contains("silent until the beams form, about 30 s after bounce (approximate)", cu.SpeakerState);
+        Assert.Contains("Confidence: Approximate", cu.SpeakerStateToolTip);   // the shown number keeps its confidence and source
+        Assert.Contains("compact §C4.2", cu.SpeakerStateToolTip);
         cu.Dispose();
     }
 

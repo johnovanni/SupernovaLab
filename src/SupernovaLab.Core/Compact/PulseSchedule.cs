@@ -54,8 +54,25 @@ public static class PulseSchedule
     }
 
     /// <summary>
-    /// The trace's words: "Sound: real rate, 30 a second · Picture: shown 60× slower" while pulses are received, else the reason
-    /// ("To Earth: hidden by debris", "Beam misses Earth"). The sound's rate is the received one; the picture's is the drawn one.
+    /// Task 19 (the owner: the Close-up is close to the star, so its sound starts "right after the pulsar starts spinning"): the period
+    /// the Close-up's sound clicks at, s: the star's own spin period P(t), one click per turn, from when its magnetosphere and beams
+    /// form (<see cref="Magnetosphere.MagnetosphereFormsS"/>, about 30 s); neither the debris nor Earth's direction matters. NaN
+    /// before then and without a neutron star.
+    /// </summary>
+    public static double CloseUpPeriodS(Outcome o, double sourceTimeS)
+    {
+        double forms = Magnetosphere.MagnetosphereFormsS(o);
+        if (!HasPulsar(o) || !(sourceTimeS >= forms)) return double.NaN;
+        return PulsarModel.Spin.Of(o).PeriodS(sourceTimeS);
+    }
+
+    /// <summary>Whether the outcome leaves a pulsar or magnetar (the trace's and the sound's subject).</summary>
+    public static bool HasPulsar(Outcome o) => !double.IsNaN(Pulsar.EmergenceTimeS(o));
+
+    /// <summary>
+    /// The trace's words: "To Earth: 30 pulses a second · Picture: shown 60× slower" while pulses are received, else the reason
+    /// ("To Earth: hidden by debris", "Beam misses Earth"). The first rate is the received one; the picture's is the drawn one. Task 19:
+    /// it said "Sound: real rate"; the sound now follows the star's own spin (<see cref="CloseUpPeriodS"/>), so the trace speaks of Earth.
     /// </summary>
     public static string TraceText(Outcome o, ObserverSetup obs, double sourceTimeS)
     {
@@ -67,7 +84,14 @@ public static class PulseSchedule
         }
         double received = ReceivedPeriodS(o, obs, sourceTimeS);
         string picture = Magnetosphere.SlowdownLabel(PulsarModel.Spin.Of(o).PeriodS(sourceTimeS), obs.TimeDilation);
-        return $"Sound: real rate, {RateText(received)} · Picture: {char.ToLowerInvariant(picture[0])}{picture[1..]}";
+        return $"To Earth: {PulsesText(received)} · Picture: {char.ToLowerInvariant(picture[0])}{picture[1..]}";
+    }
+
+    /// <summary>"30 pulses a second", or "one pulse every 3.4 s".</summary>
+    private static string PulsesText(double periodS)
+    {
+        string rate = RateText(periodS);
+        return rate.StartsWith("one every", StringComparison.Ordinal) ? "one pulse every" + rate["one every".Length..] : rate.Replace(" a second", " pulses a second");
     }
 
     /// <summary>"30 a second" (two significant figures) from one a second up; "one every 3.4 s" below it.</summary>

@@ -166,12 +166,12 @@ public class PulseAudioTests
 
         cu.IsSoundOn = true;
         Assert.True(audio.Enabled);
-        Assert.Equal(PulseSchedule.ReceivedPeriodS(main.CurrentOutcome, main.CurrentObserver, cu.SourceTimeS), audio.LastPeriod);
+        Assert.Equal(PulseSchedule.CloseUpPeriodS(main.CurrentOutcome, cu.SourceTimeS), audio.LastPeriod);
         Assert.Equal(PulseSchedule.TraceText(main.CurrentOutcome, main.CurrentObserver, cu.SourceTimeS), cu.TraceText);
 
-        At(main, 5 * Year);                                  // scrub back into the debris
-        Assert.Null(audio.LastPeriod);
-        Assert.Equal(PulseSchedule.HiddenText, cu.TraceText);
+        At(main, 5 * Year);                                  // scrub back into the debris: Task 19, the Close-up's sound still plays...
+        Assert.NotNull(audio.LastPeriod);
+        Assert.Equal(PulseSchedule.HiddenText, cu.TraceText); // ...while the trace says Earth receives nothing yet
         cu.Dispose();
     }
 
@@ -189,13 +189,13 @@ public class PulseAudioTests
     }
 
     [Fact]
-    public void Sound_SilentWhenTheBeamMissesEarth_WithTheReasonOnScreen()
+    public void Sound_PlaysEvenWhenTheBeamMissesEarth_TheTraceSaysSo()   // Task 19: it was silent
     {
         var (cu, audio, main) = CloseUpFor("sn1054", beamToward: false);
         cu.IsSoundOn = true;
         main.Timeline.IsPlaying = true;
         At(main, CrabAgeS);
-        Assert.Null(audio.LastPeriod);
+        Assert.NotNull(audio.LastPeriod);
         Assert.Equal(PulseSchedule.MissesText, cu.TraceText);
         Assert.False(cu.PulsesShown);
         cu.Dispose();
@@ -261,8 +261,8 @@ public class PulseAudioTests
         Assert.Contains("clicking 30 a second", cu.SpeakerState);   // Task 15: what it plays, paused or playing
         main.Timeline.IsPlaying = true;
         Assert.Contains("clicking 30 a second", cu.SpeakerState);
-        At(main, 5 * Year);
-        Assert.Contains("debris", cu.SpeakerState, StringComparison.OrdinalIgnoreCase);
+        At(main, 5);   // Task 19: before the beams form (it was 5 years, inside the debris)
+        Assert.Contains("beams form", cu.SpeakerState, StringComparison.OrdinalIgnoreCase);
         cu.Dispose();
     }
 
@@ -284,7 +284,7 @@ public class PulseAudioTests
         var cu = new CloseUpViewModel(main);
         At(main, CrabAgeS);
         cu.IsSoundOn = true;
-        Assert.StartsWith("Sound:", cu.TraceText);
+        Assert.StartsWith("To Earth:", cu.TraceText);
         cu.Dispose();
     }
 

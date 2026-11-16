@@ -133,9 +133,40 @@ public class SoundHeardTests
         audio.Dispose();
     }
 
+    // (Task 16b's "detected from Earth" line is replaced by Task 19's rule: SoundFromSpinTests.TheRule_OnScreen_SaysWhenTheClicksPlay.)
+
+    // ---- Task 18 (the owner clicked the speaker symbol, a picture, and the sound never came on): the symbol is a button now ----
+
     [Fact]
-    public void TheSoundPanel_SaysTheClicksPlayOnlyWhenDetectedFromEarth()
-        => Assert.Contains("detected from Earth", SupernovaLab.Core.Text.Glossary.CloseUpSoundRule);
+    public void TheSpeakerButton_SwitchesTheSoundOnAndOff_AndSaysWhatItWillDo()
+    {
+        var (cu, audio, _) = CloseUp("sn1054");
+        Assert.False(cu.IsSoundOn);
+        Assert.Equal("Turn sound on", cu.SoundButtonText);
+        Assert.False(cu.IsVolumeEnabled);                 // the slider is greyed out while the sound is off
+        cu.ToggleSoundCommand.Execute(null);
+        Assert.True(cu.IsSoundOn);
+        Assert.Equal(1, audio.TestTones);                 // heard at once
+        Assert.Equal("Turn sound off", cu.SoundButtonText);
+        Assert.True(cu.IsVolumeEnabled);
+        cu.ToggleSoundCommand.Execute(null);
+        Assert.False(cu.IsSoundOn);
+        Assert.Equal("Turn sound on", cu.SoundButtonText);
+        cu.Dispose();
+    }
+
+    [Fact]
+    public void TheSpeakerButton_RaisesItsTextAndTheSlidersState_SoTheWindowFollows()
+    {
+        var (cu, _, _) = CloseUp("sn1054");
+        var raised = new List<string?>();
+        cu.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+        cu.ToggleSoundCommand.Execute(null);
+        Assert.Contains(nameof(CloseUpViewModel.SoundButtonText), raised);
+        Assert.Contains(nameof(CloseUpViewModel.IsVolumeEnabled), raised);
+        Assert.Contains(nameof(CloseUpViewModel.SpeakerGlyph), raised);
+        cu.Dispose();
+    }
 
     private static (CloseUpViewModel Cu, FakePulseAudio Audio, MainViewModel Main) CloseUp(string preset)
     {

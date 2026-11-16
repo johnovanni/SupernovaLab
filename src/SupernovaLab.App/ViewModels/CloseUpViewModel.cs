@@ -499,15 +499,22 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         if (value) _audio?.PlayTestTone();
         UpdatePulses();
         OnPropertyChanged(nameof(SpeakerGlyph));
-        OnPropertyChanged(nameof(ShowSoundStatus));
+        OnPropertyChanged(nameof(SoundButtonText));
+        OnPropertyChanged(nameof(IsVolumeEnabled));
     }
 
     /// <summary>
-    /// Task 15 (the owner could not hear the sound, and saw no sign of it): while the sound is on, its state and the reason for any silence
-    /// show at the top of the window for every outcome (<see cref="SpeakerState"/>), not only in the pulse-trace row, which a black hole,
-    /// a Type Ia or the core's first second does not have.
+    /// Task 18 (the owner clicked the speaker symbol, a picture then, and the sound never came on; the only switch was a menu item): the
+    /// speaker is a button in the sound row, which is always shown, and in the pulse-trace row. It says what it will do.
     /// </summary>
-    public bool ShowSoundStatus => IsSoundOn;
+    [RelayCommand]
+    private void ToggleSound() => IsSoundOn = !IsSoundOn;
+
+    /// <summary>The speaker button's words: what a click will do.</summary>
+    public string SoundButtonText => IsSoundOn ? "Turn sound off" : "Turn sound on";
+
+    /// <summary>Task 18: the volume slider works only while the sound is on, and is greyed out otherwise, so it does not look broken.</summary>
+    public bool IsVolumeEnabled => IsSoundOn;
 
     /// <summary>The sound output, once the sound has been switched on (the --snapshot sound check reads its diagnostic).</summary>
     public IPulseAudio? Audio => _audio;
@@ -565,16 +572,18 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         double t = SourceTimeS;
         var vis = State.NeutronStar is null || _modelError is not null ? PulseVisibility.NotAPulsar : PulseSchedule.Visibility(o, obs, t);
         string text = vis == PulseVisibility.NotAPulsar ? "" : PulseSchedule.TraceText(o, obs, t);
-        // Task 15: the sound plays whenever Earth receives the pulses, paused or playing (it was only while the timeline played, so a
-        // whole run gave about 6 s of clicks, and none at a paused moment). It agrees with the pulse trace, which keeps running while paused.
-        bool sounding = IsSoundOn && vis == PulseVisibility.Received;
-        double period = sounding ? PulseSchedule.ReceivedPeriodS(o, obs, t) : double.NaN;
+        // Task 19 (the owner: the Close-up is close to the star, so the sound starts "right after the pulsar starts spinning"): one click per
+        // turn at the star's own spin period, from when its beams form, paused or playing, whatever the debris or Earth's direction. (Task 15
+        // had it follow what Earth receives, from about 10 years; the pulse trace still does.)
+        double ownPeriod = State.NeutronStar is null || _modelError is not null ? double.NaN : PulseSchedule.CloseUpPeriodS(o, t);
+        bool sounding = IsSoundOn && double.IsFinite(ownPeriod);
+        double period = sounding ? ownPeriod : double.NaN;
         _audio?.SetPulsePeriod(sounding ? period : null);
 
         string problem = (IsSoundOn ? _audioProblem ?? _audio?.Problem : null) ?? "";
         string speaker = !IsSoundOn ? "Sound off"
             : problem.Length > 0 ? $"Sound on, but unavailable: {problem}"
-            : $"Sound on, volume {(int)Math.Round(Volume * 100)}% · " + (sounding ? $"clicking {PulseSchedule.RateText(period)}" : SilentReason(vis, o, obs));
+            : $"Sound on, volume {(int)Math.Round(Volume * 100)}% · " + (sounding ? $"clicking {PulseSchedule.RateText(period)}, one per turn" : SilentReason(o, obs));
 
         var changed = new List<string>();
         if (vis != _pulseVisibility)
@@ -595,35 +604,22 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         foreach (var name in changed) OnPropertyChanged(name);
     }
 
-    private static readonly PulsarModel PulsarForEmergence = new();
-
-    /// <summary>Task 15: why the switched-on sound is silent now, in words, for every outcome and moment.</summary>
-    private static string SilentReason(PulseVisibility vis, Outcome o, ObserverSetup obs)
+    /// <summary>Task 15, revised by Task 19: why the switched-on sound is silent now, in words, for every outcome and moment.</summary>
+    private static string SilentReason(Outcome o, ObserverSetup obs)
     {
-        double emergence = PulsarForEmergence.EmergenceTimeS(o);
-        string when = double.IsNaN(emergence) ? "" : UnitFormat.Time(emergence * obs.TimeDilation);
-        return vis switch
-        {
-            PulseVisibility.HiddenByDebris => $"silent: pulses hidden by debris until about {when} (a speculative estimate)",
-            PulseVisibility.BeamMissesEarth => "silent: the pulsar's beam misses Earth",
-            _ when double.IsNaN(emergence) => "silent: no pulsar in this outcome (the sound is a pulsar's clicks)",
-            _ when PulseSchedule.Visibility(o, obs, emergence) == PulseVisibility.BeamMissesEarth
-                => "silent: no pulsar yet, and its beam will miss Earth",
-            _ => $"silent until the pulsar's pulses reach Earth (about {when}, a speculative estimate)",
-        };
+        double forms = Magnetosphere.MagnetosphereFormsS(o);
+        if (!PulseSchedule.HasPulsar(o) || double.IsNaN(forms))
+            return "silent: no pulsar in this outcome (the sound is a pulsar's clicks)";
+        return $"silent until the beams form, about {UnitFormat.Time(forms * obs.TimeDilation)} after bounce (approximate)";
     }
 
-    /// <summary>The pulsar model's source for when the pulses escape the debris (its "Pulses shown from 10 yr" entry).</summary>
-    private static readonly Source EmergenceSource = PulsarForEmergence.Sources.FirstOrDefault(s => s.Citation.StartsWith("Pulses shown", StringComparison.Ordinal))
-        ?? PulsarForEmergence.Sources[0];
-
     /// <summary>
-    /// Task 15 fix round: the status line's tooltip while it names when the pulses reach Earth, that number's confidence and source (every
-    /// shown number keeps them); null otherwise.
+    /// The status line's tooltip while it names when the beams form: that number's range and source (every shown number keeps them);
+    /// null otherwise.
     /// </summary>
-    public string? SpeakerStateToolTip => _speakerState.Contains("speculative estimate", StringComparison.Ordinal)
-        ? $"When the pulses escape the debris and reach Earth: the lab's pulsar model starts them {UnitFormat.Time(PulsarModel.EmergenceYears * PhysicalConstants.Year)} " +
-          $"after core bounce (stretched by 1 + z for a distant supernova). Confidence: Speculative. Source: {EmergenceSource.Citation} ({EmergenceSource.ResearchRef})."
+    public string? SpeakerStateToolTip => _speakerState.Contains("beams form", StringComparison.Ordinal)
+        ? "When the beams form: the lab draws the star's magnetosphere, beams and light cylinder from about 30 s after bounce, and the " +
+          "sound starts with them. Confidence: Approximate (the range is 10 to 100 s). Source: compact §C4.2 and §C4 App."
         : null;
 
     /// <summary>Stops following the main view model (the window closed), and stops and releases the sound.</summary>

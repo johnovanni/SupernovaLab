@@ -87,7 +87,7 @@ public class PulseScheduleTests
     [Fact]
     public void TraceText_NamesBothRates_OrTheReason()
     {
-        Assert.Equal("Sound: real rate, 30 a second · Picture: shown 60× slower", PulseSchedule.TraceText(Crab, CrabObs, CrabAgeS));
+        Assert.Equal("To Earth: 30 pulses a second · Picture: shown 60× slower", PulseSchedule.TraceText(Crab, CrabObs, CrabAgeS));   // Task 19
         Assert.Equal(PulseSchedule.HiddenText, PulseSchedule.TraceText(Crab, CrabObs, 5 * Year));
         Assert.Equal("To Earth: hidden by debris", PulseSchedule.HiddenText);
         Assert.Equal("Beam misses Earth", PulseSchedule.TraceText(Crab, Obs(false), CrabAgeS));
