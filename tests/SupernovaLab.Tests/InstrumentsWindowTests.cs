@@ -76,6 +76,15 @@ public class InstrumentsWindowTests
     /// </summary>
     internal static void EnsureApplication()
     {
+        // Task 22: under a lock. Test classes run in parallel, each on its own STA thread; two of them could both see no Application and
+        // both make one ("Cannot create more than one System.Windows.Application instance"), a flaky failure once a third class used it.
+        lock (ApplicationLock) EnsureApplicationLocked();
+    }
+
+    private static readonly object ApplicationLock = new();
+
+    private static void EnsureApplicationLocked()
+    {
         if (Application.Current is not null) return;
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         var theme = (ResourceDictionary)Application.LoadComponent(

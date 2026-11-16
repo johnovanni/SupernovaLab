@@ -243,8 +243,8 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _showFieldLines = true;
     /// <summary>Spec §4.3: a pulsar's light cylinder (on by default; it lies far outside the default framing, so zoom out to see it).</summary>
     [ObservableProperty] private bool _showLightCylinder = true;
-    /// <summary>Spec §4.2: the neutron star's cutaway (its layers).</summary>
-    [ObservableProperty] private bool _isCutaway;
+    /// <summary>Spec §4.2: the neutron star's cutaway (its layers). Task 22 (the owner): on by default.</summary>
+    [ObservableProperty] private bool _isCutaway = true;
     /// <summary>The view's labels (the distance rings' labels, and later the grid's).</summary>
     [ObservableProperty] private bool _showLabels = true;
     /// <summary>F: the view alone, without the readout column.</summary>
@@ -284,7 +284,25 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
 
     public string? MagnifiedLabel => ActiveCutaway?.MagnifiedLabel;
     public string? DripLabel => ActiveCutaway?.DripLabel;
-    public string? CutawayStateLabel => ActiveCutaway?.StateLabel;
+    public string? CutawayStateLabel => ActiveCutaway?.StateLabel ?? _cutawayUnavailable;
+
+    private string? _cutawayUnavailable;
+
+    /// <summary>
+    /// Task 22 (the owner could not find the cutaway: it silently showed nothing outside a neutron star's era): while the switch is on but
+    /// there is no neutron star to cut, why, and when there will be; null otherwise.
+    /// </summary>
+    private string? CutawayUnavailableText()
+    {
+        if (!IsCutaway || !HasRemnant || State.NeutronStar is not null) return null;
+        var o = Main.CurrentOutcome;
+        if (State.Era is CloseUpEra.BlackHoleForming or CloseUpEra.BlackHoleSettling or CloseUpEra.BlackHole || !PulseSchedule.HasPulsar(o))
+            return "Cutaway: none for a black hole: nothing inside its horizon can be seen";
+        double forms = CoreCollapseHistory.StageEndS(o);
+        return double.IsFinite(forms) && forms > 0
+            ? $"Cutaway: shown once the neutron star forms, at {UnitFormat.Time(forms * Main.CurrentObserver.TimeDilation)}"
+            : "Cutaway: shown once the neutron star forms";
+    }
     public bool ShowCutawayKey => ActiveCutaway is not null;
     public bool ShowStrip => ActiveCutaway is { HasCrust: true };
 
@@ -293,6 +311,12 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     private void UpdateCutaway()
     {
         var info = ActiveCutaway;
+        string? unavailable = CutawayUnavailableText();
+        if (unavailable != _cutawayUnavailable)
+        {
+            _cutawayUnavailable = unavailable;
+            if (ReferenceEquals(info, _shownCutaway)) OnPropertyChanged(nameof(CutawayStateLabel));   // else raised below
+        }
         var rows = info is null ? Array.Empty<ReadoutRow>() : info.Readouts.Select(ReadoutRow.From).ToArray();
         if (!rows.SequenceEqual(CutawayReadouts))
         {

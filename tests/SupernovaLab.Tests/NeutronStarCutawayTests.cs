@@ -126,6 +126,8 @@ public class NeutronStarCutawayTests
         main.Timeline.ObserverTimeS = 1e9;   // long after the crust forms
         using var vm = new CloseUpViewModel(main);
         Assert.NotNull(vm.State.NeutronStar);
+        Assert.True(vm.ShowCutawayKey);   // Task 22: on by default
+        vm.IsCutaway = false;
         Assert.False(vm.ShowCutawayKey);
         Assert.Empty(vm.CutawayKey);
         Assert.Empty(vm.CutawayReadouts);

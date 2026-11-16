@@ -515,7 +515,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     {
         _frozenHalfHeightCm = null;
         Camera.YawDeg = DefaultYawDeg;
-        Camera.PitchDeg = _vm.IsCutaway ? CutawayPitchDeg : DefaultPitchDeg;
+        Camera.PitchDeg = _vm.ActiveCutaway is not null ? CutawayPitchDeg : DefaultPitchDeg;   // Task 22: only while one is shown
         IsAutoFraming = true;
         Director.Jump(_vm.State.FrameRadiusKm * UnitCm);
         ApplyAutoDistance();
@@ -570,6 +570,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     // What the last state change left on screen (Task 4b's on-demand drawing): the state record and the menu switches it draws.
     private CloseUpState _drawnState;
     private (bool Grid, bool Labels, bool Cutaway, bool FieldLines, bool LightCylinder) _drawnSwitches;
+    private bool _cutawayShown;   // Task 22: whether the camera is pitched for a shown cutaway
 
     /// <summary>The menu switches the view draws (or will: field lines and the light cylinder from Tasks 6 and 7).</summary>
     private (bool, bool, bool, bool, bool) DrawnSwitches()
@@ -607,8 +608,14 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     {
         var state = _vm.State;
         var switches = DrawnSwitches();
-        if (switches.Item3 != _drawnSwitches.Cutaway)   // Task 7: look into the wedge, then give the user's pitch back
-            (Camera.PitchDeg, _pitchBeforeCutaway) = CutawayPitch(switches.Item3, Camera.PitchDeg, _pitchBeforeCutaway);
+        // Task 7: look into the wedge, then give the user's pitch back. Task 22 (the cutaway is on by default): when a cutaway starts or
+        // stops being shown (the switch, or the neutron star's era beginning or ending), not when the switch alone changes.
+        bool cutShown = _vm.ActiveCutaway is not null;
+        if (cutShown != _cutawayShown)
+        {
+            (Camera.PitchDeg, _pitchBeforeCutaway) = CutawayPitch(cutShown, Camera.PitchDeg, _pitchBeforeCutaway);
+            _cutawayShown = cutShown;
+        }
         if (!rebuilt)
         {
             var main = _vm.Main;
