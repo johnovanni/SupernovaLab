@@ -5,7 +5,7 @@
         xmlns:gl="clr-namespace:OpenTK.Wpf;assembly=GLWpfControl"
         xmlns:r="clr-namespace:SupernovaLab.Rendering;assembly=SupernovaLab.Rendering"
         xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core"
-        Title="SupernovaLab" Width="1366" Height="768" MinWidth="1100" MinHeight="640"
+        Title="SupernovaLab" Icon="/SupernovaLab.App;component/Assets/SupernovaLab.ico" Width="1366" Height="768" MinWidth="1100" MinHeight="640"
         WindowStartupLocation="CenterScreen" TextOptions.TextFormattingMode="Display"
         Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}" FontSize="13">
     <DockPanel>

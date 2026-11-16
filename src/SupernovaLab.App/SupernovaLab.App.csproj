@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <ApplicationIcon>Assets\SupernovaLab.ico</ApplicationIcon>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -19,6 +20,10 @@
   <ItemGroup>
     <ProjectReference Include="..\SupernovaLab.Rendering\SupernovaLab.Rendering.csproj" />
     <ProjectReference Include="..\SupernovaLab.Core\SupernovaLab.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\SupernovaLab.ico" />
   </ItemGroup>
 
 </Project>
