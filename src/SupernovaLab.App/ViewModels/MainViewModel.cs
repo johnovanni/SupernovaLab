@@ -60,7 +60,11 @@ public sealed partial class MainViewModel : ObservableObject
         // Re-roll changes only the run number (no OutcomeChanged); the panels resample their random events on it.
         PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(RunNumber)) UpdatePanels(onlyThoseUsingTheRunNumber: true);
+            if (e.PropertyName != nameof(RunNumber)) return;
+            UpdatePanels(onlyThoseUsingTheRunNumber: true);
+            // Plan Task 12: a magnetar's giant flares are markers drawn from the run, so Re-roll moves them.
+            Timeline.Update(EventMarkers.Guarded(() => EventMarkers.For(CurrentOutcome, CurrentObserver, RunNumber)), CurrentObserver,
+                OutcomeTexts.TimeOrigin(CurrentOutcome));
         };
     }
 
@@ -187,7 +191,7 @@ public sealed partial class MainViewModel : ObservableObject
         var outcome = _engine.Compute(Lab.Inputs, Lab.Pins);
         var observer = Lab.Observer;
         Outcome.Update(outcome, observer);
-        Timeline.Update(EventMarkers.Guarded(() => EventMarkers.For(outcome, observer)), observer,
+        Timeline.Update(EventMarkers.Guarded(() => EventMarkers.For(outcome, observer, RunNumber)), observer,
             OutcomeTexts.TimeOrigin(outcome));
         return outcome;
     }

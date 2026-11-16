@@ -21,4 +21,26 @@ public static class Comparisons
         if (m <= 9) return "needs binoculars";
         return "needs a telescope";
     }
+
+    /// <summary>A refrigerator magnet's field at its face, about 100 G (10 mT; typical fridge magnets are a few to a few tens of mT) [APPROX].</summary>
+    public const double FridgeMagnetG = 100;
+
+    /// <summary>
+    /// A comparison for a neutron star's surface field (spec §5): the field in fridge magnets, said as a word. The ratio B / 100 G is put in
+    /// the largest named unit (thousand, million, billion, trillion, quadrillion) at or below it and rounded to one significant figure:
+    /// 10¹⁴ G is "about a trillion times", 5 × 10¹⁴ G "about 5 trillion times", 10¹⁵ G "about 10 trillion times". A field at or below
+    /// a fridge magnet's, or NaN, says so plainly.
+    /// </summary>
+    public static string ForMagneticField(double fieldG)
+    {
+        if (!(fieldG > 0) || double.IsInfinity(fieldG)) return "no field to compare";
+        double ratio = fieldG / FridgeMagnetG;
+        if (ratio < 1e3) return $"about {ratio.ToString(ratio < 10 ? "0.#" : "0", System.Globalization.CultureInfo.InvariantCulture)} times a fridge magnet's field (about {FridgeMagnetG:0} G)";
+        (double Unit, string Name)[] units = [(1e15, "quadrillion"), (1e12, "trillion"), (1e9, "billion"), (1e6, "million"), (1e3, "thousand")];
+        var (unit, name) = units.First(u => ratio >= u.Unit * 0.999999);
+        double n = ratio / unit, scale = Math.Pow(10, Math.Floor(Math.Log10(n)));
+        double rounded = Math.Round(n / scale, MidpointRounding.AwayFromZero) * scale;
+        string count = rounded == 1 ? "a" : rounded.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        return $"about {count} {name} times a fridge magnet's field (about {FridgeMagnetG:0} G)";
+    }
 }

@@ -1,6 +1,7 @@
 using SupernovaLab.Core.Compact;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
+using SupernovaLab.Core.Text;
 using SupernovaLab.Core.Units;
 
 namespace SupernovaLab.Rendering;
@@ -103,6 +104,16 @@ public sealed record CloseUpState
 
     /// <summary>The dipole field, G (the number of field lines drawn grows with it, schematic).</summary>
     public double FieldG { get; init; } = double.NaN;
+
+    /// <summary>
+    /// Plan Task 12 (spec §5): the drawn brightness, 0 to 1, of a giant flare now (<see cref="MagnetarFlares.DrawnIntensity"/>: one rise and one
+    /// fade, capped at 1), before the app's <c>FlashLimiter</c> has its say on the wall clock; 0 without a flare on (and for every
+    /// object but a magnetar).
+    /// </summary>
+    public double FlareIntensity { get; init; }
+
+    /// <summary>Plan Task 12: the flare that is on now, or null.</summary>
+    public GiantFlare? Flare { get; init; }
 
     /// <summary>
     /// Plan Task 7 (spec §4.2): what the cutaway shows for this star now (its layers, the neutron drip line, the magnified strip, or the
@@ -277,6 +288,7 @@ public sealed class CloseUpScene
     private readonly Outcome _outcome;
     private readonly double _spin;
     private readonly bool _isNeutronStar, _isBlackHole;
+    private readonly IReadOnlyList<GiantFlare> _flares;
 
     /// <param name="placeholderSpin">The bench's <c>--bench-spin</c> diagnostic: above 0 it replaces the black hole's settled spin.</param>
     public CloseUpScene(Outcome outcome, ObserverSetup observer, int runNumber, double placeholderSpin = 0)
@@ -285,6 +297,7 @@ public sealed class CloseUpScene
         ArgumentNullException.ThrowIfNull(observer);
         Observer = observer;
         RunNumber = runNumber;
+        _flares = MagnetarFlares.For(outcome, runNumber);
         _spin = Math.Clamp(double.IsFinite(placeholderSpin) ? placeholderSpin : 0, 0, 0.998);
         _isNeutronStar = NeutronStarModel.At(outcome, observer, runNumber, 0) is not null;
         _isBlackHole = BlackHoleModel.BirthOrNull(outcome) is not null && outcome.Remnant.Mass is { Value: > 0 } m && double.IsFinite(m.Value);
@@ -623,6 +636,8 @@ public sealed class CloseUpScene
         string periodText = UnitFormat.Time(period);
         // Ruling R-P3-17 (#60): a preset whose star has never shown pulses is titled a pulsar of the lab's model only.
         bool noPulsesSeen = o.Discloses(NoPulsesSeenInconsistency);
+        // Plan Task 12 (ruling R-P3-3, #57): a magnetar spinning faster than the 2 s the observed ones start at says so, whatever the preset.
+        bool shortMagnetar = ns.IsMagnetar && period < Magnetosphere.MinDrawnPeriodS;
         string title = ns.IsMagnetar
             ? beams ? $"Magnetar ({periodText})" : $"Proto-neutron star (magnetar, {periodText})"
             : beams ? (noPulsesSeen ? $"Neutron star (a pulsar in the lab's model, {periodText})" : $"Neutron star (pulsar, {periodText})")
@@ -649,9 +664,11 @@ public sealed class CloseUpScene
                     $"Still contracting: the proto-neutron star shrinks to the remnant's {UnitFormat.Number(ns.RadiusKm)} km by about one minute after bounce (approximate)")
                 : new Readout("Radius", r.RadiusKm!),
             new Readout("Spin", spin,
-                $"The spin period now, and Ṗ, how fast it lengthens ({PdotSource.Citation}). The light cylinder, c P / 2π, grows as the star slows.",
+                $"The spin period now, and Ṗ, how fast it lengthens ({PdotSource.Citation}). The light cylinder, c P / 2π, grows as the star slows." +
+                (shortMagnetar ? " " + MagnetarSpinNote(period) : ""),
                 pdot, "Ṗ"),
-            new Readout("Field", r.MagneticFieldG!, "The surface dipole field"),
+            new Readout("Field", r.MagneticFieldG!, "The surface dipole field" +
+                (ns.IsMagnetar ? $": {Comparisons.ForMagneticField(r.MagneticFieldG!.Value)} (spec §5; a fridge magnet is about 100 G). {FieldDecayNote}" : "")),
             new Readout("Surface", ns.SurfaceTemperatureK, surfaceTip),
             new Readout("Age", new Quantity(t, "s", Confidence.Established, AgeSource), "Time since core bounce"),
             new Readout("Kick", kick, kickTip, drift),
@@ -659,6 +676,17 @@ public sealed class CloseUpScene
 
         var notes = new List<string>();
         if (noPulsesSeen) notes.Add(NoPulsesSeenNote);
+        // Plan Task 12: a giant flare in progress is first; then the magnetar's standing notes (spec §5): its spin against the observed
+        // magnetars' (#57), the field's decay, which is not modelled, and the flares of this run.
+        var flare = ns.IsMagnetar ? MagnetarFlares.Active(_flares, t) : null;
+        double flareIntensity = flare is null ? 0 : MagnetarFlares.IntensityAt(_flares, t);
+        if (flare is not null) notes.Add(MagnetarFlares.Note(flare));
+        if (ns.IsMagnetar)
+        {
+            if (shortMagnetar) notes.Add(MagnetarSpinNote(period));
+            notes.Add(FieldDecayNote);
+            notes.Add(FlaresNote(_flares.Count));
+        }
         notes.AddRange(new[]
         {
             Magnetosphere.SlowdownLabel(period, Observer.TimeDilation) + (period < Magnetosphere.MinDrawnPeriodS
@@ -704,6 +732,8 @@ public sealed class CloseUpScene
             BeamCanCrossEarth = Magnetosphere.BeamCanCrossEarth(o, Observer),
             PolarCapRad = FieldLines.PolarCapRad(radius, lightCylinder),
             FieldG = ns.FieldG,
+            Flare = flare,
+            FlareIntensity = flareIntensity,
             Cutaway = ns.HasCrust ? _cutawayWithCrust ??= CutawayInfo.Build(o, ns.MassMsun, radius, true)
                 : contracting ? CutawayInfo.Build(o, ns.MassMsun, radius, false)
                 : _cutawayProto ??= CutawayInfo.Build(o, ns.MassMsun, radius, false),
@@ -715,6 +745,26 @@ public sealed class CloseUpScene
 
     /// <summary>Ruling R-P3-17: the inconsistency a preset lists when the lab's kick speed differs from the measured one (Cas A).</summary>
     public const int KickSpeedInconsistency = 61;
+
+    /// <summary>Ruling R-P3-3: the inconsistency a magnetar spinning faster than the observed ones (about 2–12 s) discloses.</summary>
+    public const int MagnetarSpinInconsistency = 57;
+
+    /// <summary>
+    /// Ruling R-P3-3 (#57): the lab's magnetar spins faster than the observed magnetars (about 2–12 s; compact §C6; Olausen &amp; Kaspi 2014):
+    /// the lab's spin-down law leaves its fast-born magnetars near 0.2 s at 1,000 yr and its slow-rotation one at 1.4 s. Shown, not tuned.
+    /// </summary>
+    public static string MagnetarSpinNote(double periodS)
+        => $"Observed magnetars spin at about 2–12 s (Olausen & Kaspi 2014); this one spins at {UnitFormat.Time(periodS)} because of the lab's " +
+           $"spin-down law (Kasen & Bildsten 2010's timescale), which is not tuned to them (inconsistency #{MagnetarSpinInconsistency})";
+
+    /// <summary>Spec §5, compact §C6: the field's decay is outside the timeline and not modelled.</summary>
+    public const string FieldDecayNote = "Magnetar fields decay over about 10,000 years (Beniamini et al. 2019); not shown";
+
+    /// <summary>Spec §5: the standing note about this run's giant flares (Speculative; compact §C6).</summary>
+    public static string FlaresNote(int count)
+        => $"Giant flares (speculative): about 1 per {(1 / MagnetarFlares.RatePerYear).ToString("0", System.Globalization.CultureInfo.InvariantCulture)} years " +
+           $"per magnetar, from the three seen; this run draws {(count == 0 ? "none" : count.ToString(System.Globalization.CultureInfo.InvariantCulture))} " +
+           "in the timeline (Re-roll draws again)";
 
     /// <summary>Ruling R-P3-17 (#60), first among the notes for such a preset.</summary>
     public const string NoPulsesSeenNote =

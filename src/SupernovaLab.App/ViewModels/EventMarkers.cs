@@ -1,3 +1,4 @@
+using SupernovaLab.Core.Compact;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Signals;
@@ -43,8 +44,12 @@ public static class EventMarkers
     private static readonly PulsarModel Pulsar = new();
     private static readonly RemnantEvolutionModel RemnantEvolution = new();
 
-    /// <summary>The markers for this outcome and observer, sorted by time.</summary>
-    public static IReadOnlyList<EventMarker> For(Outcome o, ObserverSetup obs)
+    /// <summary>
+    /// The markers for this outcome and observer, sorted by time. Plan Task 12 (spec §5): with a <paramref name="runNumber"/>, a magnetar's
+    /// giant flares of that run are markers too, at the flare's source time × (1 + z); without one (the guided tour, whose stops
+    /// do not depend on the run) there are none.
+    /// </summary>
+    public static IReadOnlyList<EventMarker> For(Outcome o, ObserverSetup obs, int? runNumber = null)
     {
         double z1 = obs.TimeDilation;
         var list = new List<EventMarker>();
@@ -72,9 +77,18 @@ public static class EventMarkers
         Add("Pulsar emerges", Pulsar.EmergenceTimeS(o), nameof(Glossary.PulsarEmerges), Basis(Pulsar));
         Add("Remnant resolvable", RemnantEvolution.ResolvableTimeS(o, obs), nameof(Glossary.RemnantResolvable),
             Basis(RemnantEvolution));
+        if (runNumber is int run)
+            foreach (var flare in MagnetarFlares.For(o, run))
+                Add("Giant flare", flare.SourceTimeS, nameof(Glossary.GiantFlare), FlareBasis(flare));
 
         return list.OrderBy(m => m.ObserverTimeS).ToList();
     }
+
+    /// <summary>"Speculative: …", the flare's energy and its comparison with the 2004 flare (spec §5).</summary>
+    private static string FlareBasis(GiantFlare f)
+        => $"Speculative: this run's flare, a spike of {UnitFormat.Energy(f.EnergyErg)} (isotropic) lasting {f.SpikeS:0.00} s, drawn at random " +
+           $"at about 1 flare per {1 / MagnetarFlares.RatePerYear:0} years per magnetar (compact §C6). {MagnetarFlares.Comparison2004}: " +
+           $"{MagnetarFlares.Comparison2004Numbers}.";
 
     private static int _failures;
 

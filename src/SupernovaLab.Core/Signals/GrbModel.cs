@@ -475,15 +475,22 @@ public sealed class GrbModel : ISignalModel
         /// flux over 1e-8, from the bolometric flux and the Band spectrum at E_p = E_p,i / (1 + z).
         /// </summary>
         public double TriggerRatio(double bolometricFlux, ObserverSetup obs, string detectorId)
-        {
-            double z1 = obs.TimeDilation, ep = PeakEnergyKeV / z1;
-            double bolometric = BandIntegral(ep, BolometricLowKeV / z1, BolometricHighKeV / z1, energyWeighted: true);
-            var detector = Detectors.Get(detectorId);
-            return detectorId == "gbm"
-                ? bolometricFlux * BandIntegral(ep, GbmLowKeV, GbmHighKeV, false) / (bolometric * PhysicalConstants.KeV)
-                  / detector.Threshold
-                : bolometricFlux * BandIntegral(ep, BatLowKeV, BatHighKeV, true) / bolometric / detector.Threshold;
-        }
+            => GrbModel.TriggerRatio(bolometricFlux, PeakEnergyKeV, obs, detectorId);
+    }
+
+    /// <summary>
+    /// The same ratio for any Band spectrum (α = −1, β = −2.3) of this rest-frame peak energy (keV), at the observed
+    /// E_p = E_p,i / (1 + z). Shared with <see cref="MagnetarFlareModel"/> (spec §7.3), which uses this panel's own instruments.
+    /// </summary>
+    public static double TriggerRatio(double bolometricFlux, double restPeakKeV, ObserverSetup obs, string detectorId)
+    {
+        double z1 = obs.TimeDilation, ep = restPeakKeV / z1;
+        double bolometric = BandIntegral(ep, BolometricLowKeV / z1, BolometricHighKeV / z1, energyWeighted: true);
+        var detector = Detectors.Get(detectorId);
+        return detectorId == "gbm"
+            ? bolometricFlux * BandIntegral(ep, GbmLowKeV, GbmHighKeV, false) / (bolometric * PhysicalConstants.KeV)
+              / detector.Threshold
+            : bolometricFlux * BandIntegral(ep, BatLowKeV, BatHighKeV, true) / bolometric / detector.Threshold;
     }
 
     /// <summary>

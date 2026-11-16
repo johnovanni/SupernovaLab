@@ -395,7 +395,17 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     }
 
     /// <summary>Whether the view renders every frame now: a pulsar's beams, a camera ease, or the tour's orbit.</summary>
-    public bool IsAnimating => !IsFailed && (_state.Marker == SceneMarker.Pulsar || (Director.IsEasing && _frozenUnitCm is null) || _isTourOrbiting);
+    public bool IsAnimating => !IsFailed && (_state.Marker == SceneMarker.Pulsar || (Director.IsEasing && _frozenUnitCm is null) || _isTourOrbiting
+                                             || _state.FlareIntensity > 0 || _flareDrawn > 0);
+
+    private readonly FlashLimiter _flashLimiter = new();
+    private float _flareDrawn;
+
+    /// <summary>
+    /// Plan Task 12 (spec §5; flash safety, Review Focus 5): the magnetar marker's glow as drawn this frame, 0 to 1: the scene's single rise
+    /// and fade through <see cref="FlashLimiter"/> (at most one rise per half second of wall time, however the timeline is scrubbed).
+    /// </summary>
+    public float FlareDrawn => _flareDrawn;
 
     /// <summary>The guided tour's sway (Task 15): sets the camera's yaw (not user input).</summary>
     public void SetTourYaw(double yawDeg)
@@ -821,6 +831,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         FramesDrawn++;
         if (_uploadParticles) UploadParticles();
         var s = _state;
+        _flareDrawn = (float)_flashLimiter.Apply(s.FlareIntensity, _clock());
         _gpuTimer?.Begin();
         _hdr.Begin(viewportPx);
         GL.ColorMask(true, true, true, false);   // alpha is the cut faces' mask for the tone map: only the faces write it
@@ -845,7 +856,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
             // The marker sits where the kick has carried the remnant (spec §7.2); the director still frames the debris.
             var at = new Vector3d(s.RemnantOffsetCm.X, s.RemnantOffsetCm.Y, s.RemnantOffsetCm.Z) / unit;
-            _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam, at, s.BeamTiltRad, s.BeamHalfAngleRad);
+            _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam, at, s.BeamTiltRad, s.BeamHalfAngleRad, _flareDrawn);
             // The breakout flash is scene light in the HDR target, so it blooms; without the target it is drawn after the frame.
             if (s.FlashIntensity > 0 && HdrEnabled) _flash?.RenderHdr(viewportPx, s.FlashColor, s.FlashIntensity);
             if (starCut || particleCut)
@@ -859,6 +870,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _hdr.End(s.Exposure, BloomStrength, cutFaces);
         if (FlashOverlayAlpha > 0) _flash?.RenderNoHdr(viewportPx, s.FlashColor, FlashOverlayAlpha);
         _gpuTimer?.End();
+        UpdateAnimating();   // a flare's last frame lets the view rest
         if (_readback is { } readback)
         {
             _readback = null;

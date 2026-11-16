@@ -647,7 +647,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// </summary>
     public bool IsAnimating => !IsFailed && _visible &&
                                (_forceAnimating || (Director.IsEasing && _frozenHalfHeightCm is null) || (_envPending && !_vm.Main.Timeline.IsPlaying)
-                                || RefineOwed || Turns || _vm.PulsesShown || CoreMoves);
+                                || RefineOwed || Turns || _vm.PulsesShown || CoreMoves || FlareKeepsDrawing(_vm.State) || _flareDrawn > 0);
 
     /// <summary>
     /// Plan Task 9 (R-P3-11's condition): the first second moves on its own (the shock's sloshing and the infalling matter, on the wall
@@ -660,6 +660,24 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     /// <summary>Whether something drawn turns with the spin now: a neutron star (its surface markings, field lines and beams).</summary>
     private bool Turns => _vm.State.NeutronStar is not null && _vm.State.IsLensed;
+
+    /// <summary>
+    /// Plan Task 12 (R-P3-11's condition, spec §5): a giant flare in progress keeps the view drawing, so its one rise and fade play out
+    /// frame by frame even if nothing else turns.
+    /// </summary>
+    public static bool FlareKeepsDrawing(CloseUpState s) => s.FlareIntensity > 0;
+
+    /// <summary>
+    /// Flash safety (Review Focus 5; <see cref="FlashLimiter"/>): the flare's brightness as drawn this frame, 0 to 1: the scene's single
+    /// rise and fade through at most one rise per half second of wall time, whatever the scrubbing does.
+    /// </summary>
+    public float FlareDrawn => _flareDrawn;
+
+    private readonly FlashLimiter _flashLimiter = new();
+    private float _flareDrawn;
+
+    /// <summary>[Presentation, schematic] How much a flare at full brightness multiplies the surface's and the beams' light (tone-mapped, so it whites out and blooms).</summary>
+    public const float FlareSurfaceGain = 6f, FlareBeamGain = 4f;
 
     private void UpdateAnimating()
     {
@@ -725,6 +743,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         FramesDrawn++;
         FramesSinceReset++;
         var state = _vm.State;
+        _flareDrawn = (float)_flashLimiter.Apply(state.FlareIntensity, _clock());
         _gpuTimer?.Begin();
         bool lens = state.IsLensed && _lensingEnabled;
         int captures = EnvironmentCaptures;
@@ -753,7 +772,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             double phase = BeamPhaseRad;
             var occluder = Occluder(state);
             float gain = OverlayGain;
-            _neutronStar.RenderBeams(Camera, viewportPx, state, phase, BeamLengthHalfHeights * HalfHeightCm / UnitCm, Gain(BeamLevel), occluder);
+            _neutronStar.RenderBeams(Camera, viewportPx, state, phase, BeamLengthHalfHeights * HalfHeightCm / UnitCm,
+                Gain(BeamLevel) * (1 + FlareBeamGain * _flareDrawn), occluder);
             _linesFrame = (viewportPx, state, phase, occluder, gain);
             lines = _drawLinesNow ??= DrawLinesNow;
             _cutawayFrame = CutawayDrawn(state) ? state.Cutaway : null;
@@ -939,7 +959,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         return new LensingUniforms((float)state.Spin, (Vector3)eye, (Vector3)forward, (Vector3)right, (Vector3)up,
             new Vector2((float)(tanY * aspect), (float)tanY), (float)escape,
             (float)(state.SurfaceRadiusKm * UnitCm / rgCm),
-            ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure), _vm.ShowGrid,
+            ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure) * (1 + FlareSurfaceGain * _flareDrawn), _vm.ShowGrid,
             (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star,
             GridLineColor(HdrEnabled, _exposure),
             disk ? (float)state.DiskInnerGm : 0f, disk ? (float)state.DiskOuterGm : 0f,

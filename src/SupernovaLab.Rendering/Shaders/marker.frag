@@ -4,6 +4,8 @@
 
 uniform int u_kind;
 uniform vec3 u_color;
+uniform float u_glow;       // a giant flare's drawn brightness, 0 to 1 (plan Task 12): the point swells and a white halo spreads
+uniform float u_sizeScale;  // how much larger the point sprite is drawn for the glow (1 + gain * glow), so the core keeps its pixel size
 
 out vec4 o_color;
 
@@ -19,9 +21,12 @@ void main()
         o_color = vec4(u_color * ring, a);
         return;
     }
-    float core = 1.0 - smoothstep(0.38, 0.50, r);
-    float outline = 0.85 * (1.0 - smoothstep(0.80, 0.95, r));
-    float a = max(core, outline);
+    float rs = r * u_sizeScale;                       // r in units of the unswollen sprite
+    float core = 1.0 - smoothstep(0.38, 0.50, rs);
+    float outline = 0.85 * (1.0 - smoothstep(0.80, 0.95, rs));
+    float halo = u_glow * pow(max(1.0 - r, 0.0), 2.0);
+    float a = max(max(core, outline), halo);
     if (a <= 0.0) discard;
-    o_color = vec4(u_color * core, a);
+    vec3 c = mix(u_color, vec3(1.0), u_glow);
+    o_color = vec4(c * max(core, halo * 1.5), a);
 }

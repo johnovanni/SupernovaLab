@@ -25,6 +25,9 @@ public sealed class RemnantRenderer : IDisposable
     private static readonly Vector3 NeutronStarColor = new(0.8f, 0.9f, 1f), WhiteDwarfColor = new(1f, 1f, 1f),
         RingColor = new(1f, 0.85f, 0.6f);
 
+    /// <summary>[schematic] A flare at full brightness makes the marker this many times larger on screen (1 + gain).</summary>
+    public const float FlareSizeGain = 3f;
+
     /// <summary>The beams' colour (schematic), shared with the Close-up.</summary>
     public static readonly Vector3 BeamColor = new(0.6f, 1f, 0.85f);
 
@@ -47,7 +50,7 @@ public sealed class RemnantRenderer : IDisposable
     /// and half-opening angle, this long (scene units).
     /// </summary>
     public void Render(OrbitCamera camera, Size viewportPx, double pxPerDip, SceneMarker marker, double beamPhaseRad,
-        double beamLength, Vector3d position, double beamTiltRad, double beamHalfAngleRad)
+        double beamLength, Vector3d position, double beamTiltRad, double beamHalfAngleRad, float flare = 0)
     {
         if (marker == SceneMarker.None) return;
         if (marker == SceneMarker.Pulsar && double.IsFinite(beamTiltRad) && beamHalfAngleRad > 0)
@@ -65,7 +68,12 @@ public sealed class RemnantRenderer : IDisposable
         };
         _program.Use();
         _program.SetCamera(camera, viewportPx);
-        _program.Set("u_sizePx", (float)(size * pxPerDip));
+        // Plan Task 12 (spec §5): a magnetar's giant flare swells the marker and lights it white with a soft halo (the caller has already
+        // passed the brightness through the flash limiter); a neutron star only.
+        float glow = marker == SceneMarker.BlackHole ? 0f : Math.Clamp(float.IsFinite(flare) ? flare : 0f, 0f, 1f);
+        _program.Set("u_sizePx", (float)(size * pxPerDip) * (1f + FlareSizeGain * glow));
+        _program.Set("u_glow", glow);
+        _program.Set("u_sizeScale", 1f + FlareSizeGain * glow);
         _program.Set("u_color", color);
         _program.Set("u_kind", kind);
         _program.Set("u_position", (Vector3)position);

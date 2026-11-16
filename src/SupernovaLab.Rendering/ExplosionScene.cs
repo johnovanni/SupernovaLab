@@ -60,6 +60,11 @@ public sealed record SceneState
     /// <summary>The lab's model spin period (s) now; NaN unless <see cref="Marker"/> is <see cref="SceneMarker.Pulsar"/>.</summary>
     public double PulsarPeriodS { get; init; } = double.NaN;
     /// <summary>
+    /// Plan Task 12 (spec §5): the drawn brightness, 0 to 1, of a magnetar's giant flare now (<see cref="MagnetarFlares.DrawnIntensity"/>), before
+    /// the app's flash limiter; the marker glows with it. 0 without a flare on (and for every other remnant).
+    /// </summary>
+    public float FlareIntensity { get; init; }
+    /// <summary>
     /// Plan Task 6 (spec §4.6, §7.2): the remnant's drift from the explosion's centre, cm (<see cref="KickDrift.OffsetCm"/>, the same as
     /// the Close-up's): the marker is drawn there. The director still frames the debris, not the marker.
     /// </summary>
@@ -409,6 +414,19 @@ public sealed class ExplosionScene
     /// </summary>
     public int RunNumber { get; set; }
 
+    private sealed record FlareCache(int Run, IReadOnlyList<GiantFlare> Flares);
+    private FlareCache? _flareCache;
+
+    /// <summary>The brightest drawn giant flare at this source time (0 unless a magnetar; spec §5), from the run's flares (Re-roll redraws them).</summary>
+    private double FlareAt(double sourceTimeS)
+    {
+        int run = RunNumber;
+        var cache = _flareCache;
+        if (cache is null || cache.Run != run)
+            _flareCache = cache = new FlareCache(run, MagnetarFlares.For(Outcome, run));
+        return MagnetarFlares.IntensityAt(cache.Flares, sourceTimeS);
+    }
+
     /// <summary>The ejecta's layers, velocity profile and mixing (null without ejecta); a failed supernova gives its envelope shell.</summary>
     public EjectaStructure? Structure { get; }
 
@@ -561,7 +579,7 @@ public sealed class ExplosionScene
             ShowEjecta = true, EjectaRadiusCm = r, FrameRadiusCm = r, RadiusCm = r, RadiusLabel = label,
             ForwardShockCm = shocks?.ForwardCm ?? double.NaN, ForwardShockLabel = shockLabel,
             EjectaTemperatureK = temperature, EjectaColor = BlackbodyColor.FromTemperature(temperature),
-            EjectaBrightness = Brightness(t), Marker = marker, PulsarPeriodS = period, Notes = notes, Shocks = shocks,
+            EjectaBrightness = Brightness(t), Marker = marker, PulsarPeriodS = period, FlareIntensity = (float)FlareAt(t), Notes = notes, Shocks = shocks,
         };
         state = WithParticles(state, t, double.IsNaN(r0) ? 0 : r0);
         if (state.ShowParticles) AddStructureNotes(notes, beforeLast: true);

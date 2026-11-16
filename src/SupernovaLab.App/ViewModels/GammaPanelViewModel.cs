@@ -1,5 +1,6 @@
 using SupernovaLab.Core.Signals;
 using SupernovaLab.Core.Text;
+using SupernovaLab.Core.Timeline;
 
 namespace SupernovaLab.App.ViewModels;
 
@@ -15,6 +16,7 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
 
     private readonly GrbModel _grb = new();
     private readonly GammaLineModel _lines = new();
+    private MagnetarFlareModel _flares = new();
     private bool _userChose;
 
     public GammaPanelViewModel()
@@ -30,8 +32,15 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
 
     protected override void OnUserChoice() => _userChose = true;
 
+    /// <summary>
+    /// Plan Task 12 (spec §7.3): a magnetar's giant flares are drawn from the run number (display randomness; Re-roll redraws them), so only
+    /// for a magnetar does Re-roll resample this panel; for every other outcome the panel is as Project 1 made it.
+    /// </summary>
+    public override bool UsesRunNumber => FlaresApply;
+
     protected override void OnContextChanged()
     {
+        _flares = new MagnetarFlareModel(RunNumber);
         if (_userChose) return;
         if (_grb.Applies(Outcome)) Preselect(GrbTab, Detectors.Get("gbm"));
         else Preselect(LinesTab, Detectors.Get("spi"));
@@ -48,10 +57,11 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
             case GrbTab:
                 return new PanelContent
                 {
-                    Series = SampleChannel(_grb, "prompt", extraSourceTimesS: BurstTimes()), LogY = true,
+                    Series = SampleChannel(_grb, "prompt", extraSourceTimesS: BurstTimes()).Concat(FlareDots()).ToList(), LogY = true,
                     YLabel = "Energy flux (erg cm⁻² s⁻¹)",
                     Note = "The bolometric flux (1–10⁴ keV in the burst's frame). GBM and BAT trigger on their own bands, which " +
-                           "the badge uses; their limits are therefore not drawn here.",
+                           "the badge uses; their limits are therefore not drawn here." +
+                           (FlaresApply ? " " + FlareNote : ""),
                 };
             case LinesTab:
                 return new PanelContent
@@ -71,11 +81,34 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
         }
     }
 
+    /// <summary>Whether this outcome is a magnetar whose giant flares the burst tab draws (plan Task 12, spec §7.3).</summary>
+    private bool FlaresApply => HasOutcome && _flares.Applies(Outcome);
+
+    /// <summary>The tab's note on the flare spikes.</summary>
+    public const string FlareNote =
+        "Each dot is a magnetar's giant-flare spike (a third of a second, speculative), at the flare's time in this run; it is too brief " +
+        "to draw as a line. The flare's spectrum is assumed (a peak near 500 keV, approximate), and GBM and BAT judge it as they judge a burst.";
+
     protected override IReadOnlyList<ISignalModel> TabModels(string subTab)
-        => subTab == GrbTab ? new ISignalModel[] { _grb } : new ISignalModel[] { _lines };
+        => subTab == GrbTab ? (FlaresApply ? new ISignalModel[] { _grb, _flares } : new ISignalModel[] { _grb }) : new ISignalModel[] { _lines };
 
     protected override IReadOnlyList<ISignalModel> DetectorModels(Detector instrument)
-        => GrbModel.DetectorIds.Contains(instrument.Id) ? new ISignalModel[] { _grb } : new ISignalModel[] { _lines };
+        => GrbModel.DetectorIds.Contains(instrument.Id)
+            ? (FlaresApply ? new ISignalModel[] { _grb, _flares } : new ISignalModel[] { _grb })
+            : new ISignalModel[] { _lines };
+
+    /// <summary>One dot per giant flare at its observer time (source time × (1 + z)), at the spike's flux; none without a flare.</summary>
+    private IReadOnlyList<PlotSeries> FlareDots()
+    {
+        if (!FlaresApply) return Array.Empty<PlotSeries>();
+        double z1 = Observer.TimeDilation;
+        var flares = _flares.Flares(Outcome).Where(f => f.SourceTimeS * z1 is var t && t >= TimeAxis.MinS && t <= TimeAxis.MaxS).ToList();
+        if (flares.Count == 0) return Array.Empty<PlotSeries>();
+        var channel = _flares.Channels.First(c => c.Id == "spike");
+        var times = flares.Select(f => f.SourceTimeS * z1).ToArray();
+        var values = flares.Select(f => SampleOne(_flares, "spike", f.SourceTimeS)).ToArray();
+        return new[] { new PlotSeries(channel.Label, times, values, channel.Unit, true) { ChannelId = "spike", IsDots = true } };
+    }
 
     /// <summary>
     /// Ruling R50: GBM and BAT trigger on the prompt burst. Once it is over (the drawn prompt curve ends three T90 after
@@ -104,6 +137,10 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
         if (ReferenceEquals(model, _grb) && GrbModel.DetectorIds.Contains(SelectedInstrument.Id) && BurstIsOver(SourceTimeS)
             && d.Status == DetectionStatus.NotModeled && Observer.BeamTowardEarth)
             return OverWords(TriggerAtPromptEnd(model, SelectedInstrument).Status == DetectionStatus.Detected, IsNeverObserved(model));
+        // Plan Task 12: a giant flare's spike lasts a third of a second, so after it the badge says whether the instrument caught it.
+        if (ReferenceEquals(model, _flares) && GrbModel.DetectorIds.Contains(SelectedInstrument.Id) && d.Status == DetectionStatus.NotModeled
+            && _flares.LastStartedBy(Outcome, SourceTimeS) is { } flare)
+            return OverWords(base.VerdictNow(model, SelectedInstrument, flare.SourceTimeS).Status == DetectionStatus.Detected);
         return base.Badge(model, d);
     }
 
@@ -118,7 +155,7 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
 
     protected override (ISignalModel Model, string ChannelId)? PrimaryChannel(string subTab, Detector instrument) => subTab switch
     {
-        GrbTab => (_grb, "prompt"),
+        GrbTab => FlaresApply ? (_flares, "spike") : (_grb, "prompt"),
         LinesTab => (_lines, "line847"),
         _ => (_lines, "ti44_68"),
     };

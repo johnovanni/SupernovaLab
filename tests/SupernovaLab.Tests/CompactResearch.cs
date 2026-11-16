@@ -324,4 +324,21 @@ public static class CompactResearch
         /// <summary>§C2 App: a fallback black hole at t_BH = 3.0 s has a PNS of 14.0 km just before (R_f = 12 km).</summary>
         public const double FallbackAt3sKm = 14.0;
     }
+
+    /// <summary>compact.md §C6, magnetars (periods, field decay, the three giant flares, the per-magnetar rate; App block).</summary>
+    public static class C6
+    {
+        /// <summary>§C6 App: the rate per magnetar per year, 2.1 × 10⁻³ (3 / (47.7 yr × 30) = 2.096 × 10⁻³); Gehrels 1σ for n = 3: 0.96–4.1 × 10⁻³; Burns et al. 2021 cross-check 1.27 × 10⁻³.</summary>
+        public const double RatePerYear = 2.1e-3, RateExact = 2.096e-3, RateGehrelsLow = 0.96e-3, RateGehrelsHigh = 4.1e-3, RateBurns = 1.27e-3;
+        /// <summary>§C6 App: the spike lasts 0.35 s (0.25–0.5 s observed); energy log-uniform over 1.5 × 10⁴⁴–2 × 10⁴⁶ erg.</summary>
+        public const double SpikeS = 0.35, EnergyLowErg = 1.5e44, EnergyHighErg = 2e46;
+        /// <summary>§C6: observed magnetar periods, typically 2–12 s.</summary>
+        public const double ObservedPeriodLowS = 2, ObservedPeriodHighS = 12;
+        /// <summary>§C6 table: the lab's magnetar spin at 1,000 yr: fast and extreme 0.22 s (B = 0.8 × 10¹⁴ G), slow rotation 1.39 s (B = 5 × 10¹⁴ G).</summary>
+        public const double FastPeriodAt1000yrS = 0.22, SlowPeriodAt1000yrS = 1.39, SlowFieldG = 5e14, SlowBirthPeriodS = 0.091, FastFieldG = 0.8e14, FastBirthPeriodS = 2.4e-3;
+        /// <summary>§C6: the field decays on about 10⁴ yr (Beniamini et al. 2019), outside the timeline: not modelled.</summary>
+        public const double FieldDecayYr = 1e4;
+        /// <summary>§C6 table: the 2004 flare's spike lasts 0.5 s, 15 kpc, (1.6–5) × 10⁴⁶ erg.</summary>
+        public const double Flare2004SpikeS = 0.5, Flare2004DistanceKpc = 15;
+    }
 }

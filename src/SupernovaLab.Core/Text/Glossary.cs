@@ -177,6 +177,10 @@ public static class Glossary
     public const string Magnetar =
         "A neutron star with an extreme magnetic field, about 10¹⁴–10¹⁵ gauss. As it spins down it can pour energy into the " +
         "ejecta and make the supernova far brighter.";
+    public const string GiantFlare =
+        "A huge burst of gamma rays from a magnetar, lasting a fraction of a second, when its crust cracks and its magnetic field " +
+        "rearranges. Only three have been seen (1979, 1998 and 2004). The lab draws them at random, at a rate worked out from those " +
+        "three, so the rate and energies are speculative.";
     public const string BlackHole = "A collapsed object whose gravity lets nothing escape, not even light.";
     public const string GammaRayBurst =
         "A jet punches out of a collapsing, fast-spinning star at nearly the speed of light and makes a flash of gamma rays " +
