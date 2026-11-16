@@ -31,6 +31,17 @@
     </Window.Resources>
     <!-- DataContext: the CloseUpViewModel (spec §2.1's layout): the view on the left, the readouts column (with Notes) on the
          right, the pulse-trace row at the bottom (collapsed until the pulse trace exists, Task 8). -->
+    <!-- Task 13: the guided tour brightens this outline frame at a Close-up stop (as it brightens an instrument panel's outline). -->
+    <Border x:Name="TourOutline" BorderThickness="3" BorderBrush="Transparent">
+        <Border.Style>
+            <Style TargetType="Border">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding Main.Tour.HighlightCloseUp}" Value="True">
+                        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_View" Foreground="{StaticResource TextBrush}">
@@ -318,4 +329,5 @@
             </Border>
         </Grid>
     </DockPanel>
+    </Border>
 </Window>

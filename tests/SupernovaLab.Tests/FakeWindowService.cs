@@ -14,5 +14,8 @@ public sealed class FakeWindowService : IWindowService
     public void ShowInstruments(Messenger? focus = null) => InstrumentsCalls.Add(focus);
     public void ShowOutcomeDetails() => OutcomeDetailsCalls++;
     public void ShowPresetInfo() => PresetInfoCalls++;
-    public void ShowCloseUp() => CloseUpCalls++;
+    public void ShowCloseUp() { CloseUpCalls++; IsCloseUpOpen = true; }
+
+    /// <summary>True after ShowCloseUp; a test sets it false to play the user closing the window.</summary>
+    public bool IsCloseUpOpen { get; set; }
 }

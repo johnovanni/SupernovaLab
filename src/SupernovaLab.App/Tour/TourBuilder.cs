@@ -1,4 +1,5 @@
 using SupernovaLab.App.ViewModels;
+using SupernovaLab.Core.Compact;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Presets;
@@ -41,9 +42,73 @@ public static class TourBuilder
     public const double MixingFallbackSourceS = 30 * PhysicalConstants.Day;
 
     /// <summary>A stop to be: <paramref name="Cutaway"/> forces the cutaway (the mixing stop); otherwise only a pre-breakout stop has it.</summary>
-    private sealed record Candidate(double TimeS, string Caption, Messenger? Highlight, TourSourceNote? Note = null, bool Cutaway = false);
+    private sealed record Candidate(double TimeS, string Caption, Messenger? Highlight, TourSourceNote? Note = null, bool Cutaway = false, bool CloseUp = false);
 
-    public static IReadOnlyList<TourStop> For(Outcome o, ObserverSetup obs, Preset? preset)
+    /// <summary>The bounce stop's source time: 10 ms, the Project 2 neutrino-burst and gravitational-wave marker time (the lab's start of the signal).</summary>
+    public const double BounceStopSourceS = 0.01;
+
+    private static readonly PulsarModel Pulsar = new();
+
+    private static readonly Source CrustSource = new(
+        "The crust crystallises about 1 day after bounce, the same for every neutron star (range 1 hour to 1 month) [D/APPROX]; Zdunik, Fortin & Haensel 2017 for the layers",
+        "compact §C5");
+
+    private static readonly Source PulseSource = new(
+        "Pulses get out of the thinning ejecta after about 10 years (research: 10–30 yr) [APPROX]; the beam's reach from the lab's geometry", "signals §8.3");
+
+    /// <summary>
+    /// The Close-up's stops (Project 3, Task 13; spec §2.4), each at its model's time × (1 + z): bounce, stall, revival or black-hole
+    /// formation (the core's phase transitions in <see cref="CoreCollapseHistory"/>), crust forms, black hole settles, pulses emerge,
+    /// and the run's first giant flare (only when <paramref name="runNumber"/> is given and the run has one). None for an outcome with
+    /// no neutron star, magnetar or black hole.
+    /// </summary>
+    private static IEnumerable<Candidate> CloseUpCandidates(Outcome o, ObserverSetup obs, int? runNumber)
+    {
+        if (CoreCollapseHistory.TrackFor(o) is null) yield break;
+        double z1 = obs.TimeDilation;
+        bool InRange(double t) => double.IsFinite(t) && t >= TimeAxis.MinS && t <= TimeAxis.MaxS;
+        Candidate Make(double t, string caption, Source source) => new(t, caption, null, new TourSourceNote(TourSourceKind.LabModel, source), CloseUp: true);
+
+        // 10 ms after bounce (where the neutrino and gravitational-wave markers sit, so it usually shares their stop): the shock is born.
+        double bounce = BounceStopSourceS * z1;
+        yield return Make(bounce, TourCaptions.CloseUpBounce(o, obs, bounce), CoreCollapseHistory.TrackSource);
+
+        double stall = CoreCollapseHistory.StalledFromS * z1;
+        if (InRange(stall) && CoreCollapseHistory.At(o, CoreCollapseHistory.StalledFromS).Phase == CorePhase.Stalled)
+            yield return Make(stall, TourCaptions.CloseUpStall(o, obs, stall), CoreCollapseHistory.TrackSource);
+
+        double revival = CoreCollapseHistory.RevivalTimeS(o) * z1;
+        if (InRange(revival) && CoreCollapseHistory.At(o, CoreCollapseHistory.RevivalTimeS(o)).Phase == CorePhase.Revived)
+            yield return Make(revival, TourCaptions.CloseUpRevival(o, obs, revival), CoreCollapseHistory.TrackSource);
+
+        double bh = CoreCollapseHistory.BlackHoleFormsS(o) * z1;
+        if (InRange(bh))
+            yield return Make(bh, TourCaptions.CloseUpBlackHole(o, obs, bh), CoreCollapseHistory.TrackSource);
+
+        if (o.Remnant.Kind is RemnantKind.NeutronStar or RemnantKind.Magnetar)
+        {
+            double crust = NeutronStarLayers.CrustFormationTimeS(o) * z1;
+            if (InRange(crust)) yield return Make(crust, TourCaptions.CloseUpCrust(crust), CrustSource);
+            double pulses = Pulsar.EmergenceTimeS(o) * z1;
+            if (InRange(pulses)) yield return Make(pulses, TourCaptions.CloseUpPulses(o, obs, pulses), PulseSource);
+        }
+
+        if (o.Remnant.Kind == RemnantKind.BlackHole)
+        {
+            double settled = BlackHoleModel.SettleEndS(o) * z1;
+            if (InRange(settled) && BlackHoleModel.SettleEndS(o) > 0)
+                yield return Make(settled, TourCaptions.CloseUpSettled(o, settled), BlackHoleModel.SpinSource);
+        }
+
+        // The run's first giant flare (one stop; a run may have several, the timeline's markers show them all).
+        if (runNumber is int run && MagnetarFlares.For(o, run) is { Count: > 0 } flares)
+        {
+            double t = flares[0].SourceTimeS * z1;
+            if (InRange(t)) yield return Make(t, TourCaptions.CloseUpFlare(flares[0], t), MagnetarFlares.FlareSource);
+        }
+    }
+
+    public static IReadOnlyList<TourStop> For(Outcome o, ObserverSetup obs, Preset? preset, int? runNumber = null)
     {
         ArgumentNullException.ThrowIfNull(o);
         ArgumentNullException.ThrowIfNull(obs);
@@ -70,6 +135,9 @@ public static class TourBuilder
                 all.Add(new Candidate(t, TourCaptions.Mixing(o, mixing), null,
                     new TourSourceNote(TourSourceKind.LabModel, mixing.Source), Cutaway: true));
         }
+
+        // Project 3, Task 13 (spec §2.4): the Close-up's stops, for an outcome with a compact remnant.
+        all.AddRange(CloseUpCandidates(o, obs, runNumber));
 
         if (preset is not null)
         {
@@ -100,9 +168,10 @@ public static class TourBuilder
 
             bool cutaway = anchor.TimeS >= TimeAxis.MinS && hasBreakout && anchor.TimeS < breakout || group.Any(g => g.Cutaway);
             stops.Add(new TourStop(anchor.TimeS, string.Join(" ", group.Select(g => g.Caption)), cutaway, DwellS,
-                cutaway, group.Select(g => g.Highlight).FirstOrDefault(h => h is not null))
+                cutaway, group.Select(g => g.Highlight).FirstOrDefault(h => h is not null), group.Any(g => g.CloseUp))
             {
                 Notes = group.Where(g => g.Note is not null).Select(g => g.Note!).ToList(),
+                CloseUpOnly = group.All(g => g.CloseUp),
             });
         }
         return stops;

@@ -30,12 +30,16 @@ public sealed record TourSourceNote(TourSourceKind Kind, Source Source)
 /// ruling R-P2-6), the timeline's own clock; the first stop is at 1 ms, the timeline's start. A <see cref="Cutaway"/> stop
 /// shows the star's interior (between bounce and breakout) and the camera sways about it (Task 15: <see cref="Sways"/> says whether the camera sways at this stop; it is true exactly on cutaway stops).
 /// <see cref="Highlight"/> names the instrument panel (and strip tile) to brighten while the stop is shown, or null.
+/// <see cref="CloseUp"/> marks a stop that shows the compact object's close-up (Task 13, spec §2.4): the tour opens the Close-up window at the first one and brightens its outline.
 /// <see cref="Notes"/> are the sources and confidence of every sentence in the caption (merged stops carry all of them);
 /// <see cref="SourceText"/> is the ready-made tooltip.
 /// </summary>
 public sealed record TourStop(double ObserverTimeS, string Caption, bool Cutaway, double DwellS = 4,
-    bool Sways = false, Messenger? Highlight = null)
+    bool Sways = false, Messenger? Highlight = null, bool CloseUp = false)
 {
+    /// <summary>True when every sentence of the caption is a Close-up one: the tour skips such a stop once the user has closed the Close-up window (Task 13).</summary>
+    public bool CloseUpOnly { get; init; }
+
     public IReadOnlyList<TourSourceNote> Notes { get; init; } = Array.Empty<TourSourceNote>();
 
     /// <summary>The sources of the caption's sentences, in caption order.</summary>

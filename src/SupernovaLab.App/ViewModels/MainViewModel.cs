@@ -19,6 +19,9 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly OutcomeEngine _engine;
     private readonly IWindowService _windows;
 
+    /// <summary>The window service (the guided tour opens the Close-up through it, Task 13).</summary>
+    public IWindowService Windows => _windows;
+
     /// <param name="layoutStore">Where the panel layout is remembered (the app's layout.json); null keeps it in memory only (tests, snapshots).</param>
     public MainViewModel(OutcomeEngine engine, IWindowService windows, LayoutStore? layoutStore = null)
     {

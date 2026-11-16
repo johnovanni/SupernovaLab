@@ -84,6 +84,9 @@ public sealed class TourViewModel : ObservableObject
 
     public bool IsActive => Director.State != TourState.Off;
 
+    /// <summary>True at a Close-up stop while its window is open: the Close-up window's outline frame brightens (Task 13, as a panel's does).</summary>
+    public bool HighlightCloseUp => Director.IsCloseUpHighlighted;
+
     /// <summary>True while the user's input has paused the tour (or Pause was pressed): "Resume tour" is shown.</summary>
     public bool ShowResume => Director.State == TourState.Paused;
 
@@ -111,6 +114,7 @@ public sealed class TourViewModel : ObservableObject
         OnPropertyChanged(nameof(CounterText));
         OnPropertyChanged(nameof(Note));
         OnPropertyChanged(nameof(CaptionAtTop));
+        OnPropertyChanged(nameof(HighlightCloseUp));
         OnPropertyChanged(nameof(CollapsedText));
         foreach (var c in new[] { TourCommand, PauseCommand, ResumeCommand, NextCommand, PreviousCommand, ExitCommand })
             c.NotifyCanExecuteChanged();

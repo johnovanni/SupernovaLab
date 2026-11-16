@@ -43,6 +43,7 @@ public sealed class TourDirector
     private bool _swaying, _swayCutaway;
     private double _swayCentreDeg, _swayPhaseS, _swayExpectedYawDeg, _swayPlusDeg = SwayAmplitudeDeg, _swayMinusDeg = SwayAmplitudeDeg;
     private bool _wasDragging;
+    private bool _closeUpOpened, _closeUpDismissed;
 
     public TourDirector(MainViewModel vm, SceneController? scene)
     {
@@ -66,6 +67,40 @@ public sealed class TourDirector
         }
     }
 
+    /// <summary>
+    /// True while a Close-up stop is shown and the Close-up window is still wanted: the tour's outline highlight for that window
+    /// (Task 13). False once the user has closed the window during the tour.
+    /// </summary>
+    public bool IsCloseUpHighlighted => Current is { CloseUp: true } && !_closeUpDismissed;
+
+    /// <summary>
+    /// Task 13: notices that the user closed the Close-up window the tour opened; from then on the Close-up-only stops are skipped and the
+    /// tour carries on with the others.
+    /// </summary>
+    private void DetectCloseUpClosed()
+    {
+        if (!_closeUpOpened || _closeUpDismissed || _vm.Windows.IsCloseUpOpen) return;
+        _closeUpDismissed = true;
+        if (State != TourState.Off) RaiseChanged();
+    }
+
+    private bool Skipped(int index) => _closeUpDismissed && _stops[index].CloseUpOnly;
+
+    /// <summary>The next stop to play after <paramref name="index"/>, skipping Close-up-only stops once the window is closed; -1 when none.</summary>
+    private int NextPlayable(int index)
+    {
+        for (int k = index + 1; k < _stops.Count; k++)
+            if (!Skipped(k)) return k;
+        return -1;
+    }
+
+    private int PreviousPlayable(int index)
+    {
+        for (int k = index - 1; k > 0; k--)
+            if (!Skipped(k)) return k;
+        return 0;
+    }
+
     /// <summary>Raised after any change of state, stop or note.</summary>
     public event EventHandler? Changed;
 
@@ -85,10 +120,11 @@ public sealed class TourDirector
     public void Start()
     {
         if (State != TourState.Off) return;
-        var stops = TourBuilder.For(_vm.CurrentOutcome, _vm.CurrentObserver, _vm.Lab.SelectedPreset);
+        var stops = TourBuilder.For(_vm.CurrentOutcome, _vm.CurrentObserver, _vm.Lab.SelectedPreset, _vm.RunNumber);
         if (stops.Count == 0) return;
         _stops = stops;
         Note = null;
+        _closeUpOpened = _closeUpDismissed = false;
         _savedCutaway = _scene?.IsCutaway ?? false;
         _swaying = false;
         _vm.Timeline.IsPlaying = false;   // the director drives the time
@@ -129,15 +165,17 @@ public sealed class TourDirector
     /// <summary>Jumps to the next stop; past the last one it ends the tour.</summary>
     public void Next()
     {
-        if (State == TourState.Off) return;
-        if (StopIndex + 1 >= _stops.Count) Exit();
-        else GoTo(StopIndex + 1);
+        DetectCloseUpClosed();
+        int next = NextPlayable(StopIndex);
+        if (next < 0) Exit();
+        else GoTo(next);
     }
 
     public void Previous()
     {
         if (State == TourState.Off) return;
-        GoTo(Math.Max(0, StopIndex - 1));
+        DetectCloseUpClosed();
+        GoTo(PreviousPlayable(StopIndex));
     }
 
     /// <summary>Jumps to a stop (a jump of the time, not a playback step). A paused tour stays paused there.</summary>
@@ -168,12 +206,13 @@ public sealed class TourDirector
         double dt = elapsed.TotalSeconds;
         if (State is TourState.Off or TourState.Paused || !(dt > 0) || Current is not { } stop) return;
 
+        DetectCloseUpClosed();
         Sway(stop, dt);
         if (State == TourState.Dwelling)
         {
             _dwellLeftS -= dt;
             if (_dwellLeftS > 0) return;
-            if (StopIndex + 1 >= _stops.Count) Exit();
+            if (NextPlayable(StopIndex) < 0) Exit();
             else
             {
                 State = TourState.Playing;
@@ -183,12 +222,14 @@ public sealed class TourDirector
         }
 
         var timeline = _vm.Timeline;
-        double target = _stops[StopIndex + 1].ObserverTimeS, t = timeline.ObserverTimeS;
+        int nextIndex = NextPlayable(StopIndex);
+        if (nextIndex < 0) { Exit(); return; }   // only skipped Close-up stops are left
+        double target = _stops[nextIndex].ObserverTimeS, t = timeline.ObserverTimeS;
         double remaining = Math.Log10(target / t);
         double speed = remaining <= SlowDecades ? TimelineViewModel.MinDecadesPerSecond : TimelineViewModel.DefaultDecadesPerSecond;
-        double next = t * Math.Pow(10, speed * dt);
-        if (remaining <= 0 || next >= target) EnterStop(StopIndex + 1, jump: false);
-        else timeline.DirectTo(next, playbackStep: true);
+        double nextT = t * Math.Pow(10, speed * dt);
+        if (remaining <= 0 || nextT >= target) EnterStop(nextIndex, jump: false);
+        else timeline.DirectTo(nextT, playbackStep: true);
     }
 
     /// <summary>
@@ -276,6 +317,13 @@ public sealed class TourDirector
     {
         StopIndex = index;
         var stop = _stops[index];
+        // Task 13: the first Close-up stop opens the Close-up window (once per tour; a window the user closed stays closed).
+        DetectCloseUpClosed();
+        if (stop.CloseUp && !_closeUpOpened && !_closeUpDismissed)
+        {
+            _closeUpOpened = true;
+            _vm.Windows.ShowCloseUp();
+        }
         if (_scene is not null)
         {
             _scene.IsCutaway = stop.Cutaway;

@@ -1,5 +1,6 @@
 using System.Globalization;
 using SupernovaLab.App.ViewModels;
+using SupernovaLab.Core.Compact;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Signals;
@@ -129,6 +130,75 @@ public static class TourCaptions
         }
     }
 
+
+    // ---- Close-up stops (Project 3, Task 13; spec §2.4) ----
+    // Every number below is the Close-up model's own value (CoreCollapseHistory, BlackHoleModel, PulseSchedule, MagnetarFlares), formatted
+    // by UnitFormat, and every time is an observer time. The first second is "From simulations" (nothing there is observed directly).
+
+    /// <summary>"In the lab, the core ... (From simulations).": a first-second sentence from the Close-up's simulation-based tracks.</summary>
+    private static string Simulated(string sentence)
+        => $"In the lab, {char.ToLowerInvariant(sentence[0])}{sentence[1..].TrimEnd('.')} ({CoreCollapseHistory.FromSimulationsLabel}).";
+
+    private static string Km(double km) => UnitFormat.Distance(km * 1e5);
+
+    /// <summary>The core's state at an observer time (converted to source time).</summary>
+    private static CoreState CoreAt(Outcome o, ObserverSetup obs, double observerTimeS)
+        => CoreCollapseHistory.At(o, observerTimeS / obs.TimeDilation);
+
+    private static string Radii(CoreState s)
+    {
+        var parts = new List<string>();
+        if (double.IsFinite(s.ShockRadiusKm)) parts.Add($"the shock is {Km(s.ShockRadiusKm)} from the centre");
+        double pns = CoreCollapseHistory.DrawnProtoNsRadiusKm(s);
+        if (double.IsFinite(pns)) parts.Add($"the proto-neutron star is {Km(pns)} in radius");
+        return parts.Count == 0 ? "" : "; " + string.Join(" and ", parts);
+    }
+
+    /// <summary>The bounce stop: the core stops collapsing and the shock is born.</summary>
+    public static string CloseUpBounce(Outcome o, ObserverSetup obs, double observerTimeS)
+        => Simulated($"{UnitFormat.Time(observerTimeS)} after core bounce the core has rebounded and its shock wave is moving out{Radii(CoreAt(o, obs, observerTimeS))}.");
+
+    /// <summary>The stall stop: the shock runs out of energy while gas keeps falling in.</summary>
+    public static string CloseUpStall(Outcome o, ObserverSetup obs, double observerTimeS)
+    {
+        var s = CoreAt(o, obs, observerTimeS);
+        string infall = double.IsFinite(s.InfallSpeedKmS) ? $", with gas falling in ahead of it at {UnitFormat.Number(s.InfallSpeedKmS)} km/s" : "";
+        return Simulated($"{UnitFormat.Time(observerTimeS)} after core bounce the shock stalls{infall}{Radii(s)}.");
+    }
+
+    /// <summary>The revival stop: neutrino heating pushes the stalled shock outward (a magnetar-driven explosion revives it differently).</summary>
+    public static string CloseUpRevival(Outcome o, ObserverSetup obs, double observerTimeS)
+    {
+        string text = Simulated($"{UnitFormat.Time(observerTimeS)} after core bounce neutrino heating revives the shock and it moves outward{Radii(CoreAt(o, obs, observerTimeS))}.");
+        return CoreCollapseHistory.TrackFor(o) == CoreTrack.Magnetorotational ? text + " " + CoreCollapseHistory.MagnetorotationalNote + "." : text;
+    }
+
+    /// <summary>The black-hole stop: the proto-neutron star collapses inside its own horizon.</summary>
+    public static string CloseUpBlackHole(Outcome o, ObserverSetup obs, double observerTimeS)
+        => Simulated($"{UnitFormat.Time(observerTimeS)} after core bounce the proto-neutron star collapses into a black hole; its horizon is {Km(CoreCollapseHistory.HorizonAtFormationKm(o))} in radius.");
+
+    /// <summary>The crust stop: the outer layers of the neutron star freeze into a solid crust.</summary>
+    public static string CloseUpCrust(double observerTimeS)
+        => InTheLab($"About {UnitFormat.Time(observerTimeS)} after core bounce the neutron star's outer layers crystallise into a solid crust (approximate: the time is uncertain).");
+
+    /// <summary>The settled stop: the black hole has stopped changing and spins.</summary>
+    public static string CloseUpSettled(Outcome o, double observerTimeS)
+        => InTheLab($"{UnitFormat.Time(observerTimeS)} after core bounce the black hole has settled, with a spin of {UnitFormat.Number(BlackHoleModel.SettledSpin(o))}; the Close-up reads \"{BlackHoleModel.SettledCaption}\".");
+
+    /// <summary>The pulse stop: the young pulsar's beam can be seen (or misses us).</summary>
+    public static string CloseUpPulses(Outcome o, ObserverSetup obs, double observerTimeS)
+    {
+        double src = observerTimeS / obs.TimeDilation;
+        var vis = PulseSchedule.Visibility(o, obs, src);
+        string tail = vis == PulseVisibility.Received
+            ? $"its pulses reach us {PulseSchedule.RateText(PulseSchedule.ReceivedPeriodS(o, obs, src))}"
+            : "its beam misses Earth, so we would not see the pulses";
+        return InTheLab($"{UnitFormat.Time(observerTimeS)} after core bounce the debris have thinned enough for the pulsar's beam to get out; {tail}.");
+    }
+
+    /// <summary>The giant-flare stop, compared with the 2004 flare.</summary>
+    public static string CloseUpFlare(GiantFlare f, double observerTimeS)
+        => InTheLab($"{UnitFormat.Time(observerTimeS)} after core bounce the magnetar gives a giant flare, a spike of {UnitFormat.Energy(f.EnergyErg)} (isotropic) lasting {f.SpikeS.ToString("0.00", CultureInfo.InvariantCulture)} s (speculative). {MagnetarFlares.Comparison2004}: {MagnetarFlares.Comparison2004Numbers}.");
     /// <summary>The instrument to brighten at a marker (null for none).</summary>
     public static Messenger? HighlightFor(string glossaryKey) => glossaryKey switch
     {

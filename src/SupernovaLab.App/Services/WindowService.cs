@@ -47,6 +47,8 @@ public sealed class WindowService : IWindowService
     public Window? PresetInfo => _presetInfo;
     public Window? CloseUp => _closeUp;
 
+    public bool IsCloseUpOpen => _closeUp is not null;
+
     /// <summary>The open Close-up window, typed (null when closed, or when a test's factory made a plain window).</summary>
     public CloseUpWindow? CloseUpWindow => _closeUp as CloseUpWindow;
 

@@ -17,4 +17,7 @@ public interface IWindowService
 
     /// <summary>The Close-up window (spec §2.2): opened at most once; asking again brings it to the front.</summary>
     void ShowCloseUp();
+
+    /// <summary>True while the Close-up window is open (the guided tour asks, to skip its Close-up stops once the user has closed it, Task 13).</summary>
+    bool IsCloseUpOpen { get; }
 }
