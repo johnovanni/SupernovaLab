@@ -40,6 +40,60 @@ public sealed record CutawayKeyRow(string Label, string ColorHex, string ToolTip
 public sealed record CutawayStripPiece(double XDip, double WidthDip, string ColorHex, string ToolTip);
 
 /// <summary>
+/// Task 14b: one line of the readout column as the window binds it. The window's rows are made once and updated in place, a field at a
+/// time, so a time step that changes a value changes only that text: replacing the bound list made WPF build every row's elements again
+/// (its grid, texts and badges) on every frame, about 7 to 9 ms of the UI thread's layout per time step with a neutron star or a growing
+/// black hole, and that cost ran while the window was hidden too. It shows exactly its <see cref="Row"/>'s fields.
+/// </summary>
+public sealed class ReadoutRowView : ObservableObject
+{
+    private ReadoutRow _row;
+
+    public ReadoutRowView(ReadoutRow row) => _row = row ?? throw new ArgumentNullException(nameof(row));
+
+    /// <summary>The row shown now.</summary>
+    public ReadoutRow Row => _row;
+
+    public string Label => _row.Label;
+    public string? LabelToolTip => _row.LabelToolTip;
+    public string ValueText => _row.ValueText;
+    public Confidence Confidence => _row.Confidence;
+    public string BadgeToolTip => _row.BadgeToolTip;
+    public bool Published => _row.Published;
+    public string PublishedToolTip => _row.PublishedToolTip;
+
+    /// <summary>Shows <paramref name="row"/>: raises a change for each field that differs, and none when the row is the same.</summary>
+    public void Set(ReadoutRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var old = _row;
+        if (old == row) return;
+        _row = row;
+        if (old.Label != row.Label) OnPropertyChanged(nameof(Label));
+        if (old.LabelToolTip != row.LabelToolTip) OnPropertyChanged(nameof(LabelToolTip));
+        if (old.ValueText != row.ValueText) OnPropertyChanged(nameof(ValueText));
+        if (old.Confidence != row.Confidence) OnPropertyChanged(nameof(Confidence));
+        if (old.BadgeToolTip != row.BadgeToolTip) OnPropertyChanged(nameof(BadgeToolTip));
+        if (old.Published != row.Published) OnPropertyChanged(nameof(Published));
+        if (old.PublishedToolTip != row.PublishedToolTip) OnPropertyChanged(nameof(PublishedToolTip));
+    }
+
+    /// <summary>
+    /// Makes <paramref name="views"/> show <paramref name="rows"/>, in order: the rows both have are updated in place, extra views are
+    /// removed from the end and missing ones added at the end. A step that changes only values adds and removes nothing.
+    /// </summary>
+    public static void Sync(System.Collections.ObjectModel.ObservableCollection<ReadoutRowView> views, IReadOnlyList<ReadoutRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(views);
+        ArgumentNullException.ThrowIfNull(rows);
+        int shared = Math.Min(views.Count, rows.Count);
+        for (int i = 0; i < shared; i++) views[i].Set(rows[i]);
+        while (views.Count > rows.Count) views.RemoveAt(views.Count - 1);
+        for (int i = views.Count; i < rows.Count; i++) views.Add(new ReadoutRowView(rows[i]));
+    }
+}
+
+/// <summary>
 /// The Close-up window's view model (spec §2). It has no timeline of its own: it follows the shared <see cref="MainViewModel"/>'s
 /// outcome, observer, timeline and run number, as the Instruments window does. A new outcome, observer or run makes a new
 /// <see cref="CloseUpScene"/>; each time change restates <see cref="State"/>. A model error keeps the last state and shows a
@@ -85,6 +139,12 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     public string WindowTitle => $"Close-up: {State.Title}";
 
     public IReadOnlyList<ReadoutRow> Readouts { get; private set; } = Array.Empty<ReadoutRow>();
+
+    /// <summary>Task 14b: what the window's readout column binds: <see cref="Readouts"/>, its rows kept and updated in place.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<ReadoutRowView> ReadoutViews { get; } = new();
+
+    /// <summary>Task 14b: what the window's cutaway rows bind: <see cref="CutawayReadouts"/>, kept and updated in place.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<ReadoutRowView> CutawayReadoutViews { get; } = new();
 
     /// <summary>
     /// The scene notes (or the model error in their place), and while something is lensed the light-bending note (ruling R-P3-9):
@@ -235,6 +295,7 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         if (!rows.SequenceEqual(CutawayReadouts))
         {
             CutawayReadouts = rows;
+            ReadoutRowView.Sync(CutawayReadoutViews, rows);   // Task 14b: in place, as the column's rows
             OnPropertyChanged(nameof(CutawayReadouts));
         }
         if (ReferenceEquals(info, _shownCutaway)) return;
@@ -333,8 +394,10 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
             return;
         }
         if (e.PropertyName != nameof(TimelineViewModel.ObserverTimeS)) return;
+        long t0 = BenchTimings.Begin();
         ComputeState();
         StateChanged?.Invoke(this, false);
+        BenchTimings.End(BenchTimings.CloseUpViewModel, t0);
     }
 
     private void Rebuild()
@@ -385,7 +448,11 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         // Plan Task 6: a neutron star's state is new at every time step; the column is rebound only when a row's text changes.
         var rows = State.Readouts.Select(ReadoutRow.From).ToList();
         bool rowsChanged = !rows.SequenceEqual(Readouts);
-        if (rowsChanged) Readouts = rows;
+        if (rowsChanged)
+        {
+            Readouts = rows;
+            ReadoutRowView.Sync(ReadoutViews, rows);   // Task 14b: the window's rows change in place, not rebuilt
+        }
         OnPropertyChanged(nameof(State));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(WindowTitle));

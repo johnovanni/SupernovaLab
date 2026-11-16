@@ -1039,6 +1039,8 @@ public static class SnapshotRenderer
         }
         var meter = new UiThreadMeter(main.Dispatcher);
         meter.Start();
+        BenchTimings.Reset();   // Task 14b: the per-subsystem timings, for the bench run only
+        BenchTimings.Enabled = true;
         // The tour's travel and dwell are timed apart: a dwell on a still scene redraws only when something moves.
         var director = vm.Tour.Director;
         double travelS = 0, dwellS = 0;
@@ -1070,6 +1072,7 @@ public static class SnapshotRenderer
                 await Task.Delay(100);
         }
         meter.Stop();
+        BenchTimings.Enabled = false;
         CompositionTarget.Rendering -= OnRendering;
         double elapsed = watch.Elapsed.TotalSeconds;
         long sceneFrames = (scene?.FramesDrawn ?? 0) - sceneFrames0;
@@ -1137,6 +1140,10 @@ public static class SnapshotRenderer
                          (c is null || c.Count == 0 ? "not timed" : $"mean {Ms(c.MeanS)} ms, max {Ms(c.MaxS)} ms over {c.Count} renders") +
                          $"; the app's drawing inside it mean {Ms(host.DrawTime.MeanS)} ms, max {Ms(host.DrawTime.MaxS)} ms over {host.DrawTime.Count}";
         }
+        // Task 14b: the render pass split by subsystem (the time step and its listeners, the pulse trace, the GL controls, the rest).
+        yield return BenchTimings.Line(frames, meter.Render.TotalS, BenchTimings.TimeStep.TotalS, BenchTimings.Panels.TotalS,
+            BenchTimings.MainScene.TotalS, BenchTimings.CloseUpViewModel.TotalS, BenchTimings.CloseUpController.TotalS,
+            BenchTimings.PulseTrace.TotalS, mainHost?.ControlRenderTime?.TotalS ?? 0, closeUpHost?.ControlRenderTime?.TotalS ?? 0);
     }
 
     /// <summary>The Close-up's lines of a bench run: its frames, GPU time, lensing level, ray-map traces and environment refreshes.</summary>

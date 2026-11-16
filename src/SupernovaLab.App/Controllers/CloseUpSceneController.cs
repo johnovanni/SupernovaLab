@@ -588,6 +588,13 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private void OnStateChanged(object? sender, bool rebuilt)
     {
         if (_disposed) return;
+        long t0 = BenchTimings.Begin();   // Task 14b: the bench's timing (off in a normal run)
+        try { OnStateChangedCore(rebuilt); }
+        finally { BenchTimings.End(BenchTimings.CloseUpController, t0); }
+    }
+
+    private void OnStateChangedCore(bool rebuilt)
+    {
         var state = _vm.State;
         var switches = DrawnSwitches();
         if (switches.Item3 != _drawnSwitches.Cutaway)   // Task 7: look into the wedge, then give the user's pitch back

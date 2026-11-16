@@ -58,7 +58,11 @@ public sealed partial class MainViewModel : ObservableObject
         Timeline.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(TimelineViewModel.ObserverTimeS))
+            {
+                long t0 = BenchTimings.Begin();
                 foreach (var p in Panels) p.OnTimeChanged(Timeline.ObserverTimeS);
+                BenchTimings.End(BenchTimings.Panels, t0);
+            }
         };
         // Re-roll changes only the run number (no OutcomeChanged); the panels resample their random events on it.
         PropertyChanged += (_, e) =>

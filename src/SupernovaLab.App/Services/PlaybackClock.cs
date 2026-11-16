@@ -53,6 +53,8 @@ public sealed class PlaybackClock
         var elapsed = now - _last;
         _last = now;
         if (elapsed > TimeSpan.FromSeconds(0.25)) elapsed = TimeSpan.FromSeconds(0.25);
+        long t0 = BenchTimings.Begin();   // Task 14b: the bench's time-step timing (off in a normal run)
         _timeline.Tick(elapsed);
+        BenchTimings.End(BenchTimings.TimeStep, t0);
     }
 }

@@ -87,8 +87,10 @@ public sealed class PulseTrace : FrameworkElement
         if (_vm is not { PulsesShown: true } vm || _clock is null) return;
         double drawn = vm.State.DrawnPeriodS;
         if (!(drawn > 0)) return;
+        long t0 = BenchTimings.Begin();   // Task 14b: the bench's timing (off in a normal run)
         _recorder.Update(_clock.ElapsedS, _clock.PhaseRad(drawn), vm.CrossingPhasesRad, active: true);
         InvalidateVisual();
+        BenchTimings.End(BenchTimings.PulseTrace, t0);
     }
 
     protected override void OnRender(DrawingContext dc)

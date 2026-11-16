@@ -551,7 +551,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (e.PropertyName != nameof(TimelineViewModel.ObserverTimeS)) return;
         // Only playback ticks ease; a scrub, marker click or loop wrap is a jump. While a wheel zoom has frozen the scale
         // (ruling R-P2-9) a timeline click keeps it: only Home or a new outcome hands back to the director.
+        long t0 = BenchTimings.Begin();
         Restate(jump: !_vm.Timeline.IsPlaybackStep);
+        BenchTimings.End(BenchTimings.MainScene, t0);
     }
 
     private void Restate(bool jump = false)

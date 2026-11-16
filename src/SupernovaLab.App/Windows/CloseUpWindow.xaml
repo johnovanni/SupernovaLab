@@ -306,7 +306,7 @@
                     <StackPanel>
                         <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"
                                    Foreground="{StaticResource AccentBrush}"/>
-                        <ItemsControl ItemsSource="{Binding Readouts}" Margin="0,6,0,0">
+                        <ItemsControl ItemsSource="{Binding ReadoutViews}" Margin="0,6,0,0">
                             <ItemsControl.ItemTemplate>
                                 <StaticResource ResourceKey="ReadoutRowTemplate"/>
                             </ItemsControl.ItemTemplate>
@@ -314,7 +314,7 @@
                         <!-- Plan Task 7 (spec §4.2): the cutaway's numbers, each with its confidence and source. -->
                         <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowCutawayKey, Converter={StaticResource VisibleWhen}}">
                             <TextBlock Text="Cutaway" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
-                            <ItemsControl ItemsSource="{Binding CutawayReadouts}" ItemTemplate="{StaticResource ReadoutRowTemplate}"/>
+                            <ItemsControl ItemsSource="{Binding CutawayReadoutViews}" ItemTemplate="{StaticResource ReadoutRowTemplate}"/>
                         </StackPanel>
                         <Expander Header="Notes" Margin="0,10,0,0" IsExpanded="{Binding IsNotesExpanded, Mode=TwoWay}"
                                   Foreground="{StaticResource TextBrush}">
