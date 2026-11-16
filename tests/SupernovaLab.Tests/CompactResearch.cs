@@ -152,10 +152,39 @@ public static class CompactResearch
         public const double EhtBeamMicroArcsec = 20;
         /// <summary>§C9.1 "From Earth": 1.95 × 10⁵ times smaller than 20 µas.</summary>
         public const double TenSolarMassTimesTooSmall = 1.95e5;
+        /// <summary>§C9 App: the OGLE tooltip's exact text (Sahu et al. 2025; Lam &amp; Lu 2023; Mróz et al. 2022; Lam et al. 2022).</summary>
+        public const string OgleTooltip =
+            "OGLE-2011-BLG-0462, the only known isolated stellar-mass black hole, found by microlensing: 7.15 ± 0.83 M☉ (Sahu et al. 2025); " +
+            "other analyses give 6.0 (Lam & Lu 2023) to 7.9 M☉ (Mróz et al. 2022); an early analysis allowed 1.6–4.4 M☉ (Lam et al. 2022).";
         /// <summary>§C9.3 / R-P3-1: seen from afar the Cas A neutron star is T_s^∞ ≈ 1.4–1.5 MK (1.37–1.54 MK); the lab at 340 yr is 20–30% warm (#54).</summary>
         public const double CasAObservedFarLowMK = 1.4, CasAObservedFarHighMK = 1.5;
         /// <summary>§C9.3: the lab at 340 yr, 12 km, 1.4 M☉: 1.82 MK seen from afar.</summary>
         public const double CasALabAt340yrMK = 1.82;
+    }
+
+    /// <summary>compact.md §C8, black-hole spin (App block: all Speculative).</summary>
+    public static class C8
+    {
+        /// <summary>§C8 App table: the settled spins a* for Rotation Slow, Fast and Extreme, and any HasGrb outcome.</summary>
+        public const double Slow = 0.1, Fast = 0.5, Extreme = 0.9, Grb = 0.9;
+        /// <summary>§C8 App table: the ranges shown (Slow 0.01–0.25; Fast 0.25–0.7; Extreme and GRB 0.86–0.985).</summary>
+        public const double SlowLow = 0.01, SlowHigh = 0.25, FastLow = 0.25, FastHigh = 0.7, ExtremeLow = 0.86, ExtremeHigh = 0.985;
+        /// <summary>§C8 App: the collapsar's starting spin a₀ = 0.5 (MW99's a_init).</summary>
+        public const double CollapsarStart = 0.5;
+        /// <summary>§C8 App: the spin-up lasts 15 s (MW99's ≈ 15 s of accretion), with the 0.3 s scale of the log law.</summary>
+        public const double SpinUpS = 15, SpinUpScaleS = 0.3;
+        /// <summary>§C8 App check values of the collapsar spin-up: 0.65 at 1 s, 0.79 at 5 s, 0.86 at 10 s after t_BH (2 decimals).</summary>
+        public static readonly (double Dt, double Spin)[] SpinUpChecks = [(1, 0.65), (5, 0.79), (10, 0.86)];
+        /// <summary>§C8 App: a fallback black hole settles at 1,000 s [APPROX: "minutes to hours", log-middle].</summary>
+        public const double FallbackSettleS = 1000;
+        /// <summary>Plan ruling P3-11: the direct-collapse fade lasts 1/3 decade of source time after t_BH.</summary>
+        public const double DirectFadeDecades = 1.0 / 3;
+        /// <summary>§C8 App: the disk's outer edge, 200 km (MW99's torus); 46.7 GM/c² for the 2.9 M☉ sn1998bw hole.</summary>
+        public const double DiskOuterKm = 200, DiskOuterGm29 = 46.7;
+        /// <summary>§C8 App: the disk exists from t_BH + 1 s to t_BH + 15 s.</summary>
+        public const double DiskFromS = 1, DiskToS = 15;
+        /// <summary>§C8 observed spins: Cygnus X-1 a* &gt; 0.9985 (Zhao et al. 2021); A0620−00 0.12 ± 0.19 (Gou et al. 2010).</summary>
+        public const string CygX1 = "0.9985", A0620 = "0.12 ± 0.19";
     }
 
     /// <summary>compact.md §C5, the neutron star's layers (1.2–2.2 M☉, the lab's fixed 12 km).</summary>

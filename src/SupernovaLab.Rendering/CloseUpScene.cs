@@ -139,6 +139,12 @@ public sealed record CloseUpState
     /// </summary>
     public bool InsideStar { get; init; }
 
+    /// <summary>
+    /// Plan Task 10: the black hole now (<see cref="BlackHoleModel.At"/>: its mass, spin, settling, disk and drift); null for any other
+    /// era. <see cref="MassMsun"/> and <see cref="Spin"/> are then its drawn (stepped) mass and spin.
+    /// </summary>
+    public BlackHoleState? BlackHole { get; init; }
+
     /// <summary>Whether the core is drawn (the PreCollapse or FirstSecond era): unlensed surfaces (plan Task 9, as ruling R-P3-19).</summary>
     public bool IsCoreStage => Core is not null;
 
@@ -155,11 +161,11 @@ public sealed record CloseUpState
 /// <summary>
 /// The single source of what the Close-up draws at each moment (spec §8.2; the counterpart of <see cref="ExplosionScene"/>): a pure
 /// function of the outcome, the observer, the run number and the source time. In this build it gives the no-remnant messages
-/// (spec §2.3), a placeholder black hole (its mass, and spin 0 unless the bench's diagnostic spin is given) and (plan Task 6) the neutron
+/// (spec §2.3), the black hole (plan Task 10: its forming, settling and settled eras, spec §6, from <see cref="BlackHoleModel"/>) and (plan Task 6) the neutron
 /// star at each time (spec §4: its readouts, notes, surface colour, beams, field, light cylinder and Earth's direction). Plan Task 9:
 /// for a core collapse, the core before collapse up to 1 ms (the PreCollapse era) and its first second until
 /// <see cref="CoreCollapseHistory.StageEndS"/> (the FirstSecond era: spec §3), then the remnant (from 1 s to 1 minute a neutron star
-/// still contracts to its radius, compact §C2); the black hole's forming and settling eras come later (Task 10).
+/// still contracts to its radius, compact §C2), or the black hole from t_BH.
 /// </summary>
 public sealed class CloseUpScene
 {
@@ -172,11 +178,7 @@ public sealed class CloseUpScene
     /// <summary>Spec §2.3: no supernova, or a white dwarf (a Type Iax's bound remnant included).</summary>
     public const string WhiteDwarfMessage = "This star leaves a white dwarf. The white-dwarf close-up is not part of the lab.";
 
-    /// <summary>The black hole's note while only its mass is drawn.</summary>
-    public const string PlaceholderBlackHoleNote =
-        "The black hole is drawn with its mass only: its formation, settling and spin are not shown yet.";
-
-    /// <summary>The bench's note when it gives the placeholder black hole a spin.</summary>
+    /// <summary>The bench's note when its diagnostic spin replaces the model's settled spin.
     public const string BenchSpinNote = "Spin set by the --bench-spin diagnostic, not by the lab's model.";
 
     /// <summary>The neutron star's note while only its size is drawn.</summary>
@@ -251,9 +253,9 @@ public sealed class CloseUpScene
 
     private readonly Outcome _outcome;
     private readonly double _spin;
-    private readonly bool _isNeutronStar;
+    private readonly bool _isNeutronStar, _isBlackHole;
 
-    /// <param name="placeholderSpin">The placeholder black hole's spin (0 unless the bench's <c>--bench-spin</c> sets it).</param>
+    /// <param name="placeholderSpin">The bench's <c>--bench-spin</c> diagnostic: above 0 it replaces the black hole's settled spin.</param>
     public CloseUpScene(Outcome outcome, ObserverSetup observer, int runNumber, double placeholderSpin = 0)
     {
         _outcome = outcome ?? throw new ArgumentNullException(nameof(outcome));
@@ -262,6 +264,7 @@ public sealed class CloseUpScene
         RunNumber = runNumber;
         _spin = Math.Clamp(double.IsFinite(placeholderSpin) ? placeholderSpin : 0, 0, 0.998);
         _isNeutronStar = NeutronStarModel.At(outcome, observer, runNumber, 0) is not null;
+        _isBlackHole = BlackHoleModel.BirthOrNull(outcome) is not null && outcome.Remnant.Mass is { Value: > 0 } m && double.IsFinite(m.Value);
         _track = CoreCollapseHistory.TrackFor(outcome);
         _stageEndS = CoreCollapseHistory.StageEndS(outcome);
         _neutrinoPeak = _track is null ? double.NaN : CoreCollapseHistory.PeakNeutrinoLuminosityErgS(outcome);
@@ -336,6 +339,7 @@ public sealed class CloseUpScene
             if (!(sourceTimeS > PreCollapseEndS)) return _preCollapse ??= PreCollapse();
             if (sourceTimeS < _stageEndS) return FirstSecondAt(sourceTimeS);
         }
+        if (_isBlackHole) return BlackHoleAt(sourceTimeS);
         return _isNeutronStar ? NeutronStarAt(sourceTimeS) : _settled ??= Settled();
     }
 
@@ -349,7 +353,6 @@ public sealed class CloseUpScene
         var remnant = _outcome.Remnant;
         return remnant.Kind switch
         {
-            RemnantKind.BlackHole when remnant.Mass is { Value: > 0 } => BlackHole(remnant.Mass),
             RemnantKind.NeutronStar or RemnantKind.Magnetar when remnant.Mass is { Value: > 0 } && remnant.RadiusKm is { Value: > 0 }
                 => NeutronStar(remnant),
             RemnantKind.WhiteDwarf => NoRemnant(WhiteDwarfMessage, "White dwarf"),
@@ -362,37 +365,162 @@ public sealed class CloseUpScene
     private static CloseUpState NoRemnant(string message, string title)
         => new() { Era = CloseUpEra.None, Title = title, NoRemnantMessage = message, FrameRadiusKm = 1 };
 
-    private CloseUpState BlackHole(Quantity mass)
+    // ---- Plan Task 10: the black hole, its formation, settling and spin (spec §6.1–§6.5; compact §C8, §C9) ----
+
+    /// <summary>Spec §6.4: the formation (the first second's collapse has just put the proto-neutron star behind its horizon).</summary>
+    public const string FormingNote =
+        "Formation: the proto-neutron star has fallen behind its new horizon, in under 1 ms (O'Connor & Ott 2011), as the neutrino signal stops. A new black hole rings down within milliseconds to a smooth spinning state (the ring-down is not drawn)";
+
+    /// <summary>Spec §6.4 and ruling P3-11: the direct collapse's fade, a visual transition.</summary>
+    public const string DirectSettlingNote =
+        "Settling: the view fades from a non-spinning picture into the spinning hole over a third of a decade of time after formation (about 1 s of playback). This is a visual transition: the real ring-down takes milliseconds";
+
+    /// <summary>Spec §6.4: the collapsar's spin-up.</summary>
+    public const string CollapsarSpinUpNote =
+        "Spinning up: for about 15 s the accretion disk feeds the hole, which spins it up from about 0.5 to about 0.9 of the maximum (MacFadyen & Woosley 1999; approximate shape). The picture follows the spin as it climbs";
+
+    /// <summary>Spec §6.4: the fallback hole settles once the fallback ends (§C8).</summary>
+    public const string FallbackSettlingNote =
+        "Settling: matter falls back onto the hole for minutes to hours (MacFadyen, Woosley & Heger 2001); the view fades into the settled spinning hole by about 1,000 s (approximate), a visual transition";
+
+    /// <summary>Spec §6.4: the settled hole (with the plan's caption first).</summary>
+    public const string KerrNote =
+        "A settled black hole is set entirely by its mass and spin (a Kerr black hole): it has no other features";
+
+    /// <summary>Spec §6.1 and §6.4: what the spin changes on screen.</summary>
+    public const string SpinLooksNote =
+        "Spin shifts the shadow sideways and flattens one side (by up to about 7% seen side-on, as the camera starts); the bright photon ring at its edge, light that has looped round the hole, becomes lopsided";
+
+    /// <summary>Ruling P3-9: the overlay outline.</summary>
+    public const string ShadowEdgeNote =
+        "Dashed outline: the shadow's exact edge for this camera (Bardeen 1973's photon orbits), at full resolution whatever the light-bending detail";
+
+    /// <summary>Inconsistency #65: whose picture it is.</summary>
+    public const string CoordinateCameraNote =
+        "The picture aims each pixel along a direction in the light-bending calculation's own coordinates; close in, a real camera hovering there would see the shadow a little smaller (about 5% at the starting distance, #65). The readouts give the exact sizes seen from far away";
+
+    /// <summary>Spec §6.3: the grid and its labels (the menu's switch).</summary>
+    public const string GridNote =
+        "View ▸ Grid: a measuring aid, a latitude-longitude sphere at 50 GM/c² bent like the surroundings (its lines twist near a spinning hole: frame dragging), with the horizon, the photon orbits and the ergosphere outlined where they are, without the bending of light";
+
+    /// <summary>Spec §6.5: a direct collapse ejects nothing, so its hole is not kicked.</summary>
+    public const string NoKickNote = "Kick: none, a direct collapse ejects nothing to push the hole (the lab's outcomes §6)";
+
+    /// <summary>Spec §6.5: the momentum-scaled kick of a hole made in an explosion.</summary>
+    public const string ScaledKickNote =
+        "Kick: the neutron stars' mean kick scaled by momentum, 1.4 M☉ / M_BH (speculative); its direction is drawn from the run number (display randomness)";
+
+    private static readonly Source FromEarthSource = new(
+        "Shadow law d = 2√27 GM/(D c²) at the source's angular-diameter distance; EHT nominal resolution 20 µas (EHT Sgr A* Paper VI)",
+        "compact §C9");
+
+    /// <summary>The OGLE comparison (compact §C9 App, its exact words).</summary>
+    public const string OgleComparison =
+        "OGLE-2011-BLG-0462, the only known isolated stellar-mass black hole, found by microlensing: 7.15 ± 0.83 M☉ (Sahu et al. 2025); " +
+        "other analyses give 6.0 (Lam & Lu 2023) to 7.9 M☉ (Mróz et al. 2022); an early analysis allowed 1.6–4.4 M☉ (Lam et al. 2022).";
+
+    /// <summary>Spec §6.4 and §C8: the spin's checks against observed holes.</summary>
+    public const string SpinChecks =
+        "Speculative: the lab has no birth-spin model, so the spin comes from the Rotation input (compact §C8). Measured spins: Cygnus X-1 above 0.9985 " +
+        "(Zhao et al. 2021); A0620−00 0.12 ± 0.19 (Gou et al. 2010); LIGO–Virgo–KAGRA's GWTC-3: half the merging holes below 0.25, most below 0.4 " +
+        "(Abbott et al. 2023). Single stars that shed their angular momentum give about 0.01 (Fuller & Ma 2019).";
+
+    private CloseUpState? _settledBlackHole;
+
+    /// <summary>
+    /// Plan Task 10: the black hole at this time (<see cref="BlackHoleModel.At"/>): the forming, settling and settled eras (ruling P3-12),
+    /// the readouts of spec §6.1 (mass, horizon, shadow, spin, kick and the size from Earth), the notes and the stage caption. The lensing
+    /// pass draws the stepped <see cref="BlackHoleState.DrawnMassMsun"/> and <see cref="BlackHoleState.DrawnSpin"/>.
+    /// </summary>
+    private CloseUpState BlackHoleAt(double sourceTimeS)
     {
-        double rgKm = BlackHoleOptics.GravitationalRadiusCm(mass.Value) / 1e5;
-        double horizonKm = 2 * BlackHoleOptics.HorizonRadius(_spin) * rgKm;
-        // The shadow's mean diameter (exactly 2√27 GM/c² without spin), in km: the apparent size at 1 km.
-        double shadowKm = BlackHoleOptics.ApparentShadowDiameterRad(mass.Value, 1e5, _spin);
-        var readouts = new List<Readout>
+        var o = _outcome;
+        double t0 = BlackHoleModel.SettleStartS(o);
+        var bh = BlackHoleModel.At(o, Observer, RunNumber, Math.Max(sourceTimeS, t0), _spin > 0 ? _spin : null)!;
+        bool still = !(o.Remnant.KickKmS is { Value: > 0 });   // without a kick a settled hole is the same at every time
+        if (bh.IsSettled && still && _settledBlackHole is { } cached) return cached;
+
+        var mass = o.Remnant.Mass!;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        double m = bh.MassMsun, a = bh.Spin;
+        double rgKm = BlackHoleOptics.GravitationalRadiusCm(m) / 1e5;
+        bool growing = bh.SettledFraction < 1 && bh.FinalMassMsun > bh.FormationMassMsun;
+        var massQ = growing ? new Quantity(m, "M☉", Confidence.Speculative, BlackHoleModel.GrowthSource) : mass;
+        string massTip = (growing
+            ? $"Growing as the star falls in: drawn from {UnitFormat.Mass(bh.FormationMassMsun)} at formation (the heaviest neutron star) to the " +
+              $"outcome's {UnitFormat.Mass(bh.FinalMassMsun)}; the lab has no accretion history, so the growth's timing is schematic (#63). "
+            : "") + OgleComparison;
+        var horizon = new Quantity(2 * BlackHoleOptics.HorizonRadius(a) * rgKm, "km", Worse(mass.Confidence, Confidence.Speculative), ShadowSource);
+        var shadow = new Quantity(BlackHoleOptics.ApparentShadowDiameterRad(m, 1e5, a), "km", mass.Confidence, ShadowSource);
+        var kick = o.Remnant.KickKmS ?? new Quantity(0, "km/s", Confidence.Speculative, new Source("The outcome gives no kick", "spec §6.5"));
+        var drift = new Quantity(bh.OffsetCm.Length, "cm", kick.Confidence, DriftSource);
+        double dA = Observer.LuminosityDistanceCm / Math.Pow(1 + Observer.Redshift, 2);
+        var fromEarth = new Quantity(BlackHoleModel.ShadowNanoArcsec(m, dA), "nano-arcseconds", mass.Confidence, FromEarthSource);
+        string settledText = a.ToString("0.###", inv);
+        var readouts = new[]
         {
-            new("Mass", mass),
-            new("Horizon diameter", new Quantity(horizonKm, "km", mass.Confidence, ShadowSource),
-                "Twice the event horizon's radius. The horizon itself is never visible."),
-            new("Shadow diameter", new Quantity(shadowKm, "km", mass.Confidence, ShadowSource),
-                "The dark region where light falls in: about 2.6 times the horizon's size for a non-spinning hole."),
+            new Readout("Mass", massQ, massTip),
+            new Readout("Horizon", horizon,
+                "Diameter: twice the horizon's radius r₊ = GM/c² (1 + √(1 − a²)), exact for the hole's mass and spin. The horizon itself is never visible; with the grid on, its outline is labelled"),
+            new Readout("Shadow", shadow,
+                "Diameter of the dark region where light falls in, exact for the mass and spin (Bardeen 1973): about 2.6 times the horizon's size without spin; with spin, its mean seen side-on"),
+            new Readout("Spin", bh.SpinQuantity, (bh.Birth == BlackHoleBirth.Collapsar && !bh.IsSettled
+                ? $"Spinning up by accretion towards {BlackHoleModel.GrbSpin.ToString("0.0", inv)} (MacFadyen & Woosley 1999). " : "")
+                + $"a* = Jc/GM², the fraction of the most a hole can spin. " + SpinChecks),
+            new Readout("Kick", kick, (bh.Birth == BlackHoleBirth.DirectCollapse ? NoKickNote : ScaledKickNote) +
+                ". The second number is the distance from the explosion's centre.", drift),
+            new Readout("From Earth", fromEarth, BlackHoleModel.FromEarthText(m, dA) +
+                ". This is why the view says \"" + NoTelescopeNote + "\""),
         };
-        var notes = new List<string> { SurroundingsNote, PlaceholderBlackHoleNote };
-        if (_spin > 0)
+
+        var (era, title, caption) = bh.Forming
+            ? (CloseUpEra.BlackHoleForming, "Black hole forming", "Forming: the proto-neutron star falls behind its horizon")
+            : bh.IsSettled
+                ? (CloseUpEra.BlackHole, "Black hole", BlackHoleModel.SettledCaption)
+                : bh.Birth == BlackHoleBirth.Collapsar
+                    ? (CloseUpEra.BlackHoleSettling, "Black hole spinning up",
+                        $"Spinning up by accretion: spin {a.ToString("0.00", inv)}, rising to {BlackHoleModel.SettledSpin(o).ToString("0.0", inv)}")
+                    : (CloseUpEra.BlackHoleSettling, "Black hole settling", bh.Birth == BlackHoleBirth.Fallback
+                        ? "Settling as the fallback ends (visual transition)"
+                        : "Settling into a spinning black hole (visual transition)");
+
+        var notes = new List<string>();
+        if (bh.IsSettled) notes.AddRange(new[] { BlackHoleModel.SettledCaption, KerrNote });
+        else if (bh.Forming) notes.Add(FormingNote);
+        if (!bh.IsSettled)
+            notes.Add(bh.Birth switch
+            {
+                BlackHoleBirth.Collapsar => CollapsarSpinUpNote,
+                BlackHoleBirth.Fallback => FallbackSettlingNote,
+                _ => DirectSettlingNote,
+            });
+        notes.Add($"Spin {settledText} of the maximum (speculative: from the Rotation input, compact §C8). " + SpinLooksNote);
+        if (growing)
+            notes.Add($"The hole is drawn growing from {UnitFormat.Mass(bh.FormationMassMsun)} at formation to the outcome's " +
+                      $"{UnitFormat.Mass(bh.FinalMassMsun)} as the star falls in; the lab has no accretion history, so the timing is schematic (#63)");
+        notes.Add(ShadowEdgeNote);
+        notes.Add(CoordinateCameraNote);
+        notes.Add(GridNote);
+        notes.Add(bh.Birth == BlackHoleBirth.DirectCollapse ? NoKickNote : ScaledKickNote);
+        notes.Add(SurroundingsNote);
+        if (_spin > 0) notes.Add(BenchSpinNote);
+
+        double drawnShadowKm = BlackHoleOptics.ApparentShadowDiameterRad(bh.DrawnMassMsun, 1e5, bh.DrawnSpin);
+        var state = new CloseUpState
         {
-            readouts.Add(new("Spin", new Quantity(_spin, "", Confidence.Speculative,
-                new Source("Diagnostic (--bench-spin)", "plan Task 4"))));
-            notes.Add(BenchSpinNote);
-        }
-        return new CloseUpState
-        {
-            Era = CloseUpEra.BlackHole,
-            Title = "Black hole",
+            Era = era,
+            Title = title,
             Readouts = readouts,
             Notes = notes,
-            FrameRadiusKm = BlackHoleFrameShadowRadii * shadowKm / 2,
-            MassMsun = mass.Value,
-            Spin = _spin,
+            FrameRadiusKm = BlackHoleFrameShadowRadii * drawnShadowKm / 2,
+            MassMsun = bh.DrawnMassMsun,
+            Spin = bh.DrawnSpin,
+            BlackHole = bh,
+            StageLabel = caption,
+            StageKey = new[] { "┄ the shadow's exact edge (computed for this camera)", "View ▸ Grid: the measuring grid, horizon, photon orbits, ergosphere" },
         };
+        if (bh.IsSettled && still) _settledBlackHole = state;
+        return state;
     }
 
     /// <summary>

@@ -286,11 +286,18 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         if (WantsDenseCsm(entry)) suffix += "-densecsm";
         foreach (string name in LayoutNames)
             if (HasFlag(entry, "+" + name)) suffix += "-" + name;
+        if (WantsGrid(entry)) suffix += "-grid";
         return WantsCutaway(entry) ? suffix + "-cutaway" : suffix;
     }
 
     /// <summary>A preset entry's suffix that turns the 3D view's wedge cutaway on for that entry only (Task 8).</summary>
     public const string CutawayFlag = "+cutaway";
+
+    /// <summary>Plan Task 10: a preset entry's suffix that turns the Close-up's grid on for that entry only ("n6946bh1@10+grid").</summary>
+    public const string GridFlag = "+grid";
+
+    /// <summary>True for an entry with <see cref="GridFlag"/> among its options.</summary>
+    public static bool WantsGrid(string? entry) => HasFlag(entry, GridFlag);
 
     /// <summary>True for an entry with <see cref="CutawayFlag"/> among its options, e.g. "default@946080000+cutaway".</summary>
     public static bool WantsCutaway(string? entry) => HasFlag(entry, CutawayFlag);
@@ -369,7 +376,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     /// </summary>
     public const string TourFlag = "+tour";
 
-    private static readonly string[] KnownFlags = new[] { DenseCsmFlag, CutawayFlag, TourFlag }.Concat(LayoutNames.Select(n => "+" + n)).ToArray();
+    private static readonly string[] KnownFlags = new[] { DenseCsmFlag, CutawayFlag, TourFlag, GridFlag }.Concat(LayoutNames.Select(n => "+" + n)).ToArray();
 
     /// <summary>True for an entry with <see cref="TourFlag"/> among its options, e.g. "sn1987a+tour".</summary>
     public static bool WantsTour(string? entry) => HasFlag(entry, TourFlag);
@@ -443,6 +450,7 @@ public static class SnapshotRenderer
                 if (SnapshotRequest.WantsDenseCsm(entry)) vm.Lab.DenseCsm = true;
                 vm.Layout.Apply(request.LayoutFor(entry));   // Task 15: never the owner's layout.json
                 if ((main as MainWindow)?.Scene is { } scene) scene.IsCutaway = request.Cutaway || SnapshotRequest.WantsCutaway(entry);
+                if (windows.CloseUpWindow?.DataContext is CloseUpViewModel gridVm) gridVm.ShowGrid = SnapshotRequest.WantsGrid(entry);   // plan Task 10
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = SnapshotRequest.FileSuffix(entry);
                 if ((main as MainWindow)?.Scene is { } drift)   // plan Task 6: where the main view's marker is (spec §7.2)
@@ -1082,6 +1090,14 @@ public static class SnapshotRenderer
             log.Add($"closeup{suffix}: after {k0} composition frames shown {Shown(scene)}; {RayLog(scene)}; host drawing every frame {scene.HostAnimating}; {cvm.LightBendingNote}");
             scene.SetLevel(LensingLevel.Full);
             cvm.LensingDetail = detail;
+        }
+        // Plan Task 10: the black hole's era, drawn mass and spin, settling, grid and the view's labels.
+        if (w.DataContext is CloseUpViewModel bvm && bvm.State.BlackHole is { } bh)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            log.Add($"closeup{suffix}: black hole {bvm.State.Era}, {bvm.State.StageLabel}; drawn {bh.DrawnMassMsun.ToString("0.###", inv)} M☉, " +
+                    $"spin {bh.DrawnSpin.ToString("0.###", inv)} (hole {bh.Spin.ToString("0.###", inv)}), settled {bh.SettledFraction.ToString("0.###", inv)}; " +
+                    $"grid {bvm.ShowGrid}; labels {string.Join(", ", w.Scene?.ViewLabels.Select(l => l.Text) ?? Array.Empty<string>())}");
         }
         log.Add(await w.ShowFrameForSnapshotAsync());
         await NextFrame(w);

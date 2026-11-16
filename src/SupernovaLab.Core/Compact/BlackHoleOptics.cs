@@ -18,8 +18,14 @@ public enum RayFate
 /// <summary>
 /// The end of a traced ray, in Kerr–Schild Cartesian coordinates (GM/c²). <paramref name="ExitDirection"/> is the unit
 /// coordinate velocity dx/dλ there (towards where the light came from); <paramref name="Steps"/> counts RK4 steps.
+/// Plan Task 10 (ruling P3-8): <see cref="GridCrossing"/> is where the ray first crossed the grid sphere r = 50 outward (linear between
+/// the two steps either side), or null.
 /// </summary>
-public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 ExitDirection, int Steps);
+public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 ExitDirection, int Steps)
+{
+    /// <summary>Where the ray first crossed r = <see cref="BlackHoleOptics.GridRadius"/> outward, or null (ruling P3-8).</summary>
+    public Vec3? GridCrossing { get; init; }
+}
 
 /// <summary>
 /// Black-hole optics (spec §6.6, criterion 2; formulas and check values from compact.md §C7). Lengths are in M = GM/c²
@@ -70,6 +76,9 @@ public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 Ex
 /// the start of the step. At most 400 steps. No allocation in the loop.</item>
 /// <item><b>Exit.</b> ExitPosition = x at the stop; ExitDirection = normalize(dx/dλ) there (the k₁ derivative of the
 /// would-be next step).</item>
+/// <item><b>Grid</b> (plan Task 10, ruling P3-8). The first outward crossing of the sphere r = <see cref="GridRadius"/> (50), the
+/// point linear between the two steps either side (<see cref="RayResult.GridCrossing"/>); the shader draws the grid lines there
+/// (<see cref="GridLineDistanceDeg"/>).</item>
 /// </list>
 /// <para>
 /// Budget: a ray from a camera at distance D travels about 2.2 D (in, then out to R_esc = 1.2 D) at h = 2.0, plus about
@@ -142,13 +151,24 @@ public static class BlackHoleOptics
     /// a = 1 the prograde orbit sits on r = 1, where ξ is 0/0).
     /// </summary>
     public static IReadOnlyList<(double Alpha, double Beta)> KerrShadowOutline(double spin, double inclinationRad, int points)
+        => Outline(spin, inclinationRad, points, null);
+
+    /// <summary>
+    /// <see cref="KerrShadowOutline"/>, also filling <paramref name="orbitRadii"/> (when given) with each point's spherical photon
+    /// orbit radius r (3 for the a → 0 circle).
+    /// </summary>
+    private static List<(double Alpha, double Beta)> Outline(double spin, double inclinationRad, int points, List<double>? orbitRadii)
     {
         var result = new List<(double Alpha, double Beta)>(Math.Max(points, 0));
         if (points <= 0) return result;
         double a = Math.Min(Math.Abs(spin), 0.9999);
         double sinI = Math.Sin(inclinationRad), cosI = Math.Cos(inclinationRad);
 
-        if (a < 1e-4) return Circle(SchwarzschildShadowRadius, points, result);
+        if (a < 1e-4)
+        {
+            for (int k = 0; k < points; k++) orbitRadii?.Add(PhotonSphereRadius);
+            return Circle(SchwarzschildShadowRadius, points, result);
+        }
 
         double rPro = 2 * (1 + Math.Cos(2.0 / 3 * Math.Acos(-a)));   // r_ph+, prograde
         double rRetro = 2 * (1 + Math.Cos(2.0 / 3 * Math.Acos(a)));  // r_ph−, retrograde
@@ -163,6 +183,7 @@ public static class BlackHoleOptics
                 if (Xi(a, mid) > 0) lo = mid; else hi = mid;
             }
             double r0 = 0.5 * (lo + hi);
+            for (int k = 0; k < points; k++) orbitRadii?.Add(r0);
             return Circle(Math.Sqrt(Eta(a, r0) + a * a), points, result);
         }
 
@@ -186,7 +207,7 @@ public static class BlackHoleOptics
                 double r = rPro + (rRetro - rPro) * k / scan;
                 if (Beta2(r) > best) { best = Beta2(r); rBest = r; }
             }
-            for (int k = 0; k < points; k++) result.Add((-Xi(a, rBest) / sinI, 0));
+            for (int k = 0; k < points; k++) { result.Add((-Xi(a, rBest) / sinI, 0)); orbitRadii?.Add(rBest); }
             return result;
         }
         double r1 = rPro + (rRetro - rPro) * first / scan;
@@ -202,8 +223,95 @@ public static class BlackHoleOptics
             double r = r1 + (r2 - r1) * 0.5 * (1 - Math.Cos(t));
             double beta = Math.Sqrt(Math.Max(0, Beta2(r)));
             result.Add((-Xi(a, r) / sinI, upper ? beta : -beta));
+            orbitRadii?.Add(r);
         }
         return result;
+    }
+
+    /// <summary>
+    /// Plan Task 10 (ruling P3-9's exact outline): the shadow's edge as the Close-up's camera sees it, at its finite distance. Returns
+    /// <paramref name="points"/> unit directions at <paramref name="camera"/> (Kerr–Schild Cartesian, GM/c², the tracer's chart:
+    /// ruling R-P3-8) in the tracer's convention: a pixel whose direction is one of these lies exactly on the edge
+    /// <see cref="TraceRay"/> draws between Captured and escaping rays. Empty inside the horizon.
+    /// <para>Each direction is the ray that, traced back, winds onto one of Bardeen's spherical photon orbits, the ones of
+    /// <see cref="KerrShadowOutline"/> at the camera's own inclination i = θ (in the same order, so from far away the directions turn
+    /// into that outline's α, β). In the tracer's time-reversed spacetime (spin a' = −a, ingoing Kerr–Schild coordinates with
+    /// x + iy = (r + i a') sin θ e^{iφ̃}, z = r cos θ; class notes item 2) the orbit's constants are ξ' = −ξ = α sin i, η' = η =
+    /// β² − a² cos² i + ξ² cot² i, and at the camera the Boyer–Lindquist momentum is p_t = −1, p_φ = ξ', p_θ = −β (= ∓√Θ(θ): β up the screen is towards −θ) and
+    /// p_r = σ √R / Δ, R = (r² + a² − a'ξ')² − Δ (η' + (ξ' − a')²), Δ = r² − 2r + a², with σ = −1 (inward) when the camera is outside
+    /// the orbit and +1 inside it. Ingoing Kerr–Schild time and azimuth add (2r/Δ) dr and (a'/Δ) dr, so the covariant radial
+    /// momentum there is p̃_r = (σ√R + 2r − a'ξ')/Δ, finite at the horizon; p̃_θ and p̃_φ are unchanged. The Cartesian p_i solve
+    /// Σ_i (∂x^i/∂q) p_i = p̃_q for q = r, θ, φ̃, and the direction is that of dx^i/dλ = p_i − f L l_i (L = 1 + l·p), exactly as
+    /// the tracer starts a ray (it inverts the same relation). <c>ShadowEdgeDirections_MatchTheTracersEdge_FromACloseCamera</c>
+    /// checks every direction against the tracer's own edge.</para>
+    /// <para>A camera within 0.002 rad of the spin axis is handled by computing the edge 0.0025 rad off the axis and turning it onto
+    /// the camera (the outline there is a circle to that accuracy); the Close-up's camera never comes closer than 0.1° to the axis.
+    /// Spin is capped at 0.9999, as in <see cref="KerrShadowOutline"/>.</para>
+    /// </summary>
+    public static IReadOnlyList<Vec3> ShadowEdgeDirections(double spin, Vec3 camera, int points)
+    {
+        var result = new List<Vec3>(Math.Max(points, 0));
+        double a = Math.Min(Math.Abs(spin), 0.9999);
+        double r = KerrSchildR(a * a, camera.X, camera.Y, camera.Z);
+        if (points <= 0 || !double.IsFinite(r) || !(r > HorizonRadius(a) + CaptureMargin)) return result;
+        double cosT = Math.Clamp(camera.Z / r, -1, 1);
+        double sinT = Math.Sqrt(Math.Max(0, 1 - cosT * cosT));
+        const double nearAxis = 0.002;
+        if (sinT < nearAxis)
+        {
+            // Off the axis by 0.002 rad in the camera's own meridian (or the x-z plane), then turned back onto the camera.
+            double phi = Math.Abs(camera.X) + Math.Abs(camera.Y) > 0 ? Math.Atan2(camera.Y, camera.X) : 0;
+            double t = cosT >= 0 ? 1.25 * nearAxis : Math.PI - 1.25 * nearAxis;   // safely past the threshold
+            var moved = camera.Length * new Vec3(Math.Sin(t) * Math.Cos(phi), Math.Sin(t) * Math.Sin(phi), Math.Cos(t));
+            foreach (var d in ShadowEdgeDirections(a, moved, points)) result.Add(Turn(d, moved.Normalized(), camera.Normalized()));
+            return result;
+        }
+
+        double ap = -a;   // the tracer's metric spin (time reversal)
+        double inc = Math.Acos(cosT);
+        var radii = new List<double>(points);
+        var outline = Outline(a, inc, points, radii);
+        double sinI = Math.Sin(inc), cot2 = cosT * cosT / (sinT * sinT);
+
+        // The camera's azimuth in the chart: (x + iy) / ((r + i a') sin θ) = e^{iφ̃}.
+        double s2 = (r * r + ap * ap) * sinT;
+        double cosP = (camera.X * r + camera.Y * ap) / s2, sinP = (camera.Y * r - camera.X * ap) / s2;
+        var jr = new Vec3(sinT * cosP, sinT * sinP, cosT);
+        var jt = new Vec3(cosT * (r * cosP - ap * sinP), cosT * (r * sinP + ap * cosP), -r * sinT);
+        var jp = new Vec3(-camera.Y, camera.X, 0);
+        Vec3 ct = jt.Cross(jp), cp = jp.Cross(jr), cr = jr.Cross(jt);
+        double det = jr.Dot(ct);
+        MetricParts(ap, camera.X, camera.Y, camera.Z, out _, out double f, out double lx, out double ly, out double lz);
+        var l = new Vec3(lx, ly, lz);
+        double delta = r * r - 2 * r + a * a;
+
+        for (int k = 0; k < outline.Count; k++)
+        {
+            var (alpha, beta) = outline[k];
+            double xi = -alpha * sinI;
+            double eta = beta * beta - a * a * cosT * cosT + xi * xi * cot2;
+            double xiP = -xi;
+            double w = r * r + a * a - ap * xiP, v = xiP - ap;
+            double bigR = Math.Max(0, w * w - delta * (eta + v * v));
+            double sigma = r > radii[k] ? -1 : 1;
+            double pr = (sigma * Math.Sqrt(bigR) + 2 * r - ap * xiP) / delta;
+            var p = (pr * ct - beta * cp + xiP * cr) * (1 / det);   // p_θ = −β: β > 0 is towards +z on the screen, against θ
+            double bigL = 1 + l.Dot(p);
+            var dx = p - f * bigL * l;
+            var d = dx.Normalized();
+            if (double.IsFinite(d.X) && double.IsFinite(d.Y) && double.IsFinite(d.Z) && d.Length > 0.5) result.Add(d);
+        }
+        return result;
+    }
+
+    /// <summary>Turns <paramref name="v"/> by the rotation that takes unit <paramref name="from"/> onto unit <paramref name="to"/> (Rodrigues).</summary>
+    private static Vec3 Turn(Vec3 v, Vec3 from, Vec3 to)
+    {
+        var axis = from.Cross(to);
+        double s = axis.Length, c = from.Dot(to);
+        if (s < 1e-15) return c > 0 ? v : -v;
+        var k = axis * (1 / s);
+        return (v * c + k.Cross(v) * s + k * (k.Dot(v) * (1 - c))).Normalized();
     }
 
     /// <summary>The escape radius a caller passes for a camera at this distance (GM/c²): max(60, 1.2 D) (ruling P3-7).</summary>
@@ -253,10 +361,18 @@ public static class BlackHoleOptics
         if (!InitialMomentum(a, x, y, z, d, out double px, out double py, out double pz))
             return new(RayFate.Captured, cameraPosition, d, 0);
 
+        // Plan Task 10 (ruling P3-8): the first outward crossing of the grid sphere, between the previous point and this one.
+        double rPrev = -1, xPrev = x, yPrev = y, zPrev = z;
+        Vec3? grid = null;
         for (int steps = 0; ; steps++)
         {
             Derivatives(a, x, y, z, px, py, pz, out double k1x, out double k1y, out double k1z,
                         out double k1px, out double k1py, out double k1pz, out r);
+            if (grid is null && rPrev >= 0 && rPrev < GridRadius && r >= GridRadius)
+            {
+                double u = (GridRadius - rPrev) / (r - rPrev);
+                grid = new Vec3(xPrev + u * (x - xPrev), yPrev + u * (y - yPrev), zPrev + u * (z - zPrev));
+            }
             RayFate fate;
             if (surfaceRadius > 0 && r < surfaceRadius) fate = RayFate.HitSurface;
             else if (r < rCapture) fate = RayFate.Captured;
@@ -264,12 +380,34 @@ public static class BlackHoleOptics
             else if (steps >= maxSteps) fate = RayFate.StepLimit;
             else
             {
+                (rPrev, xPrev, yPrev, zPrev) = (r, x, y, z);
                 Rk4Step(a, StepSize(r, rPlus), ref x, ref y, ref z, ref px, ref py, ref pz,
                         k1x, k1y, k1z, k1px, k1py, k1pz);
                 continue;
             }
-            return new(fate, new Vec3(x, y, z), new Vec3(k1x, k1y, k1z).Normalized(), steps);
+            return new(fate, new Vec3(x, y, z), new Vec3(k1x, k1y, k1z).Normalized(), steps) { GridCrossing = grid };
         }
+    }
+
+    /// <summary>Ruling P3-8: the grid sphere's radius (GM/c²) and its lines' spacing in latitude and longitude (degrees).</summary>
+    public const double GridRadius = 50, GridStepDeg = 10;
+
+    /// <summary>
+    /// Ruling P3-8: how far a point on the grid sphere is from the nearest latitude line (in degrees of the polar angle θ, from the spin
+    /// axis) and from the nearest longitude line (in degrees of the chart's azimuth φ), both every <see cref="GridStepDeg"/>. lensing.frag
+    /// mirrors it and turns the distances into lines a pixel or so wide.
+    /// </summary>
+    public static (double LatitudeDeg, double LongitudeDeg) GridLineDistanceDeg(Vec3 point)
+    {
+        double r = point.Length;
+        double theta = r > 0 ? Math.Acos(Math.Clamp(point.Z / r, -1, 1)) * 180 / Math.PI : 90;
+        double phi = Math.Atan2(point.Y, point.X) * 180 / Math.PI;
+        static double ToLine(double deg)
+        {
+            double m = deg - GridStepDeg * Math.Floor(deg / GridStepDeg);   // 0 to 10
+            return Math.Min(m, GridStepDeg - m);
+        }
+        return (ToLine(theta), ToLine(phi));
     }
 
     /// <summary>

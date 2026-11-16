@@ -19,7 +19,7 @@ namespace SupernovaLab.App.Controllers;
 /// </summary>
 public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, EnvironmentCapture? Environment = null,
     ExplosionPainter? Painter = null, RingRenderer? Rings = null, GpuTimer? Timer = null, NeutronStarRenderer? NeutronStar = null,
-    NeutronStarCutawayRenderer? Cutaway = null, CoreCollapseRenderer? Core = null)
+    NeutronStarCutawayRenderer? Cutaway = null, CoreCollapseRenderer? Core = null, LensOverlayRenderer? Overlay = null)
 {
     /// <summary>The real objects (call with the GL context current).</summary>
     public static CloseUpGpu Create()
@@ -32,7 +32,8 @@ public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, E
         var neutronStar = new NeutronStarRenderer();
         var cutaway = new NeutronStarCutawayRenderer();
         var core = new CoreCollapseRenderer();
-        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer, neutronStar, cutaway, core);
+        var overlay = new LensOverlayRenderer();
+        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer, neutronStar, cutaway, core, overlay);
     }
 }
 /// <summary>
@@ -139,6 +140,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private NeutronStarRenderer? _neutronStar;
     private NeutronStarCutawayRenderer? _cutawayRenderer;
     private CoreCollapseRenderer? _coreRenderer;
+    private LensOverlayRenderer? _overlay;
 
     // Plan Task 9: the infalling matter's fall phase (cycles, wrapped to [0, 1)), accumulated frame by frame so a change of the shown
     // slow-down never makes the particles jump (as ruling R-P3-18's beam clock), and the wall time of the last core frame.
@@ -668,6 +670,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         _neutronStar = gpu.NeutronStar;
         _cutawayRenderer = gpu.Cutaway;
         _coreRenderer = gpu.Core;
+        _overlay = gpu.Overlay;
         ResetFailures();
         _planner.Invalidate();
         _uploadEnvParticles = true;
@@ -738,6 +741,14 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             _linesFrame = (viewportPx, state, phase, occluder, gain);
             lines = _drawLinesNow ??= DrawLinesNow;
             _cutawayFrame = CutawayDrawn(state) ? state.Cutaway : null;
+        }
+        // Plan Task 10: a black hole's overlay (the shadow's exact edge; with the grid, the horizon, photon orbits and ergosphere), after
+        // the bloom as the neutron star's lines are.
+        if (_overlay is not null && state.BlackHole is not null && state.IsLensed && viewportPx.Width > 0 && viewportPx.Height > 0)
+        {
+            _linesFrame = (viewportPx, state, 0, default, OverlayGain);
+            _cutawayFrame = null;
+            lines = _drawLinesNow ??= DrawLinesNow;
         }
         _hdr?.End(_exposure, BloomStrength, lines);
         if (_hdr is null) lines?.Invoke();
@@ -848,6 +859,11 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private void DrawLinesNow()
     {
         var (viewport, state, phase, occluder, gain) = _linesFrame;
+        if (state.BlackHole is not null)
+        {
+            _overlay?.Render(Camera, viewport, state, _vm.ShowGrid, _vm.ShowLabels, gain);
+            return;
+        }
         if (_cutawayFrame is { } cutaway && _cutawayRenderer is not null)
             _cutawayRenderer.Render(Camera, viewport, cutaway, ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure),
                 c => ToneMappedSurface(c, HdrEnabled, _exposure));
@@ -894,7 +910,24 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             new Vector2((float)(tanY * aspect), (float)tanY), (float)BlackHoleOptics.EscapeRadiusFor(eye.Length),
             (float)(state.SurfaceRadiusKm * UnitCm / rgCm),
             ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure), _vm.ShowGrid,
-            (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star);
+            (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star,
+            GridLineColor(HdrEnabled, _exposure));
+    }
+
+    /// <summary>[Schematic] Plan Task 10: the grid lines' colour (a pale teal, unlike the warm surroundings), sRGB.</summary>
+    public static readonly (float R, float G, float B) GridSrgb = (0.45f, 0.85f, 0.8f);
+
+    /// <summary>[Presentation] The grid's level ÷ the exposure, as <see cref="OverlayLevel"/>: it reads whatever the surroundings' brightness. Task 10's
+    /// launch: at 0.5 (and lines 1.5 px wide) the lines and their bloom dominated the view, so 0.22 and about 1 px (not seen in a launch).</summary>
+    public const float GridLevel = 0.22f;
+
+    /// <summary>The grid lines' colour for the lensing pass: through the HDR target linearised at <see cref="GridLevel"/> ÷ the exposure.</summary>
+    public static Vector3 GridLineColor(bool hdr, float exposure)
+    {
+        if (!hdr) return new Vector3(GridSrgb.R, GridSrgb.G, GridSrgb.B);
+        static float Linear(float c) => c <= 0.04045f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
+        float k = exposure > 0 ? GridLevel / exposure : GridLevel;
+        return new Vector3(Linear(GridSrgb.R), Linear(GridSrgb.G), Linear(GridSrgb.B)) * k;
     }
 
     /// <summary>
@@ -952,7 +985,9 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         double unit = double.IsFinite(s.FrameRadiusCm) && s.FrameRadiusCm > 0 ? s.FrameRadiusCm : 1e15;
         // Ruling P3-6 and plan Task 6: seen from the remnant, where the kick has carried it (spec §2.2: the camera moves with it).
         var at = new Vector3d(s.RemnantOffsetCm.X, s.RemnantOffsetCm.Y, s.RemnantOffsetCm.Z) / unit;
-        _environment.Capture(at, (camera, size) => _painter.Paint(camera, size, 1, s, unit));
+        // Plan Task 10 (spec §6.2): without the wind's schematic haze. It stands for unlit gas round the star; seen from the remnant,
+        // inside it, it filled the whole sky with a pale grey wash (Task 10's launch: NGC 6946-BH1 at 1.2–10 s).
+        _environment.Capture(at, (camera, size) => _painter.Paint(camera, size, 1, s, unit, windHaze: false));
         _exposure = s.Exposure;
         (_envLogT, _envOutcome, _envObserver, _envRun, _envWallS) = (logT, main.CurrentOutcome, main.CurrentObserver, main.RunNumber, now);
     }
@@ -1013,6 +1048,21 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private void UpdateViewLabels()
     {
         var s = _vm.State;
+        if (_viewDip.Width > 0 && _viewDip.Height > 0 && _vm.ShowLabels && s.BlackHole is not null && s.IsLensed)
+        {
+            // Plan Task 10 (spec §6.3): with the grid on, the horizon, the photon sphere (or orbits) and the ergosphere are labelled.
+            var bhLabels = new List<RingLabel>();
+            if (_vm.ShowGrid)
+            {
+                var (right, _) = Camera.ScreenAxes();
+                var across = LensOverlay.Across(Camera.Backward, right);
+                foreach (var label in LensOverlay.Labels(s.Spin, across, Camera.Backward, s.GravitationalRadiusKm))
+                    if (ProjectDip(label.AtKm) is { } at)   // a label on the left ends at its leader (about 6.5 DIP a character)
+                        bhLabels.Add(new RingLabel(label.Text, label.LeftOfEnd ? Math.Max(0, at.X - 20 - 6.5 * label.Text.Length) : at.X, at.Y, 1));
+            }
+            if (!bhLabels.SequenceEqual(_viewLabels)) ViewLabels = bhLabels;
+            return;
+        }
         if (!(_viewDip.Width > 0) || !(_viewDip.Height > 0) || !_vm.ShowLabels || s.NeutronStar is null || !s.IsLensed)
         {
             if (_viewLabels.Count > 0) ViewLabels = Array.Empty<RingLabel>();
@@ -1136,6 +1186,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
                 {
                     _gpuTimer?.Dispose();
                     _coreRenderer?.Dispose();
+                    _overlay?.Dispose();
                     _cutawayRenderer?.Dispose();
                     _neutronStar?.Dispose();
                     _lensing?.Dispose();
@@ -1155,6 +1206,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         _neutronStar = null;
         _cutawayRenderer = null;
         _coreRenderer = null;
+        _overlay = null;
         _lensing = null;
         _rings = null;
         _painter = null;

@@ -324,4 +324,16 @@ public class SnapshotRequestTests
     [InlineData("--bench-camera", "spin")]
     public void BadBenchDetailOrCamera_Throws(string option, string value)
         => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", option, value }));
+
+    /// <summary>Plan Task 10: "+grid" turns the Close-up's grid on for one entry; it is stripped from the id and named in the file.</summary>
+    [Fact]
+    public void GridFlag_TurnsTheCloseUpGridOnForThatEntry()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "n6946bh1@10+grid,sn1998bw@10", "--window", "closeup" })!;
+        Assert.True(SnapshotRequest.WantsGrid(r.PresetIds[0]));
+        Assert.False(SnapshotRequest.WantsGrid(r.PresetIds[1]));
+        Assert.Equal(("n6946bh1", (double?)10), SnapshotRequest.SplitPreset(r.PresetIds[0]));
+        Assert.Equal("-n6946bh1-t10-grid", SnapshotRequest.FileSuffix(r.PresetIds[0]));
+        Assert.Equal("-sn1998bw-t10-grid-cutaway", SnapshotRequest.FileSuffix("sn1998bw@10+grid+cutaway"));
+    }
 }

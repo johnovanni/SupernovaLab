@@ -40,15 +40,16 @@ public sealed class ExplosionPainter : IDisposable
     /// <summary>
     /// Draws the state's matter, in scene units of <paramref name="unit"/> cm, with the wedge cutaway's quarter dropped from the star
     /// (<paramref name="starCut"/>), the particles (<paramref name="particleCut"/>) and the shells (<paramref name="cutaway"/>), the wedge
-    /// at <paramref name="wedgeAngleRad"/>. The cut faces themselves are the main view's (drawn after its bloom).
+    /// at <paramref name="wedgeAngleRad"/>. The cut faces themselves are the main view's (drawn after its bloom). Plan Task 10: <paramref name="windHaze"/>
+    /// false leaves out the wind's schematic haze (the Close-up's surroundings, seen from inside the wind, where it would fill the sky).
     /// </summary>
     public void Paint(OrbitCamera camera, Size viewportPx, double pxPerDip, SceneState s, double unit, bool starCut = false,
-        bool particleCut = false, bool cutaway = false, double wedgeAngleRad = 0)
+        bool particleCut = false, bool cutaway = false, double wedgeAngleRad = 0, bool windHaze = true)
     {
         Star.WedgeAngleRad = Particles.WedgeAngleRad = wedgeAngleRad;
         Shells.WedgeAngleRad = wedgeAngleRad;
         Shells.Cutaway = cutaway;
-        if (s.Surroundings is not null) DrawSurroundings(camera, viewportPx, s, unit);
+        if (s.Surroundings is not null) DrawSurroundings(camera, viewportPx, s, unit, windHaze);
         if (s.ShowStar) Star.Render(camera, viewportPx, s.StarRadiusCm / unit, s.StarColor, starCut);
         if (s.ShowParticles && Uploaded is { } set)
         {
@@ -99,13 +100,13 @@ public sealed class ExplosionPainter : IDisposable
     /// shader). Radii in scene units (cm over the unit). The haze's brightness is pinned to its column at b = 2 R*, since the
     /// shader normalizes by the largest column (at the wind's far edge), which is meaningless against the star.
     /// </summary>
-    private void DrawSurroundings(OrbitCamera camera, Size viewportPx, SceneState s, double unit)
+    private void DrawSurroundings(OrbitCamera camera, Size viewportPx, SceneState s, double unit, bool windHaze)
     {
         var csm = s.Surroundings!;
         double forwardCm = s.Shocks?.ForwardCm ?? 0;
         float glow = s.SurroundingsGlow;
         double rOut = csm.WindOuterCm / unit;
-        if (csm.WindAStar > 0 && csm.WindOuterCm > csm.WindInnerCm && csm.WindInnerCm > 0)
+        if (windHaze && csm.WindAStar > 0 && csm.WindOuterCm > csm.WindInnerCm && csm.WindInnerCm > 0)
         {
             double inner = Math.Max(csm.WindInnerCm, forwardCm) / unit;
             if (inner < rOut)

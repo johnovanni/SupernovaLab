@@ -251,6 +251,31 @@ public class CloseUpWindowTests
         c.Dispose();
     }
 
+    /// <summary>
+    /// Plan Task 10 (spec §6.3): with the grid on, the view labels the horizon, the photon orbits and the ergosphere; off, nothing. The
+    /// lensing pass gets the grid switch and the hole's drawn spin, and its grid colour never asks for a retrace.
+    /// </summary>
+    [Fact]
+    public void CloseUpController_GridLabelsTheHorizonPhotonOrbitsAndErgosphere()
+    {
+        var cu = OpenCloseUp("n6946bh1", out _);
+        var c = new CloseUpSceneController(cu, () => new FakeHost());
+        c.SetViewSize(new Size(900, 640));
+        Assert.Empty(c.ViewLabels);
+        cu.ShowGrid = true;
+        var texts = c.ViewLabels.Select(l => l.Text).ToList();
+        Assert.Contains(LensOverlay.HorizonLabel, texts);
+        Assert.Contains(LensOverlay.ProgradeLabel, texts);   // n6946bh1 settles at spin 0.1
+        Assert.Contains(LensOverlay.ErgosphereLabel, texts);
+        var u = c.RaysFor(new Size(900, 640));
+        Assert.True(u.Grid);
+        Assert.Equal((float)cu.State.Spin, u.Spin);
+        Assert.True(RayMapPlanner.SameRays(u, u with { GridColor = new OpenTK.Mathematics.Vector3(1, 2, 3) }));
+        cu.ShowLabels = false;
+        Assert.Empty(c.ViewLabels);
+        c.Dispose();
+    }
+
     [Fact]
     public void CloseUpController_GovernorStepsTheLensingLevelDown_AndTheBenchCanHoldIt()   // ruling P3-9
     {
@@ -297,7 +322,7 @@ public class CloseUpWindowTests
     public void CloseUpViewModel_Readouts_CarryTheirBadgesAndSources()
     {
         var cu = OpenCloseUp("n6946bh1", out _);
-        Assert.Equal(new[] { "Mass", "Horizon diameter", "Shadow diameter" }, cu.Readouts.Select(r => r.Label));
+        Assert.Equal(new[] { "Mass", "Horizon", "Shadow", "Spin", "Kick", "From Earth" }, cu.Readouts.Select(r => r.Label));
         Assert.All(cu.Readouts, r => Assert.Contains("Source:", r.BadgeToolTip));
         Assert.Equal("Close-up: Black hole", cu.WindowTitle);
         Assert.True(cu.HasRemnant);

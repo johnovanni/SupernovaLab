@@ -316,7 +316,8 @@ public class CoreCollapseHistoryTests
         var failed = SceneFor(FailedSn);
         double tbh = Tbh(FailedSn);
         Assert.Equal(CloseUpEra.FirstSecond, failed.At(tbh * 0.9999).Era);
-        Assert.Equal(CloseUpEra.BlackHole, failed.At(tbh).Era);   // Task 10 fills in the forming and settling eras
+        Assert.Equal(CloseUpEra.BlackHoleForming, failed.At(tbh).Era);   // plan Task 10: forming, then settling, then settled
+        Assert.Equal(CloseUpEra.BlackHole, failed.At(tbh * 3).Era);
         Assert.Equal(CloseUpEra.None, SceneFor(Preset("sn2011fe")).At(1e-3).Era);
     }
 

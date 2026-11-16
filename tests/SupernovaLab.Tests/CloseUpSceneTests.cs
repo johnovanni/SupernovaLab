@@ -68,15 +68,21 @@ public class CloseUpSceneTests
     }
 
     [Theory, InlineData("n6946bh1"), InlineData("sn1998bw")]
-    public void BlackHolePresets_GiveThePlaceholderBlackHole(string id)
+    public void BlackHolePresets_GiveTheSettledSpinningBlackHole(string id)   // plan Task 10 (Task 4 had a placeholder)
     {
-        var s = SceneFor(id).At(10);
+        var s = SceneFor(id).At(1e3);
         Assert.Equal(CloseUpEra.BlackHole, s.Era);
         Assert.Null(s.NoRemnantMessage);
         Assert.True(s.IsLensed);
-        Assert.Equal(0, s.Spin);
+        Assert.Equal(BlackHoleModel.SettledSpin(Preset(id)), s.Spin);
         Assert.Equal("Black hole", s.Title);
-        Assert.Contains(CloseUpScene.PlaceholderBlackHoleNote, s.Notes);
+        Assert.Contains(BlackHoleModel.SettledCaption, s.Notes);
+    }
+
+    private static Outcome Preset(string id)
+    {
+        var preset = PresetCatalog.Get(id);
+        return TestOutcomes.Engine.Compute(preset.Inputs, preset.Pins);
     }
 
     [Fact]
@@ -84,16 +90,19 @@ public class CloseUpSceneTests
     {
         var outcome = TestOutcomes.Custom(SupernovaType.None, null, null, null, 1e13, TestOutcomes.BlackHole(10, 1), Fate.FailedSupernova);
         var s = SceneFor(outcome).At(5);
+        double a = s.Spin;   // plan Task 10: the settled spin of the Rotation input (Slow: 0.1)
+        Assert.Equal(C8.Slow, a);
         double rgKm = BlackHoleOptics.GravitationalRadiusCm(10) / 1e5;
         Assert.Equal(C7.GravitationalRadiusKmPerMsun * 10, rgKm, 3);
         var byLabel = s.Readouts.ToDictionary(r => r.Label);
         Assert.Equal(10, byLabel["Mass"].Value.Value);
-        Assert.Equal(4 * rgKm, byLabel["Horizon diameter"].Value.Value, 9);                 // 2 r₊, r₊ = 2 GM/c²
-        Assert.InRange(byLabel["Shadow diameter"].Value.Value, C7.TenSolarMassShadowKmLow, C7.TenSolarMassShadowKmHigh);
-        Assert.Equal(2 * Math.Sqrt(27) * rgKm, byLabel["Shadow diameter"].Value.Value, 9);
+        Assert.Equal(2 * BlackHoleOptics.HorizonRadius(a) * rgKm, byLabel["Horizon"].Value.Value, 9);   // 2 r₊
+        Assert.InRange(byLabel["Shadow"].Value.Value, C7.TenSolarMassShadowKmLow, C7.TenSolarMassShadowKmHigh);
+        Assert.Equal(BlackHoleOptics.ApparentShadowDiameterRad(10, 1e5, a), byLabel["Shadow"].Value.Value, 9);
+        Assert.Equal(2 * Math.Sqrt(27) * rgKm, byLabel["Shadow"].Value.Value, 0);                          // a = 0.1 barely changes it
         Assert.All(s.Readouts, r => Assert.False(string.IsNullOrEmpty(r.Value.Source.Citation)));
-        Assert.Equal(CloseUpScene.BlackHoleFrameShadowRadii * Math.Sqrt(27) * rgKm, s.FrameRadiusKm, 9);
-        Assert.Equal("153 km", byLabel["Shadow diameter"].ValueText);
+        Assert.Equal(CloseUpScene.BlackHoleFrameShadowRadii * byLabel["Shadow"].Value.Value / 2, s.FrameRadiusKm, 9);
+        Assert.Equal("153 km", byLabel["Shadow"].ValueText);
     }
 
     [Fact]
@@ -105,11 +114,11 @@ public class CloseUpSceneTests
         Assert.Equal(0.9, spinning.Spin);
         Assert.Contains(spinning.Readouts, r => r.Label == "Spin" && r.Value.Confidence == Core.Units.Confidence.Speculative);
         Assert.Contains(CloseUpScene.BenchSpinNote, spinning.Notes);
-        double d0 = still.Readouts.Single(r => r.Label == "Shadow diameter").Value.Value;
-        double d9 = spinning.Readouts.Single(r => r.Label == "Shadow diameter").Value.Value;
+        double d0 = still.Readouts.Single(r => r.Label == "Shadow").Value.Value;
+        double d9 = spinning.Readouts.Single(r => r.Label == "Shadow").Value.Value;
         Assert.True(d9 < d0);
         Assert.Equal(2 * BlackHoleOptics.HorizonRadius(0.9) * BlackHoleOptics.GravitationalRadiusCm(10) / 1e5,
-            spinning.Readouts.Single(r => r.Label == "Horizon diameter").Value.Value, 9);
+            spinning.Readouts.Single(r => r.Label == "Horizon").Value.Value, 9);
     }
 
     [Fact]

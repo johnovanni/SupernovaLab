@@ -327,7 +327,7 @@ public static class Glossary
         "The compact remnant from close by, a place no telescope could reach. Around a black hole, the light of the explosion's " +
         "scene is bent exactly as general relativity says. Drag to turn, wheel to zoom, Home to frame it again.";
     public const string CloseUpGrid =
-        "A measuring grid of latitude and longitude lines on a sphere round the black hole, bent like everything behind it.";
+        "A measuring grid of latitude and longitude lines on a sphere round the black hole, bent like everything behind it. It also outlines the horizon, the photon orbits and (for a spinning hole) the ergosphere, where they are.";
     public const string FieldLines = "The neutron star's magnetic field lines, which leave and re-enter its surface.";
     public const string LightCylinder =
         "Where the neutron star's field would have to turn as fast as light to keep up with the spin: the edge of the region it drags round with it.";

@@ -27,6 +27,9 @@
 // FATE_STEP_LIMIT, a = 1), the hit point (FATE_HIT_SURFACE, a = 2), or 0 (FATE_CAPTURED, a = 0). lensing_shade.frag then
 // colours it every frame from the time-varying surroundings, exactly as the u_output = 0 branch below does. The u_output = 0
 // path (colour straight out) is the fallback when no float target can be made.
+//
+// Plan Task 10 (ruling P3-8): with u_grid = 1, a ray that crosses the sphere r = 50 outward and then escapes (or runs out of steps)
+// carries the grid's coverage at that crossing: latitude and longitude lines every 10 deg (a = 3 + coverage in the ray map).
 
 in vec2 v_uv;
 
@@ -41,7 +44,8 @@ uniform vec2 u_tanHalf;        // tan of half the field of view, horizontally an
 uniform float u_escapeRadius;  // R_esc = max(60, 1.2 x the camera distance) (BlackHoleOptics.EscapeRadiusFor)
 uniform float u_surfaceRadius; // a neutron star's surface (spin 0 only), GM/c^2; 0 for none
 // The surface is shaded by nsurface.frag (plan Task 6), linked into this program: nsSurface(hit point).
-uniform int u_grid;            // the grid sphere r = 50 GM/c^2 (plan ruling P3-8): 1 = on; drawn from Task 10
+uniform int u_grid;            // the grid sphere r = 50 GM/c^2 (plan ruling P3-8): 1 = on (plan Task 10)
+uniform vec3 u_gridColor;      // the grid lines' colour (the direct path; the ray map's shading pass has its own)
 uniform samplerCube u_env;     // the surroundings seen from the remnant (EnvironmentCapture)
 
 out vec4 o_color;
@@ -59,6 +63,33 @@ const int FATE_CAPTURED = 0;
 const int FATE_ESCAPED = 1;
 const int FATE_HIT_SURFACE = 2;
 const int FATE_STEP_LIMIT = 3;
+
+// Plan Task 10, ruling P3-8 (BlackHoleOptics.GridRadius, GridStepDeg, GridLineDistanceDeg): the grid sphere and its line spacing.
+const float GRID_RADIUS = 50.0;
+const float GRID_STEP_DEG = 10.0;
+
+// How far a value in degrees is from the nearest multiple of GRID_STEP_DEG (BlackHoleOptics.GridLineDistanceDeg's ToLine).
+float toLine(float deg)
+{
+    float m = deg - GRID_STEP_DEG * floor(deg / GRID_STEP_DEG);
+    return min(m, GRID_STEP_DEG - m);
+}
+
+// The grid's coverage at a crossing point: latitude lines every 10 deg of the polar angle (not at the poles) and longitude lines every
+// 10 deg of azimuth (kept off the poles, where they crowd), each about a pixel wide from the per-pixel change of the angles (fwidth,
+// capped at 1 deg where neighbouring rays part, at the shadow's edge). Called in uniform control flow, so fwidth is defined.
+float gridCoverage(vec3 h, bool crossed)
+{
+    float rh = max(length(h), 1e-6);
+    float theta = degrees(acos(clamp(h.z / rh, -1.0, 1.0)));
+    float phi = degrees(atan(h.y, h.x));
+    vec2 w = min(max(fwidth(vec2(theta, phi)), vec2(1e-4)), vec2(1.0));
+    float lat = 1.0 - smoothstep(0.25 * w.x, 1.0 * w.x, toLine(theta));
+    float lon = 1.0 - smoothstep(0.25 * w.y, 1.0 * w.y, toLine(phi));
+    if (theta < 5.0 || theta > 175.0) lat = 0.0;
+    if (theta < 10.0 || theta > 170.0) lon = 0.0;
+    return crossed ? max(lat, lon) : 0.0;
+}
 
 // The Kerr-Schild r (BlackHoleOptics.KerrSchildR).
 float ksR(float a2, vec3 x)
@@ -197,6 +228,11 @@ void main()
         else if (!initialMomentum(a, x, d, p)) fate = FATE_CAPTURED;
     }
 
+    // Ruling P3-8 (BlackHoleOptics.Trace): the first outward crossing of the grid sphere, linear between the steps either side.
+    float rPrev = -1.0;
+    vec3 xPrev = x;
+    vec3 gridHit = vec3(0.0, 0.0, GRID_RADIUS);
+    bool crossed = false;
     if (fate == FATE_NONE)
     {
         for (int steps = 0; steps <= MAX_STEPS; steps++)
@@ -206,25 +242,37 @@ void main()
             float r;
             derivs(a, x, p, k1x, k1p, r);
             dir = k1x;
+            if (!crossed && rPrev >= 0.0 && rPrev < GRID_RADIUS && r >= GRID_RADIUS)
+            {
+                gridHit = mix(xPrev, x, (GRID_RADIUS - rPrev) / (r - rPrev));
+                crossed = true;
+            }
             if (u_surfaceRadius > 0.0 && r < u_surfaceRadius) { fate = FATE_HIT_SURFACE; break; }
             if (r < rCapture) { fate = FATE_CAPTURED; break; }
             if (r > escapeRadius) { fate = FATE_ESCAPED; break; }
             if (steps >= MAX_STEPS) { fate = FATE_STEP_LIMIT; break; }
             float h = min(0.05 * max(r - rPlus, 0.5) * (1.0 + r / 20.0), MAX_STEP);
+            rPrev = r;
+            xPrev = x;
             rk4(a, h, x, p, k1x, k1p);
         }
         dir = normalize(dir);
     }
 
+    // Plan Task 10: the grid lines, on rays that escape (or run out of steps) after crossing the sphere outward.
+    float grid = 0.0;
+    if (u_grid == 1) grid = gridCoverage(gridHit, crossed && (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT));
+
     if (u_output == 1)
     {
+        // The ray map's alpha: 0 captured, 1 escaped, 2 surface, 3 + coverage (below 1) escaped across a grid line.
         if (fate == FATE_HIT_SURFACE) o_color = vec4(x, 2.0);
-        else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) o_color = vec4(dir, 1.0);
+        else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) o_color = vec4(dir, grid > 0.002 ? 3.0 + min(grid, 0.999) : 1.0);
         else o_color = vec4(0.0);
         return;
     }
     vec3 color = vec3(0.0);
     if (fate == FATE_HIT_SURFACE) color = nsSurface(x);
-    else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) color = texture(u_env, dir).rgb;
+    else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) color = mix(texture(u_env, dir).rgb, u_gridColor, grid);
     o_color = vec4(color, 1.0);
 }

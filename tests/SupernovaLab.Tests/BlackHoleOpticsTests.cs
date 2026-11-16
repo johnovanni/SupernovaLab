@@ -388,6 +388,173 @@ public class BlackHoleOpticsTests
         Assert.Equal(new Vec3(0, 0, 0), new Vec3(0, 0, 0).Normalized());
     }
 
+    // ---- Plan Task 10: the exact shadow edge seen from the Close-up's camera (the overlay, ruling P3-9) ----
+
+    /// <summary>
+    /// Plan Task 10: the overlay's shadow edge is exact for a camera at a finite distance. Each direction from
+    /// <see cref="BlackHoleOptics.ShadowEdgeDirections"/> is checked against the tracer itself: along the great circle from the
+    /// hole's direction through it, the tracer's Captured/escaped boundary (bisection, with a step budget large enough that no
+    /// ray runs out) lies at the same angle, within 0.5%. Close cameras (12–60 GM/c²), spins 0 to 0.998, several inclinations.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 90, 20)]
+    [InlineData(0.9, 90, 20)]
+    [InlineData(0.9, 60, 20)]
+    [InlineData(0.9, 120, 20)]
+    [InlineData(0.9, 90, 60)]
+    [InlineData(0.5, 30, 12)]
+    [InlineData(0.95, 75, 25)]
+    public void ShadowEdgeDirections_MatchTheTracersEdge_FromACloseCamera(double a, double incDeg, double r)
+        => AssertEdgeMatchesTracer(a, incDeg, r, 0.005);
+
+    /// <summary>
+    /// At spin 0.998 the prograde photon orbit (r_ph+ = 1.0744) sits at the tracer's capture radius r₊ + 0.01 = 1.0732 (ruling P3-7), so
+    /// the tracer swallows rays that would still escape and its shadow is about 1.2% too wide on the flattened side (inconsistency
+    /// #64). The overlay keeps the exact edge; the tracer agrees within 2% there.
+    /// </summary>
+    [Fact]
+    public void ShadowEdgeDirections_AtSpin0998_TheTracersCaptureMarginWidensItsEdgeSlightly()
+        => AssertEdgeMatchesTracer(0.998, 90, 20, 0.02);
+
+    private static void AssertEdgeMatchesTracer(double a, double incDeg, double r, double tolerance)
+    {
+        double inc = incDeg * Math.PI / 180;
+        var cam = r * new Vec3(Math.Sin(inc) * Math.Cos(0.7), Math.Sin(inc) * Math.Sin(0.7), Math.Cos(inc));
+        var dirs = BlackHoleOptics.ShadowEdgeDirections(a, cam, 36);
+        Assert.Equal(36, dirs.Count);
+        Vec3 c = -cam.Normalized();
+        foreach (var d in dirs)
+        {
+            Assert.Equal(1, d.Length, 9);
+            double psi = Angle(c, d);
+            Vec3 u = (d - d.Dot(c) * c).Normalized();
+            bool Captured(double ang) => BlackHoleOptics.Trace(a, cam, Math.Cos(ang) * c + Math.Sin(ang) * u,
+                BlackHoleOptics.EscapeRadiusFor(r), 0, 20_000).Fate == RayFate.Captured;
+            double lo = 0.7 * psi, hi = 1.3 * psi;
+            Assert.True(Captured(lo), $"a={a} i={incDeg} r={r}: {0.7 * psi * 180 / Math.PI:F2}° should be captured");
+            Assert.False(Captured(hi));
+            for (int k = 0; k < 22; k++)
+            {
+                double mid = 0.5 * (lo + hi);
+                if (Captured(mid)) lo = mid; else hi = mid;
+            }
+            double edge = 0.5 * (lo + hi);
+            Assert.True(Math.Abs(edge - psi) < tolerance * psi,
+                $"a={a} i={incDeg} r={r}: overlay {psi * 180 / Math.PI:F4}°, tracer {edge * 180 / Math.PI:F4}°");
+        }
+    }
+
+    /// <summary>
+    /// From far away the edge directions turn into Bardeen's outline (its α, β, point by point): the directions are the outline's own
+    /// orbits seen from the camera, with α on e_α = (0, 1, 0) and β on e_β (the class notes' convention), within 1% of 5.2.
+    /// </summary>
+    [Theory, InlineData(0.9, 90), InlineData(0.9, 60), InlineData(0, 75), InlineData(0.5, 17)]
+    public void ShadowEdgeDirections_FromFarAway_AreBardeensOutline(double a, double incDeg)
+    {
+        double inc = incDeg * Math.PI / 180;
+        const double d = 1e5;
+        var n = Normal(inc);
+        var dirs = BlackHoleOptics.ShadowEdgeDirections(a, d * n, 72);
+        var outline = BlackHoleOptics.KerrShadowOutline(a, inc, 72);
+        for (int k = 0; k < 72; k++)
+        {
+            var v = dirs[k];
+            double along = -v.Dot(n);
+            double alpha = d * v.Dot(EAlpha) / along, beta = d * v.Dot(EBeta(inc)) / along;
+            Assert.True(Math.Abs(alpha - outline[k].Alpha) < C7.OutlineTolerance && Math.Abs(beta - outline[k].Beta) < C7.OutlineTolerance,
+                $"a={a} i={incDeg} k={k}: ({alpha:F4}, {beta:F4}) against Bardeen ({outline[k].Alpha:F4}, {outline[k].Beta:F4})");
+        }
+    }
+
+    /// <summary>
+    /// The overlay also matches the shader's own tracer (the public 400-step <see cref="BlackHoleOptics.TraceRay"/>, with ruling R-P3-6's
+    /// far-camera start) out to the Close-up's farthest framing (677 GM/c²), within 0.1%. And inconsistency #65: the picture is a
+    /// coordinate camera's, so from 20 GM/c² its shadow is 5.2% wider than a static observer's sin θ = √27 √(1 − 2/r)/r.
+    /// </summary>
+    [Theory, InlineData(19), InlineData(100), InlineData(300), InlineData(677)]
+    public void ShadowEdgeDirections_MatchTheShadersTracer_NearAndFar(double r)
+    {
+        var cam = new Vec3(r, 0, 0);
+        var d = BlackHoleOptics.ShadowEdgeDirections(0, cam, 8)[0];
+        Vec3 c = -cam.Normalized(), u = (d - d.Dot(c) * c).Normalized();
+        double psi = Angle(c, d), lo = 0.8 * psi, hi = 1.2 * psi;
+        bool Captured(double ang) => BlackHoleOptics.TraceRay(0, cam, Math.Cos(ang) * c + Math.Sin(ang) * u,
+            BlackHoleOptics.EscapeRadiusFor(r)).Fate == RayFate.Captured;
+        Assert.True(Captured(lo));
+        Assert.False(Captured(hi));
+        for (int k = 0; k < 30; k++)
+        {
+            double mid = 0.5 * (lo + hi);
+            if (Captured(mid)) lo = mid; else hi = mid;
+        }
+        Assert.Equal(psi, 0.5 * (lo + hi), psi * 1e-3);
+        if (r == 19)
+        {
+            double staticObserver = Math.Asin(Math.Sqrt(27) * Math.Sqrt(1 - 2 / r) / r);
+            Assert.InRange(psi / staticObserver, 1.050, 1.056);   // #65
+        }
+    }
+
+    /// <summary>Review Focus 4: the edge directions stay finite near the camera's floor (3 GM/c²), on the axis and at spin 0.998.</summary>
+    [Fact]
+    public void ShadowEdgeDirections_StayFinite_InTheCornerCases()
+    {
+        foreach (double a in new[] { 0, 1e-5, 0.5, 0.9, 0.998 })
+            foreach (var cam in new[] { new Vec3(3, 0, 0), new Vec3(0, 0.002, 20), new Vec3(0, 0, -20), new Vec3(150, 40, -30), new Vec3(600, 0, 1) })
+            {
+                var dirs = BlackHoleOptics.ShadowEdgeDirections(a, cam, 64);
+                Assert.All(dirs, v => Assert.True(double.IsFinite(v.X) && double.IsFinite(v.Y) && double.IsFinite(v.Z) && Math.Abs(v.Length - 1) < 1e-9));
+            }
+        Assert.Empty(BlackHoleOptics.ShadowEdgeDirections(0.9, new Vec3(1, 0, 0), 64));   // inside the horizon: no outline
+    }
+
+    // ---- Plan Task 10: the grid sphere (ruling P3-8), mirrored by lensing.frag ----
+
+    [Fact]
+    public void Grid_RayCrossingOutward_RecordsWhereOnTheSphere()
+    {
+        Assert.Equal(50, BlackHoleOptics.GridRadius);
+        Assert.Equal(10, BlackHoleOptics.GridStepDeg);
+        // Straight away from a non-spinning hole: the crossing is on the camera's own line, at r = 50 (within one step's interpolation).
+        var r = BlackHoleOptics.TraceRay(0, new Vec3(20, 0, 0), new Vec3(1, 0, 0), 60);
+        Assert.Equal(RayFate.Escaped, r.Fate);
+        Assert.NotNull(r.GridCrossing);
+        Assert.Equal(50, r.GridCrossing!.Value.Length, 1);
+        Assert.Equal(0, r.GridCrossing!.Value.Y, 6);
+        // A ray that falls in never crosses outward; a camera outside the sphere looking away never crosses it either.
+        Assert.Null(BlackHoleOptics.TraceRay(0, new Vec3(20, 0, 0), new Vec3(-1, 0, 0), 60).GridCrossing);
+        Assert.Null(BlackHoleOptics.TraceRay(0, new Vec3(80, 0, 0), new Vec3(1, 0, 0), 96).GridCrossing);
+        // From outside, a ray bent round the hole crosses outward on the far side.
+        var behind = BlackHoleOptics.TraceRay(0, new Vec3(80, 0, 0), new Vec3(-1, 0.1, 0).Normalized(), 96);
+        Assert.NotNull(behind.GridCrossing);
+        Assert.True(behind.GridCrossing!.Value.X < 0);
+        // The lines: every 10° of latitude and longitude, distances in degrees.
+        var (lat, lon) = BlackHoleOptics.GridLineDistanceDeg(50 * new Vec3(Math.Cos(0.1), Math.Sin(0.1), 0));
+        Assert.Equal(0, lat, 9);                                   // the equator is a latitude line
+        Assert.Equal(10 - 0.1 * 180 / Math.PI, lon, 9);            // 5.73° of longitude: 4.27° from the 10° line
+    }
+
+    /// <summary>
+    /// Spec §6.3: near a spinning hole the grid lines twist (frame dragging). Rays from a camera at 20 GM/c² passing either side of the
+    /// hole in its equatorial plane reach the grid sphere at longitudes that, against the non-spinning hole's, are shifted on average
+    /// in the spin's sense (13° here): the light passing against the spin is bent further round the hole than the light passing with it
+    /// (the shadow's retrograde edge is at α = 6.8, its prograde edge at −2.8), so both sides' lines are carried the same way round.
+    /// </summary>
+    [Fact]
+    public void Grid_FrameDragging_TwistsTheLines()
+    {
+        double Lon(double spin, double side)
+        {
+            var cam = new Vec3(20, 0, 0);
+            var d = new Vec3(-1, side * 0.45, 0).Normalized();   // passes the hole at b ≈ 8.2, outside both edges (α −2.8 to 6.8)
+            var res = BlackHoleOptics.TraceRay(spin, cam, d, 60);
+            Assert.NotNull(res.GridCrossing);
+            return Math.Atan2(res.GridCrossing!.Value.Y, res.GridCrossing!.Value.X);
+        }
+        double shift = 0.5 * (Math.IEEERemainder(Lon(0.9, 1) - Lon(0, 1), 2 * Math.PI) + Math.IEEERemainder(Lon(0.9, -1) - Lon(0, -1), 2 * Math.PI));
+        Assert.True(shift > 0.05, $"mean longitude shift {shift * 180 / Math.PI:F2}°");
+    }
+
     // ---- Helpers ----
 
     private static double MicroArcsec(double rad) => rad * (180 / Math.PI) * 3600 * 1e6;

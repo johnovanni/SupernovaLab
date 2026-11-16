@@ -125,4 +125,25 @@ public class ShaderSourceTests
         Assert.Contains("fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT", text);
         Assert.NotNull(Shaders().SingleOrDefault(s => s.Name.EndsWith(".upsample.frag")).Bytes);
     }
+
+    /// <summary>
+    /// Plan Task 10 (ruling P3-8): lensing.frag's grid mirrors BlackHoleOptics' (the sphere's radius, the lines' spacing, the outward
+    /// crossing interpolated between steps), and the shading pass reads the grid's coverage from the ray map's alpha.
+    /// </summary>
+    [Fact]
+    public void LensingShader_GridMirrorsTheCSharpTracer()
+    {
+        string Text(string name) => System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith("." + name)).Bytes);
+        string text = Text("lensing.frag");
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        Assert.Contains($"const float GRID_RADIUS = {SupernovaLab.Core.Compact.BlackHoleOptics.GridRadius.ToString("0.0", inv)};", text);
+        Assert.Contains($"const float GRID_STEP_DEG = {SupernovaLab.Core.Compact.BlackHoleOptics.GridStepDeg.ToString("0.0", inv)};", text);
+        Assert.Contains("rPrev >= 0.0 && rPrev < GRID_RADIUS && r >= GRID_RADIUS", text);
+        Assert.Contains("gridHit = mix(xPrev, x, (GRID_RADIUS - rPrev) / (r - rPrev));", text);
+        Assert.Contains("uniform vec3 u_gridColor", text);
+        Assert.Contains("3.0 + min(grid, 0.999)", text);
+        string shade = Text("lensing_shade.frag");
+        Assert.Contains("ray.a > 2.5", shade);
+        Assert.Contains("uniform vec3 u_gridColor", shade);
+    }
 }
