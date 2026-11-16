@@ -448,7 +448,7 @@ public class CloseUpSceneTests
     {
         var st = SceneFor("sn1054").At(CrabAgeS);
         Assert.Equal(CloseUpEra.NeutronStar, st.Era);
-        Assert.StartsWith("Close-up: Neutron star (pulsar, 33", $"Close-up: {st.Title}");
+        Assert.StartsWith("Neutron star (pulsar, 33", st.Title);   // the window title, "Close-up: ...", is tested on the view model
         Assert.Equal(new[] { "Mass", "Radius", "Spin", "Field", "Surface", "Age", "Kick" }, st.Readouts.Select(r => r.Label));
         Assert.Contains(st.Notes, n => n.Contains("mostly in X-rays"));
         Assert.Contains("Shown 60× slower", st.SpeedLabel);
@@ -519,6 +519,34 @@ public class CloseUpSceneTests
         Assert.Contains("Heinke", at340.ToolTip);
         var at900 = PresetScene("casa").At(900 * Year).Readouts.Single(x => x.Label == "Surface");
         Assert.DoesNotContain("#54", at900.ToolTip ?? "");
+    }
+
+    /// <summary>
+    /// Ruling R-P3-17: Cas A is disclosed, not tuned. #60: the lab draws its neutron star as a pulsar, but no pulses have been seen from
+    /// the central compact object; #61: the lab's kick speed against the measured 433 km/s. Keyed on the preset's scene disclosures.
+    /// </summary>
+    [Fact]
+    public void CasA_DisclosesNoPulsesSeen_AndItsKickSpeed()
+    {
+        var st = PresetScene("casa").At(951 * Year);
+        Assert.StartsWith("Neutron star (a pulsar in the lab's model, ", st.Title);
+        Assert.Equal(CloseUpScene.NoPulsesSeenNote, st.Notes[0]);
+        Assert.Contains("no pulses have ever been seen", st.Notes[0]);
+        Assert.Contains("Heinke & Ho 2010", st.Notes[0]);
+        Assert.Contains("#60", st.Notes[0]);
+        var kick = st.Readouts.Single(r => r.Label == "Kick");
+        Assert.Contains("433 km/s", kick.ToolTip);
+        Assert.Contains("436 ± 89 km/s", kick.ToolTip);
+        Assert.Contains("Holland-Ashford", kick.ToolTip);
+        Assert.Contains($"The lab gives {kick.Value.Value:0} km/s", kick.ToolTip);
+        Assert.Contains("#61", kick.ToolTip);
+        Assert.Contains("about 20% slow", CloseUpScene.CasAKickComparison(348));
+        Assert.Contains("about as measured", CloseUpScene.CasAKickComparison(440));
+
+        var crab = PresetScene("sn1054").At(951 * Year);   // the Crab is an observed pulsar: no such disclosures
+        Assert.StartsWith("Neutron star (pulsar, ", crab.Title);
+        Assert.DoesNotContain(CloseUpScene.NoPulsesSeenNote, crab.Notes);
+        Assert.DoesNotContain("#61", crab.Readouts.Single(r => r.Label == "Kick").ToolTip);
     }
 
     [Fact]

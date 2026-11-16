@@ -23,20 +23,21 @@ public sealed class GlHost : IRenderHost
     private bool _animating;
     private int _framesOwed;
     // Task 4b review carry-overs (done in plan Task 6): no ticking while the control is not visible, and none after Shutdown.
-    private bool _controlVisible = true;
+    private bool _controlVisible;
     private bool _shutdown;
 
     public GlHost(GLWpfControl control)
     {
         _control = control;
         _control.Render += OnRender;
+        _controlVisible = control.IsVisible;   // fix round 1: as the control is now, then followed
         _control.IsVisibleChanged += OnControlVisibleChanged;
     }
 
     /// <summary>
     /// The control was hidden or shown (its window hidden, minimized or restored). Hidden: the frames owed are dropped and the host stops
     /// ticking, even while animating (a hidden control is not composed, so a tick would only spin). Shown: it ticks again if animating,
-    /// and owes one fresh frame. The visibility is taken as visible until the control first reports otherwise.
+    /// and owes one fresh frame. The visibility starts as the control's own when the host is made.
     /// </summary>
     private void OnControlVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {

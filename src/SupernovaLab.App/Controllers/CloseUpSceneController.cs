@@ -403,6 +403,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         _bandFailuresInRow = _traceFailuresInRow = 0;
         _refineGivenUp = _directFallback = false;
         _vm.RefineFailed = false;
+        _vm.TracingDirectly = false;
     }
 
     public void Rotate(double dxDip, double dyDip)
@@ -732,6 +733,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
                 if (++_traceFailuresInRow >= MaxConsecutiveFailures)
                 {
                     _directFallback = true;
+                    _vm.TracingDirectly = true;
                     Trace.TraceWarning($"Close-up: the ray map failed {_traceFailuresInRow} times in a row; tracing colour directly.");
                 }
             }
@@ -907,7 +909,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         }
         var labels = new List<RingLabel>();
         var e = new Vector3d(s.EarthDirection.X, s.EarthDirection.Y, s.EarthDirection.Z);
-        if (ProjectDip(e * (NeutronStarRenderer.ArrowTipRadii + 0.15) * s.SurfaceRadiusKm) is { } tip)
+        // Fix round 1: kept on screen; when the tip is off the view (zoomed in) the label sits at the edge in its direction.
+        if (EdgeDip(e * (NeutronStarRenderer.ArrowTipRadii + 0.15) * s.SurfaceRadiusKm) is { } tip)
             labels.Add(new RingLabel(ToEarthLabel, tip.X, tip.Y, 1));
         if (_vm.ShowLightCylinder && double.IsFinite(s.LightCylinderKm))
         {
@@ -924,6 +927,29 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             }
         }
         if (!labels.SequenceEqual(_viewLabels)) ViewLabels = labels;
+    }
+
+    /// <summary>The DIP margin a clamped label keeps from the top and bottom edges.</summary>
+    private const double LabelEdgeDip = 14;
+
+    /// <summary>
+    /// A scene point (km) on the view, in DIP, or, when it is off the view or behind the camera, the view's edge in its direction from
+    /// the centre, with room for a label to its right; null only before the view has a size or for a point at the eye itself.
+    /// </summary>
+    public Point? EdgeDip(Vector3d world)
+    {
+        if (!(_viewDip.Width > 0) || !(_viewDip.Height > 0)) return null;
+        var rel = world - Camera.Eye;
+        var clip = new Vector4d(rel.X, rel.Y, rel.Z, 1) * (Camera.View * Camera.Projection(_viewDip.Width / _viewDip.Height));
+        if (clip.W == 0) return null;
+        // Behind the camera the projection flips: divide by |w| and reverse, so the direction from the centre is the point's own.
+        double x = clip.X / Math.Abs(clip.W), y = clip.Y / Math.Abs(clip.W);
+        if (clip.W < 0) (x, y) = (-x, -y);
+        double reach = Math.Max(Math.Abs(x), Math.Abs(y));
+        if (clip.W < 0 || reach > 1) { x /= Math.Max(reach, 1e-9); y /= Math.Max(reach, 1e-9); }
+        double px = Math.Clamp((x + 1) / 2 * _viewDip.Width, 0, Math.Max(0, _viewDip.Width - LabelRoomDip));
+        double py = Math.Clamp((1 - y) / 2 * _viewDip.Height, LabelEdgeDip, Math.Max(LabelEdgeDip, _viewDip.Height - LabelEdgeDip));
+        return new Point(px, py);
     }
 
     /// <summary>A scene point (km) on the view, in DIP from its top left; null when it is behind the camera or off the view.</summary>

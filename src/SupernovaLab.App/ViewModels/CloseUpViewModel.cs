@@ -74,7 +74,8 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     /// <summary>The light-bending note for the level shown (or, before the view has drawn, the level it settles at).</summary>
     public string LightBendingNote
         => LensingDetails.Note(ShownLensingLevel ?? LensingDetails.StillLevel(LensingDetail), LensingDetail == LensingDetail.Auto)
-           + (RefineFailed ? "; it could not be refined further on this computer's graphics" : "");
+           + (RefineFailed ? "; it could not be refined further on this computer's graphics" : "")
+           + (TracingDirectly ? "; traced afresh every frame (its cache failed on this computer's graphics), so it may be slower" : "");
 
     /// <summary>
     /// The user's light-bending detail (Close-up menu ▸ Light-bending detail, spec §2.5): kept in the main window's layout, so it is
@@ -173,6 +174,24 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         {
             if (_refineFailed == value) return;
             _refineFailed = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Notes));
+        }
+    }
+
+    private bool _tracingDirectly;
+
+    /// <summary>
+    /// Set by the view's controller when the cached ray map keeps failing and the light bending is traced afresh every frame instead
+    /// (fix round 1: the fallback is said, as the given-up refinement is).
+    /// </summary>
+    public bool TracingDirectly
+    {
+        get => _tracingDirectly;
+        set
+        {
+            if (_tracingDirectly == value) return;
+            _tracingDirectly = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(Notes));
         }

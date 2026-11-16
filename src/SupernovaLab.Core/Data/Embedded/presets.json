@@ -98,7 +98,7 @@
         "source": { "citation": "Distance 3.4 kpc (Reed et al. 1995, ApJ 440, 706); A_V about 5 (presets.md, recalled, not verified) [APPROX]", "researchRef": "presets §3; presets-verification" }
       },
       "pins": {
-        "ti44Mass": 1.25e-4, "sceneDisclosures": [46, 54],
+        "ti44Mass": 1.25e-4, "sceneDisclosures": [46, 54, 60, 61],
         "kickPositionAngleDeg": 151, "kickPositionAngleSource": "Holland-Ashford, Slane & Long 2024, ApJ 962, 82 (433 km/s at 151° east of north, corrected for galactic rotation; heliocentric 158° ± 12°); the CCO's spin axis is unknown, so 151° is applied from scene north as if it were celestial north (schematic) [V]",
         "source": { "citation": "Grefenstette et al. 2014, Nature 506, 339 (initial ⁴⁴Ti 1.25 ± 0.3 × 10⁻⁴ M☉, ruling R35)", "researchRef": "presets §3; signals §5.3; presets-verification" }
       },

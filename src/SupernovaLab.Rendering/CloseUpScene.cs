@@ -298,9 +298,12 @@ public sealed class CloseUpScene
         double lightCylinder = Magnetosphere.LightCylinderKm(period);
         bool beams = t >= Magnetosphere.MagnetosphereFormsS(o);
         string periodText = UnitFormat.Time(period);
+        // Ruling R-P3-17 (#60): a preset whose star has never shown pulses is titled a pulsar of the lab's model only.
+        bool noPulsesSeen = o.Discloses(NoPulsesSeenInconsistency);
         string title = ns.IsMagnetar
             ? beams ? $"Magnetar ({periodText})" : $"Proto-neutron star (magnetar, {periodText})"
-            : beams ? $"Neutron star (pulsar, {periodText})" : $"Proto-neutron star ({periodText})";
+            : beams ? (noPulsesSeen ? $"Neutron star (a pulsar in the lab's model, {periodText})" : $"Neutron star (pulsar, {periodText})")
+            : $"Proto-neutron star ({periodText})";
 
         var spinConfidence = Worse(r.SpinPeriodS!.Confidence, Confidence.ModelDependent);
         var spin = new Quantity(period, "s", spinConfidence, new Source(
@@ -311,7 +314,8 @@ public sealed class CloseUpScene
         var drift = new Quantity(ns.OffsetCm.Length, "cm", kick.Confidence, DriftSource);
         bool measuredKick = o.KickPositionAngleDeg is not null;
         string kickTip = (measuredKick ? KickDrift.LineOfSightNote : SeededKickNote) +
-                         ". The second number is the distance from the explosion's centre (" + DriftSource.Citation.ToLowerInvariant() + ").";
+                         ". The second number is the distance from the explosion's centre (" + DriftSource.Citation.ToLowerInvariant() + ")." +
+                         (o.Discloses(KickSpeedInconsistency) ? " " + CasAKickComparison(kick.Value) : "");
         string surfaceTip = NeutronStarModel.CasAComparison(o, t)
                             ?? "Seen from afar (redshifted): the lab's cooling model; before 30 years an early-cooling band (compact §C3).";
         var readouts = new[]
@@ -327,7 +331,9 @@ public sealed class CloseUpScene
             new Readout("Kick", kick, kickTip, drift),
         };
 
-        var notes = new List<string>
+        var notes = new List<string>();
+        if (noPulsesSeen) notes.Add(NoPulsesSeenNote);
+        notes.AddRange(new[]
         {
             Magnetosphere.SpeedLabel(period) + (period < Magnetosphere.MinDrawnPeriodS
                 ? ": the drawn spin never turns faster than once in 2 s, so no beam crosses Earth more than once a second"
@@ -349,7 +355,7 @@ public sealed class CloseUpScene
                 : "To Earth: the beams miss Earth (the lab's \"Jet or beam toward Earth\" checkbox is off); the arrow's direction round the spin axis is schematic",
             measuredKick ? KickDrift.LineOfSightNote : SeededKickNote,
             SurroundingsNote,
-        };
+        });
 
         return new CloseUpState
         {
@@ -373,6 +379,33 @@ public sealed class CloseUpScene
             PolarCapRad = FieldLines.PolarCapRad(radius, lightCylinder),
             FieldG = ns.FieldG,
         };
+    }
+
+    /// <summary>Ruling R-P3-17: the inconsistency a preset lists when its neutron star has never shown pulses (Cas A's CCO).</summary>
+    public const int NoPulsesSeenInconsistency = 60;
+
+    /// <summary>Ruling R-P3-17: the inconsistency a preset lists when the lab's kick speed differs from the measured one (Cas A).</summary>
+    public const int KickSpeedInconsistency = 61;
+
+    /// <summary>Ruling R-P3-17 (#60), first among the notes for such a preset.</summary>
+    public const string NoPulsesSeenNote =
+        "Drawn as a pulsar because the lab's model gives every neutron star a spin and a field, but no pulses have ever been seen from Cas A's central compact object (pulsed fraction below 12%, Heinke & Ho 2010; compact §C4.3; inconsistency #60)";
+
+    /// <summary>The measured kick of Cas A's neutron star (Holland-Ashford, Slane &amp; Long 2024; compact §C4.4), km/s.</summary>
+    public const double CasAMeasuredKickKmS = 433;
+
+    /// <summary>
+    /// Ruling R-P3-17 (#61): the Kick tooltip's comparison for Cas A: the lab's speed against the measured 433 km/s (corrected for the
+    /// galaxy's rotation and the Sun's motion; heliocentric 436 ± 89 km/s).
+    /// </summary>
+    public static string CasAKickComparison(double labKmS)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        double percent = (labKmS / CasAMeasuredKickKmS - 1) * 100;
+        string how = Math.Abs(percent) < 5 ? "about as measured"
+            : $"about {Math.Abs(percent).ToString("0", inv)}% {(percent < 0 ? "slow" : "fast")}";
+        return $"Measured: 433 km/s (corrected for the galaxy's rotation and the Sun's motion; heliocentric 436 ± 89 km/s; Holland-Ashford, " +
+               $"Slane & Long 2024). The lab gives {labKmS.ToString("0", inv)} km/s, {how}; the lab's kick speed is not tuned to it (#61).";
     }
 
     /// <summary>The less certain of two confidences.</summary>

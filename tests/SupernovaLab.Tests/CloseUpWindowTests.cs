@@ -615,6 +615,47 @@ public class CloseUpWindowTests
         c.Dispose();
     }
 
+    /// <summary>
+    /// Fix round 1 (review item 1): no closed field line reaches the default camera (the director frames the star at 2.5 radii, then
+    /// snaps to a ring, so the camera sits about 11 radii out): every loop stays inside 0.6 × that distance, for the Crab and for a
+    /// magnetar, whose stronger field is drawn as more lines, not larger ones.
+    /// </summary>
+    [Fact]
+    public void FieldLines_StayWellInsideTheDefaultCamera_ForThePulsarAndTheMagnetar()
+    {
+        var (c, _, _, vm) = DrawnCrab();
+        c.Home();
+        double camera = c.Camera.DistanceMpc;   // km (the scene unit)
+        var s = vm.State;
+        var crab = FieldLines.For(s.SurfaceRadiusKm, s.FieldG, s.LightCylinderKm);
+        var magnetar = FieldLines.For(s.SurfaceRadiusKm, 1e15, Core.Compact.Magnetosphere.LightCylinderKm(2.5));
+        foreach (var set in new[] { crab, magnetar })
+            Assert.All(set.Closed, line => Assert.All(line, p => Assert.True(p.Length < 0.6 * camera, $"{p.Length:0} km vs camera {camera:0} km")));
+        Assert.True(magnetar.Closed.Count > crab.Closed.Count, "the magnetar's field is drawn denser");
+        c.Dispose();
+    }
+
+    [Fact]
+    public void CloseUpViewModel_WindowTitle_NamesThePulsar()   // review item 2: the brief's title check, on the real window title
+    {
+        var cu = OpenCloseUp("sn1054", out var main);
+        main.Timeline.ObserverTimeS = CrabAgeS * main.CurrentObserver.TimeDilation;
+        Assert.StartsWith("Close-up: Neutron star (pulsar, 33", cu.WindowTitle);
+        Assert.Equal("Shown 60× slower", cu.SpeedLabel);
+    }
+
+    [Fact]
+    public void Controller_TheEarthLabel_StaysOnScreen_WhenTheArrowTipIsNot()   // review item 5
+    {
+        var (c, _, _, _) = DrawnCrab();
+        c.SetViewSize(new Size(737, 705));
+        for (int k = 0; k < 40; k++) c.Zoom(5);   // to the closest camera, 1.1 radii: the arrow's tip (4 radii out) is off the view
+        var label = Assert.Single(c.ViewLabels, l => l.Text == CloseUpSceneController.ToEarthLabel);
+        Assert.InRange(label.XDip, 0, 737 - 100);
+        Assert.InRange(label.YDip, 0, 705);
+        c.Dispose();
+    }
+
     [Fact]
     public void Controller_LabelsTheEarthArrow_AndTheLightCylinderWhenItIsOnScreen()
     {
@@ -662,11 +703,12 @@ public class CloseUpWindowTests
     [Fact]
     public void Controller_AWholeMapThatAlwaysFails_FallsBackToDirectTracing()   // Task 4b review carry-over
     {
-        var (c, host, lensing, _) = Drawn();
+        var (c, host, lensing, vm) = Drawn();
         lensing.FailTraces = true;
         for (int k = 0; k < 10; k++) { c.Orbit(1); host.Tick(); }
         Assert.Equal(CloseUpSceneController.MaxConsecutiveFailures, c.MapTracesFailed);
         Assert.True(lensing.DirectFrames > 0, "the view still draws, tracing colour directly");
+        Assert.Contains(vm.Notes, n => n.Contains("traced afresh every frame", StringComparison.Ordinal));   // fix round 1: said, not silent
         c.Dispose();
     }
 
@@ -775,7 +817,11 @@ public class CloseUpWindowTests
         {
             try
             {
-                var host = new GlHost(new OpenTK.Wpf.GLWpfControl());
+                // Fix round 1: the host starts from its control's visibility, so the control is in a shown (off-screen) window.
+                var control = new OpenTK.Wpf.GLWpfControl();
+                var window = new Window { Content = control, Left = -20000, Top = -20000, Width = 200, Height = 150, ShowActivated = false, ShowInTaskbar = false };
+                window.Show();
+                var host = new GlHost(control);
                 Assert.False(host.IsTicking);
                 host.Animating = true;
                 Assert.True(host.IsTicking);
@@ -785,6 +831,10 @@ public class CloseUpWindowTests
                 Assert.True(host.IsTicking);
                 Assert.False(host.Shutdown(() => throw new InvalidOperationException("no context, nothing to release")));
                 Assert.False(host.IsTicking);
+                window.Close();
+                var unshown = new GlHost(new OpenTK.Wpf.GLWpfControl());   // a control never shown is not visible: nothing ticks
+                unshown.Animating = true;
+                Assert.False(unshown.IsTicking);
             }
             catch (Exception e) { error = e; }
         });
