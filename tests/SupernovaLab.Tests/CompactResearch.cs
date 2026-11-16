@@ -77,6 +77,42 @@ public static class CompactResearch
         public const double VisibleFraction14High = 0.78;
     }
 
+    /// <summary>compact.md §C3, early cooling (≈ 1 minute to 30 yr).</summary>
+    public static class C3
+    {
+        /// <summary>§C3 App: the early band starts at 60 s.</summary>
+        public const double EarlyStartS = 60;
+        /// <summary>§C3 table (1.4 M☉, 12 km): T_s^∞ at 60 s, 10.38 MK.</summary>
+        public const double At60sMK = 10.38;
+        /// <summary>§C3 App check values (1.4 M☉, 12 km), MK: 1 yr 3.11 [2.04, 3.11].</summary>
+        public const double At1yrMK = 3.11;
+        /// <summary>§C3 App check: 3 yr 2.81 [2.04, 2.90]; the band's top is Gnedin's plateau, 2.9 MK.</summary>
+        public const double At3yrMK = 2.81, PlateauMK = 2.9;
+        /// <summary>§C3 App check: 10 yr 2.52 [2.04, 2.90].</summary>
+        public const double At10yrMK = 2.52;
+        /// <summary>§C3 App check: 30 yr 2.276 [2.04, 2.276]: the model's own band, so the join is exact.</summary>
+        public const double At30yrMK = 2.276, At100yrMK = 2.04;
+    }
+
+    /// <summary>compact.md §C4, pulsars (beam, magnetosphere, inclinations and proper motions).</summary>
+    public static class C4
+    {
+        /// <summary>§C4 App: ρ = 5.6° P^(−1/2) (Biggs 1990; #59), capped at 90°.</summary>
+        public const double BeamCoefficientDeg = 5.6;
+        /// <summary>§C4.1: ρ values, deg, for the Crab (33.4 ms), 0.1 s, 1 s, 5 s.</summary>
+        public const double CrabBeamDeg = 30.6, Beam0p1sDeg = 17.7, Beam1sDeg = 5.6, Beam5sDeg = 2.5;
+        /// <summary>§C4 App: the light cylinder at 33.4 ms is 1,593.6 km.</summary>
+        public const double CrabLightCylinderKm = 1593.6;
+        /// <summary>§C4 App: the magnetosphere forms at 30 s [APPROX].</summary>
+        public const double MagnetosphereFormsS = 30;
+        /// <summary>§C4.3 / App: the Crab's magnetic inclination α = 62° (Romani &amp; Yadigaroglu 1995).</summary>
+        public const double CrabInclinationDeg = 62;
+        /// <summary>§C4 App: the Crab's kick position angle, −14.3° from the projected spin axis; Cas A's is 151°.</summary>
+        public const double CrabKickPositionAngleDeg = -14.3, CasAKickPositionAngleDeg = 151;
+        /// <summary>§C4 App: with the checkbox on (ζ = α = 62°) the Crab's kick is d = (+0.247, +0.455, +0.856).</summary>
+        public static readonly (double X, double Y, double Z) CrabKickDirection = (0.247, 0.455, 0.856);
+    }
+
     /// <summary>compact.md §C9, observational checks (C9.1, the Event Horizon Telescope; App block).</summary>
     public static class C9
     {
@@ -114,5 +150,9 @@ public static class CompactResearch
         public const double EhtBeamMicroArcsec = 20;
         /// <summary>§C9.1 "From Earth": 1.95 × 10⁵ times smaller than 20 µas.</summary>
         public const double TenSolarMassTimesTooSmall = 1.95e5;
+        /// <summary>§C9.3 / R-P3-1: seen from afar the Cas A neutron star is T_s^∞ ≈ 1.4–1.5 MK (1.37–1.54 MK); the lab at 340 yr is 20–30% warm (#54).</summary>
+        public const double CasAObservedFarLowMK = 1.4, CasAObservedFarHighMK = 1.5;
+        /// <summary>§C9.3: the lab at 340 yr, 12 km, 1.4 M☉: 1.82 MK seen from afar.</summary>
+        public const double CasALabAt340yrMK = 1.82;
     }
 }

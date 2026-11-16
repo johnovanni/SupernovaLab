@@ -18,6 +18,9 @@ public class PresetPinsCoverageTests
     {
         nameof(PresetPins.ConfinedCsmOuterCm), nameof(PresetPins.UndetectedOuterShell), nameof(PresetPins.SceneDisclosures),
         nameof(PresetPins.Source),
+        // Ruling P3-4: the close-up's geometry pass-through (compact §C4), read by no signal model.
+        nameof(PresetPins.KickPositionAngleDeg), nameof(PresetPins.KickPositionAngleSource),
+        nameof(PresetPins.MagneticInclinationDeg), nameof(PresetPins.MagneticInclinationSource),
     };
 
     private static PresetPins WithOnly(ParameterInfo[] parameters, int index)

@@ -149,7 +149,8 @@ public sealed partial class OutcomeEngine
         return new Outcome(x, d.Fate, pinned.Type, d.HasGrb, pinned.Remnant, star, energy, ejecta, nickel, peak,
             d.MagnetarEnergy, d.MagnetarTimescale, notes, pinned.Published, magB, ti44, pinned.GrbEnergy,
             pinned.GrbPeak, pinned.GrbT90, pinned.PulsarRadio, pinned.Ring, pinned.ConfinedCsmOuterCm,
-            pinned.UndetectedOuterShell, pinned.SceneDisclosures);
+            pinned.UndetectedOuterShell, pinned.SceneDisclosures, pinned.KickPositionAngleDeg, pinned.KickPositionAngleSource,
+            pinned.MagneticInclinationDeg, pinned.MagneticInclinationSource);
     }
 
     /// <summary>

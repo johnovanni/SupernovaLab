@@ -18,7 +18,9 @@ public sealed partial class OutcomeEngine
     private sealed record Pinned(PresupernovaStar Star, SupernovaType Type, Quantity? Energy, Quantity? Ejecta,
         Quantity? Nickel, Remnant Remnant, Quantity? Ti44, Quantity? GrbEnergy, Quantity? GrbPeak, Quantity? GrbT90,
         Quantity? PulsarRadio, bool Ring, bool Published, double? ConfinedCsmOuterCm = null, bool UndetectedOuterShell = false,
-        IReadOnlyList<int>? SceneDisclosures = null);
+        IReadOnlyList<int>? SceneDisclosures = null,
+        double? KickPositionAngleDeg = null, Source? KickPositionAngleSource = null,
+        double? MagneticInclinationDeg = null, Source? MagneticInclinationSource = null);
 
     /// <summary>Ruling R53 (I2): a pinned ejecta and remnant may exceed the star's final mass by this much (M☉) unremarked.</summary>
     private const double MassBudgetTolerance = 0.01;
@@ -140,7 +142,9 @@ public sealed partial class OutcomeEngine
 
         return new Pinned(star, type, energy, ejecta, nickel, remnant, ti44, grbEnergy, grbPeak, grbT90, pulsarRadio, ring,
             published, confinedCsm, undetectedShell,
-            pins?.SceneDisclosures is { Length: > 0 } disclosures ? disclosures.ToArray() : null);   // ruling R-P2-32: pass-through
+            pins?.SceneDisclosures is { Length: > 0 } disclosures ? disclosures.ToArray() : null,   // ruling R-P2-32: pass-through
+            pins?.KickPositionAngleDeg, pins?.KickPositionAngleSource,   // ruling P3-4: pass-through, read by no signal model
+            pins?.MagneticInclinationDeg, pins?.MagneticInclinationSource);
     }
 
     /// <summary>

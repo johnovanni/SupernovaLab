@@ -102,6 +102,10 @@ public static class PresetCatalog
         }
     }
 
+    /// <summary>Ruling P3-4: a pin's citation string becomes a Source citing compact §C4; null when the pin is absent.</summary>
+    private static Source? ToPinSource(string? citation, string id, string field)
+        => citation is null ? null : new Source(citation, "compact §C4");
+
     private static IReadOnlyList<Preset> Validated(List<Preset> presets)
     {
         var duplicate = presets.GroupBy(p => p.Id).FirstOrDefault(g => g.Count() > 1);
@@ -128,7 +132,8 @@ public static class PresetCatalog
             pins = new PresetPins(p.ExplosionEnergyErg, p.EjectaMass, p.NickelMass, p.RadiusCm, ToSource(p.Source, id, "pins"),
                 p.Ti44Mass, p.GrbEisoErg, p.GrbEpKeV, p.GrbT90S, p.NsSpinPeriodS, p.NsFieldG, p.PulsarRadioLumMjyKpc2,
                 p.EquatorialRing, p.NsGravitationalMass, p.RemnantMass, p.ConfinedCsmOuterCm, p.UndetectedOuterShell,
-                p.SceneDisclosures);
+                p.SceneDisclosures, p.KickPositionAngleDeg, ToPinSource(p.KickPositionAngleSource, id, "kickPositionAngleSource"),
+                p.MagneticInclinationDeg, ToPinSource(p.MagneticInclinationSource, id, "magneticInclinationSource"));
 
         var facts = (d.Facts ?? new List<FactDto>()).Select(f => new ObservedFact(
             f.Messenger ?? throw new InvalidDataException($"A fact of preset '{id}' has no messenger."),
@@ -223,6 +228,10 @@ public static class PresetCatalog
         public double? ConfinedCsmOuterCm { get; set; }
         public bool? UndetectedOuterShell { get; set; }
         public int[]? SceneDisclosures { get; set; }
+        public double? KickPositionAngleDeg { get; set; }
+        public string? KickPositionAngleSource { get; set; }
+        public double? MagneticInclinationDeg { get; set; }
+        public string? MagneticInclinationSource { get; set; }
         public SourceDto? Source { get; set; }
     }
 

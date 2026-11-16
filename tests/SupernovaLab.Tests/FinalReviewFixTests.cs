@@ -118,7 +118,7 @@ public class FinalReviewFixTests
     public void I1_TheDisclosuresArePassThrough_TheyChangeNoModelledValue()
     {
         var p = PresetCatalog.Get("casa");
-        Assert.Equal(new[] { 46 }, p.Pins!.SceneDisclosures);
+        Assert.Equal(new[] { 46, 54 }, p.Pins!.SceneDisclosures);   // #54: the Cas A temperature comparison (Task 5)
         var bare = TestOutcomes.Engine.Compute(p.Inputs, p.Pins with { SceneDisclosures = null });
         var with = Preset("casa");
         Assert.Equal(bare.UsesPublishedValues, with.UsesPublishedValues);

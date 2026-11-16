@@ -44,11 +44,16 @@ public enum Fate
 /// <para>Ruling R-P2-32 (final review I1): <see cref="SceneDisclosures"/> lists the numbers of scientific inconsistencies the 3D view must
 /// disclose for this preset's own event (Cas A's reverse shock, #46; the lab's Crab nebula, #47). Pass-through for the view's notes only,
 /// like <see cref="UndetectedOuterShell"/>: no signal model reads it and it is not a published value.</para>
+/// <para>Ruling P3-4: <see cref="KickPositionAngleDeg"/> and <see cref="MagneticInclinationDeg"/> (each with its citation) are the preset's
+/// measured kick position angle on the sky and magnetic inclination (compact §C4). Pass-through to <see cref="Outcome"/> like
+/// <see cref="SceneDisclosures"/>: read by the close-up's geometry only, by no signal model, and not counted in <see cref="ChangesModelledValue"/>.</para>
 public sealed record PresetPins(double? ExplosionEnergyErg, double? EjectaMass, double? NickelMass, double? RadiusCm, Source Source,
     double? Ti44Mass = null, double? GrbEisoErg = null, double? GrbEpKeV = null, double? GrbT90S = null,
     double? NsSpinPeriodS = null, double? NsFieldG = null, double? PulsarRadioLumMjyKpc2 = null, bool? EquatorialRing = null,
     double? NsGravitationalMass = null, double? RemnantMass = null, double? ConfinedCsmOuterCm = null,
-    bool? UndetectedOuterShell = null, int[]? SceneDisclosures = null)
+    bool? UndetectedOuterShell = null, int[]? SceneDisclosures = null,
+    double? KickPositionAngleDeg = null, Source? KickPositionAngleSource = null,
+    double? MagneticInclinationDeg = null, Source? MagneticInclinationSource = null)
 {
     /// <summary>
     /// Whether any pin changes a value the lab models (every pin but the geometry-only <see cref="ConfinedCsmOuterCm"/>, ruling
@@ -89,7 +94,9 @@ public sealed record Outcome(LabInputs Inputs, Fate Fate, SupernovaType Type, bo
     Quantity? PeakAbsoluteMagB = null, Quantity? Ti44Mass = null,
     Quantity? GrbIsotropicEnergyErg = null, Quantity? GrbPeakEnergyKeV = null, Quantity? GrbT90S = null,
     Quantity? PulsarRadioLuminosityMjyKpc2 = null, bool HasEquatorialRing = false, double? ConfinedCsmOuterCm = null,
-    bool HasUndetectedOuterShell = false, IReadOnlyList<int>? SceneDisclosures = null)
+    bool HasUndetectedOuterShell = false, IReadOnlyList<int>? SceneDisclosures = null,
+    double? KickPositionAngleDeg = null, Source? KickPositionAngleSource = null,
+    double? MagneticInclinationDeg = null, Source? MagneticInclinationSource = null)
 {
     /// <summary>Whether the preset asks the 3D view to disclose scientific inconsistency #<paramref name="number"/> (ruling R-P2-32).</summary>
     public bool Discloses(int number) => SceneDisclosures?.Contains(number) == true;
