@@ -23,5 +23,13 @@ public sealed class FakePulseAudio : IPulseAudio
         History.Add(receivedPeriodS);
     }
 
+    /// <summary>How many test tones were asked for (Task 16).</summary>
+    public int TestTones { get; private set; }
+
+    public void PlayTestTone()
+    {
+        if (Enabled) TestTones++;
+    }
+
     public void Dispose() => Disposed = true;
 }

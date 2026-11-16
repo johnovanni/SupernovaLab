@@ -494,6 +494,9 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     {
         if (value && _audio is null && !_disposed) CreateAudio();
         if (_audio is not null) _audio.Enabled = value;
+        // Task 16 (the owner's second look): a test tone, so switching on is heard even when no pulses reach Earth (at t = 0, before
+        // about 10 years, a beam that misses Earth, no pulsar), which was most of the time.
+        if (value) _audio?.PlayTestTone();
         UpdatePulses();
         OnPropertyChanged(nameof(SpeakerGlyph));
         OnPropertyChanged(nameof(ShowSoundStatus));
@@ -512,6 +515,7 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     partial void OnVolumeChanged(float value)
     {
         if (_audio is not null) _audio.Volume = value;
+        if (IsSoundOn) _audio?.PlayTestTone();   // Task 16: the new volume is heard at once; a drag runs one tone on, not many
         UpdatePulses();
     }
 

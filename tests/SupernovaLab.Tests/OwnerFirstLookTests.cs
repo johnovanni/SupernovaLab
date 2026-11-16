@@ -377,17 +377,17 @@ public class OwnerFirstLookTests
     }
 
     [Fact]
-    public void TheClick_IsLowerPitched_OneCycleOf500Hz_UnderTheSame2msEnvelope()
+    public void TheClick_IsLowerPitched_500Hz_WholeCyclesUnderItsEnvelope()   // Task 16 made it 6 ms, three cycles (SoundHeardTests)
     {
         Assert.Equal(500, ClickTrain.CarrierHz);
         var t = new ClickTrain(44100) { Volume = 1 };
         t.SetPeriod(0.5);
-        var x = new float[(int)(0.002 * 44100) + 4];
+        var x = new float[(int)(ClickTrain.ClickS * 44100) + 4];
         t.Fill(x, 0, x.Length);
-        int length = (int)Math.Round(0.002 * 44100);
+        int length = (int)Math.Round(ClickTrain.ClickS * 44100);
         int crossings = 0;
         for (int i = 2; i < length - 1; i++) if (Math.Sign(x[i - 1]) * Math.Sign(x[i]) < 0) crossings++;
-        Assert.Equal(1, crossings);                                    // one cycle: up, then down
+        Assert.Equal((int)Math.Round(2 * ClickTrain.CarrierHz * ClickTrain.ClickS) - 1, crossings);   // whole cycles
         Assert.InRange(x.Take(length).Max(Math.Abs), 0.9f, 1f);        // louder than before (0.68), never clipping
         Assert.Equal(0, x.Take(length).Sum(v => (double)v), 2);        // no net push: no thump
     }

@@ -78,8 +78,19 @@ public sealed class NAudioPulseAudio : IPulseAudio
             string device = DevicesOpened == 0 ? "audio device: never opened"
                 : $"audio device opened {DevicesOpened}× ({_deviceName}, {_train.SampleRate} Hz mono IEEE float, {LatencyMs} ms latency), now {(IsDeviceOpen ? "open" : "released")}";
             return $"{device}; {ClicksQueued} clicks queued in {SamplesQueued} samples ({(SamplesQueued / (double)_train.SampleRate).ToString("0.00", inv)} s); " +
-                   $"volume {(int)Math.Round(_volume * 100)}%; problem: {_problem ?? "none"}";
+                   $"test tones {TestTonesPlayed}; volume {(int)Math.Round(_volume * 100)}%; problem: {_problem ?? "none"}";
         }
+    }
+
+    /// <summary>How many test tones have been started (Task 16; the launch log's "test tones").</summary>
+    public int TestTonesPlayed { get; private set; }
+
+    public void PlayTestTone()
+    {
+        if (_disposed || !_enabled || _failed) return;
+        _train.StartTestTone();
+        TestTonesPlayed++;
+        Apply(openForTone: true);
     }
 
     public void SetPulsePeriod(double? receivedPeriodS)
@@ -89,15 +100,16 @@ public sealed class NAudioPulseAudio : IPulseAudio
         Apply();
     }
 
-    private void Apply()
+    private void Apply(bool openForTone = false)
     {
         _train.SetPeriod(_enabled && !_failed ? _period : null);
         if (!_enabled || _failed)
         {
+            _train.StopTestTone();       // Task 16: a tone cut off by switching off does not finish on switching on again
             ReleaseDevice();             // stop and release: nothing queued is left to sound later
             return;
         }
-        if (_period is null || _out is not null) return;   // silent: an open device plays zeros
+        if ((_period is null && !openForTone) || _out is not null) return;   // silent: an open device plays zeros
         IWavePlayer? device = null;
         try
         {

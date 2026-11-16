@@ -54,13 +54,13 @@ public class PulseAudioTests
     }
 
     [Fact]
-    public void ClickTrain_AClickIsTwoMillisecondsLong_UnderARaisedCosineEnvelope()
+    public void ClickTrain_AClickIsClickSLong_UnderARaisedCosineEnvelope()   // Task 16: 6 ms (it was 2 ms)
     {
         var t = new ClickTrain(Rate) { Volume = 1 };
         t.SetPeriod(0.5);
         var x = Render(t, 0.4);
         var onset = Onsets(x)[0];
-        int length = (int)Math.Round(0.002 * Rate);
+        int length = (int)Math.Round(ClickTrain.ClickS * Rate);
         Assert.True(x.Skip(onset + length + 2).Take((int)(0.4 * Rate) - onset - length - 3).All(v => v == 0), "silent between clicks");
         float peak = x.Skip(onset).Take(length).Max(Math.Abs);
         Assert.InRange(peak, 0.3f, 1f);

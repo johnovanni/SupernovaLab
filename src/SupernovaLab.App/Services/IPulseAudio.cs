@@ -18,4 +18,10 @@ public interface IPulseAudio : IDisposable
 
     /// <summary>The received pulse period, s (P(t)(1 + z)); null for silence.</summary>
     void SetPulsePeriod(double? receivedPeriodS);
+
+    /// <summary>
+    /// Task 16: plays a short test tone (while switched on), so switching the sound on or moving its volume is heard even when no pulses
+    /// reach Earth. Asked again while it plays, it runs on.
+    /// </summary>
+    void PlayTestTone();
 }
