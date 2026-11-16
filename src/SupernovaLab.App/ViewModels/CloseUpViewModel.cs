@@ -81,8 +81,27 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     /// "Light bending: half resolution (your setting)", or "(automatic)" for Auto.
     /// </summary>
     public IReadOnlyList<string> Notes => _modelError is not null ? new[] { _modelError }
-        : State.IsLensed ? State.Notes.Concat(ActiveCutaway?.Notes ?? Array.Empty<string>()).Append(LightBendingNote).ToList()
+        : State.IsLensed ? WithFlareLimit(State.Notes.Concat(ActiveCutaway?.Notes ?? Array.Empty<string>()).Append(LightBendingNote)).ToList()
         : State.Notes;
+
+    /// <summary>Review fix 5: shown while the flash limiter holds a giant flare clearly below what the model asks for.</summary>
+    public const string FlareDimmedNote = "Flare dimmed by the flash-safety limit (at most one rise per half second, none faster than 0.15 s)";
+
+    private bool _flareDimmed;
+
+    /// <summary>Set by the view's controller each drawn frame: the limiter is dimming the flare now.</summary>
+    public bool FlareDimmed
+    {
+        get => _flareDimmed;
+        set
+        {
+            if (_flareDimmed == value) return;
+            _flareDimmed = value;
+            OnPropertyChanged(nameof(Notes));
+        }
+    }
+
+    private IEnumerable<string> WithFlareLimit(IEnumerable<string> notes) => _flareDimmed ? notes.Prepend(FlareDimmedNote) : notes;
 
     /// <summary>The light-bending note for the level shown (or, before the view has drawn, the level it settles at).</summary>
     public string LightBendingNote

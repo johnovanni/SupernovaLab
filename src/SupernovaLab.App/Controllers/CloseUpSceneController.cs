@@ -677,7 +677,16 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private float _flareDrawn;
 
     /// <summary>[Presentation, schematic] How much a flare at full brightness multiplies the surface's and the beams' light (tone-mapped, so it whites out and blooms).</summary>
-    public const float FlareSurfaceGain = 6f, FlareBeamGain = 4f;
+    public const float FlareSurfaceGain = 0.5f, FlareBeamGain = 1.5f;
+
+    /// <summary>
+    /// Flash safety (WCAG 2.3.1's area test): the bloom is thinned while a flare is on, so its spill cannot light the frame. The
+    /// tone-mapped peak of the surface (<see cref="SurfaceLevel"/> × (1 + gain), through <see cref="HdrPipeline.Tonemap"/>) stays under 0.85.
+    /// </summary>
+    public static float BloomDuringFlare(float bloom, float flareDrawn) => bloom * (1f - 0.5f * Math.Clamp(flareDrawn, 0f, 1f));
+
+    /// <summary>The note's condition: the limiter is holding the drawn flare clearly below what the model asks for.</summary>
+    public static bool FlareDimmedBy(double requested, double drawn) => requested > 0.1 && drawn < requested - 0.1;
 
     private void UpdateAnimating()
     {
@@ -743,7 +752,9 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         FramesDrawn++;
         FramesSinceReset++;
         var state = _vm.State;
+        _flashLimiter.ResetIfChanged(_vm.Main.CurrentOutcome, _vm.Main.RunNumber);
         _flareDrawn = (float)_flashLimiter.Apply(state.FlareIntensity, _clock());
+        _vm.FlareDimmed = FlareDimmedBy(state.FlareIntensity, _flareDrawn);
         _gpuTimer?.Begin();
         bool lens = state.IsLensed && _lensingEnabled;
         int captures = EnvironmentCaptures;
@@ -786,7 +797,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             _cutawayFrame = null;
             lines = _drawLinesNow ??= DrawLinesNow;
         }
-        _hdr?.End(_exposure, BloomStrength, lines);
+        _hdr?.End(_exposure, BloomDuringFlare(BloomStrength, _flareDrawn), lines);
         if (_hdr is null) lines?.Invoke();
         _gpuTimer?.End(tracedTag);
         UpdateAnimating();   // a refinement still owed keeps the view drawing; a finished one lets it rest

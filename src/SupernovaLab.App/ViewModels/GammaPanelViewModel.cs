@@ -68,7 +68,7 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
                 {
                     Series = new[] { "line158", "line812", "line847", "line1238" }.SelectMany(c => SampleChannel(_lines, c)).ToList(),
                     Lines = LineLimit(instrument, "line847"), LogY = true, YLabel = "Line flux (photons cm⁻² s⁻¹)",
-                    Note = LimitNote(instrument, ti44: false),
+                    Note = LimitNote(instrument, ti44: false) + (FlaresApply && _flares.Flares(Outcome).Count > 0 ? " " + FlaresPointer : ""),
                 };
             default:
                 return new PanelContent
@@ -83,6 +83,9 @@ public sealed class GammaPanelViewModel : InstrumentPanelViewModel
 
     /// <summary>Whether this outcome is a magnetar whose giant flares the burst tab draws (plan Task 12, spec §7.3).</summary>
     private bool FlaresApply => HasOutcome && _flares.Applies(Outcome);
+
+    /// <summary>The lines tab's one-line pointer to the flares (review fix 4: smaller than changing the default tab).</summary>
+    public const string FlaresPointer = "Giant flares: see the burst tab.";
 
     /// <summary>The tab's note on the flare spikes.</summary>
     public const string FlareNote =

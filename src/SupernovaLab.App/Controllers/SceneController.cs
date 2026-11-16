@@ -831,6 +831,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         FramesDrawn++;
         if (_uploadParticles) UploadParticles();
         var s = _state;
+        _flashLimiter.ResetIfChanged(_scene?.Outcome, _scene?.RunNumber ?? 0);
         _flareDrawn = (float)_flashLimiter.Apply(s.FlareIntensity, _clock());
         _gpuTimer?.Begin();
         _hdr.Begin(viewportPx);
@@ -867,7 +868,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             }
         }
         GL.ColorMask(true, true, true, true);
-        _hdr.End(s.Exposure, BloomStrength, cutFaces);
+        _hdr.End(s.Exposure, CloseUpSceneController.BloomDuringFlare(BloomStrength, _flareDrawn), cutFaces);
         if (FlashOverlayAlpha > 0) _flash?.RenderNoHdr(viewportPx, s.FlashColor, FlashOverlayAlpha);
         _gpuTimer?.End();
         UpdateAnimating();   // a flare's last frame lets the view rest

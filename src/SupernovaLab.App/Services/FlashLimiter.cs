@@ -53,11 +53,25 @@ public sealed class FlashLimiter
         else
         {
             if (want < _output - RisingEpsilon) _rising = false;
-            result = Math.Min(want, _output);
+            // A fall is slewed too (at least MinRiseS from full to nothing), so a flare the limiter has clipped never ends as a hard cut.
+            double fall = (dt > 0 ? Math.Min(dt, MaxFrameS) : MaxFrameS) / MinRiseS;
+            result = Math.Max(want, _output - fall);
+            result = Math.Min(result, _output);
             if (result <= 0) _rising = false;
         }
         _output = result;
         return result;
+    }
+
+    private object? _context;
+    private int _run;
+
+    /// <summary>Resets when the outcome or the run changes (a new flare list), so the next rise may start at once; call once per drawn frame.</summary>
+    public void ResetIfChanged(object? context, int run)
+    {
+        if (ReferenceEquals(context, _context) && run == _run) return;
+        (_context, _run) = (context, run);
+        Reset();
     }
 
     /// <summary>Forgets everything (a new outcome or run): the next rise may start at once.</summary>

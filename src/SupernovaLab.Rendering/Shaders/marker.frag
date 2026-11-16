@@ -28,5 +28,5 @@ void main()
     float a = max(max(core, outline), halo);
     if (a <= 0.0) discard;
     vec3 c = mix(u_color, vec3(1.0), u_glow);
-    o_color = vec4(c * max(core, halo * 1.5), a);
+    o_color = vec4(c * max(core, halo * 0.8), a);   // the halo stays below white: the flash is small and bounded
 }

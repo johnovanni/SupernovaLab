@@ -398,6 +398,20 @@ public class MagnetarFlaresTests
     }
 
     [Fact]
+    public void LinesTab_PointsToTheGiantFlares_OnlyWhenThisRunHasOne()
+    {
+        var o = Magnetar();
+        int run = RunWithOneFlare(o);
+        var panel = new GammaPanelViewModel();
+        panel.Update(o, DefaultObserver, run, Array.Empty<SupernovaLab.Core.Presets.ObservedFact>(), true);
+        panel.SelectedSubTab = GammaPanelViewModel.LinesTab;
+        Assert.Contains(GammaPanelViewModel.FlaresPointer, panel.PanelNote);
+        int none = Enumerable.Range(1, 200).First(r => MagnetarFlares.For(o, r).Count == 0);
+        panel.Update(o, DefaultObserver, none, Array.Empty<SupernovaLab.Core.Presets.ObservedFact>(), true);
+        Assert.DoesNotContain(GammaPanelViewModel.FlaresPointer, panel.PanelNote);
+    }
+
+    [Fact]
     public void Glossary_ExplainsTheGiantFlare()
     {
         Assert.Contains("1979", Glossary.GiantFlare);
