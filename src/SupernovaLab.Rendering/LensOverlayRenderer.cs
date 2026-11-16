@@ -133,6 +133,10 @@ public static class LensOverlay
     /// </summary>
     public const double LeaderEndGm = 8.6;
 
+    /// <summary>[Presentation] The ergosphere is labelled from this spin up (its outline is drawn for any spin): at 0.3 it reaches 0.05 GM/c²
+    /// past the horizon at the equator, at 0.1 only 0.005, where the label would name a line on top of the horizon's.</summary>
+    public const double ErgosphereLabelMinSpin = 0.3;
+
     /// <summary>
     /// The labels with the grid on, each at the end of a leader line from the outline it names: the horizon (up and right), the photon
     /// sphere (right) or the two equatorial photon orbits (right and left, from their ticks), the ergosphere (down and right). A label on
@@ -158,7 +162,8 @@ public static class LensOverlay
         Vector3d TickTop(double r, int s) => (s * Math.Sqrt(r * r + a * a) * across + TickHalfGm * Vector3d.UnitZ) * rgKm;
         labels.Add(new(ProgradeLabel, End(side > 0 ? 15 : 165), TickTop(pro, side), side < 0));
         labels.Add(new(RetrogradeLabel, End(side > 0 ? 165 : 15), TickTop(retro, -side), side > 0));
-        labels.Add(new(ErgosphereLabel, End(-55), On(BlackHoleOptics.ErgosphereRadius(a, 145 * Math.PI / 180), 145, 1)));
+        if (a >= ErgosphereLabelMinSpin)   // fix round 1: at a = 0.1 the ergosphere is only 0.005 GM/c² outside the horizon
+            labels.Add(new(ErgosphereLabel, End(-55), On(BlackHoleOptics.ErgosphereRadius(a, 145 * Math.PI / 180), 145, 1)));
         return labels;
     }
 

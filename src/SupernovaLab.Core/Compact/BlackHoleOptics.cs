@@ -72,7 +72,8 @@ public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 Ex
 /// R_esc is Escaped at step 0 with its own direction. After <see cref="MaxSteps"/> steps with none of these: StepLimit
 /// (ruling R-P3-7: shaded by the surroundings along the exit direction; these rays orbit near the photon sphere, so they
 /// read as the photon ring).</item>
-/// <item><b>Step.</b> Classical RK4 on (x, p) with h = 0.05 · max(r − r₊, 0.5) · (1 + r/20), capped at 2.0, r taken at
+/// <item><b>Step.</b> Classical RK4 on (x, p) with h = 0.05 · max(r − r₊, floor) · (1 + r/20), capped at 2.0 (floor = <see cref="StepFloor"/>:
+/// 0.5 below a ≈ 0.987, then 16 (r_ph+ − r₊); inconsistency #64), r taken at
 /// the start of the step. At most 400 steps. No allocation in the loop.</item>
 /// <item><b>Exit.</b> ExitPosition = x at the stop; ExitDirection = normalize(dx/dλ) there (the k₁ derivative of the
 /// would-be next step).</item>
@@ -341,7 +342,7 @@ public static class BlackHoleOptics
                                     double surfaceRadius, int maxSteps, bool farCameras = false)
     {
         double a = -spin; // time reversal: the future-directed ray around −a (see the class notes, item 2)
-        double rPlus = HorizonRadius(spin);
+        double rPlus = HorizonRadius(spin), floor = StepFloor(spin);
         double rCapture = rPlus + CaptureMargin;
         Vec3 d = direction.Normalized();
         if (farCameras && cameraPosition.Length > FarCameraRadius)
@@ -381,7 +382,7 @@ public static class BlackHoleOptics
             else
             {
                 (rPrev, xPrev, yPrev, zPrev) = (r, x, y, z);
-                Rk4Step(a, StepSize(r, rPlus), ref x, ref y, ref z, ref px, ref py, ref pz,
+                Rk4Step(a, StepSize(r, rPlus, floor), ref x, ref y, ref z, ref px, ref py, ref pz,
                         k1x, k1y, k1z, k1px, k1py, k1pz);
                 continue;
             }
@@ -416,7 +417,7 @@ public static class BlackHoleOptics
     /// </summary>
     internal static (double Start, double End) HamiltonianDrift(double spin, Vec3 cameraPosition, Vec3 direction, int steps)
     {
-        double a = -spin, rPlus = HorizonRadius(spin);
+        double a = -spin, rPlus = HorizonRadius(spin), floor = StepFloor(spin);
         double x = cameraPosition.X, y = cameraPosition.Y, z = cameraPosition.Z;
         if (!InitialMomentum(a, x, y, z, direction.Normalized(), out double px, out double py, out double pz))
             return (double.NaN, double.NaN);
@@ -426,7 +427,7 @@ public static class BlackHoleOptics
             Derivatives(a, x, y, z, px, py, pz, out double k1x, out double k1y, out double k1z,
                         out double k1px, out double k1py, out double k1pz, out double r);
             if (r < rPlus + CaptureMargin) break;
-            Rk4Step(a, StepSize(r, rPlus), ref x, ref y, ref z, ref px, ref py, ref pz, k1x, k1y, k1z, k1px, k1py, k1pz);
+            Rk4Step(a, StepSize(r, rPlus, floor), ref x, ref y, ref z, ref px, ref py, ref pz, k1x, k1y, k1z, k1px, k1py, k1pz);
         }
         return (h0, Hamiltonian(a, x, y, z, px, py, pz));
     }
@@ -487,9 +488,25 @@ public static class BlackHoleOptics
         return false;
     }
 
-    /// <summary>h = 0.05 · max(r − r₊, 0.5) · (1 + r/20), capped at 2.0 (ruling P3-7).</summary>
-    private static double StepSize(double r, double rPlus)
-        => Math.Min(0.05 * Math.Max(r - rPlus, 0.5) * (1 + r / 20), MaxStep);
+    /// <summary>Inconsistency #64's fix: the step floor is this many times the gap r_ph+ − r₊ between the prograde photon orbit and the horizon.</summary>
+    public const double StepFloorPerPhotonGap = 16;
+
+    /// <summary>
+    /// The step rule's floor (ruling P3-7's 0.5; inconsistency #64, Task 10 fix round 1): min(0.5, 16 (r_ph+ − r₊)), never below 0.02,
+    /// with r_ph+ = 2 [1 + cos(⅔ arccos(−a))]. It is 0.5 for a below about 0.987 (every spin the lab's model gives), and shrinks near a = 1,
+    /// where the prograde photon orbit closes in on the horizon (0.011 above it at a = 0.998) and a step of 0.026 let RK4's error carry
+    /// rays skimming that orbit below the capture radius. lensing.frag mirrors it.
+    /// </summary>
+    public static double StepFloor(double spin)
+    {
+        double a = Math.Min(Math.Abs(spin), 1);
+        double gap = 2 * (1 + Math.Cos(2.0 / 3 * Math.Acos(-a))) - HorizonRadius(a);
+        return Math.Clamp(StepFloorPerPhotonGap * gap, 0.02, 0.5);
+    }
+
+    /// <summary>h = 0.05 · max(r − r₊, floor) · (1 + r/20), capped at 2.0 (ruling P3-7; floor <see cref="StepFloor"/>, 0.5 below a ≈ 0.987).</summary>
+    private static double StepSize(double r, double rPlus, double floor)
+        => Math.Min(0.05 * Math.Max(r - rPlus, floor) * (1 + r / 20), MaxStep);
 
     /// <summary>The Kerr–Schild r: r² = ½(w + √(w² + 4a²z²)), w = ρ² − a², in a form without cancellation.</summary>
     private static double KerrSchildR(double a2, double x, double y, double z)

@@ -266,7 +266,7 @@ public class CloseUpWindowTests
         var texts = c.ViewLabels.Select(l => l.Text).ToList();
         Assert.Contains(LensOverlay.HorizonLabel, texts);
         Assert.Contains(LensOverlay.ProgradeLabel, texts);   // n6946bh1 settles at spin 0.1
-        Assert.Contains(LensOverlay.ErgosphereLabel, texts);
+        Assert.DoesNotContain(LensOverlay.ErgosphereLabel, texts);   // fix round 1: labelled from spin 0.3 (at 0.1 it hugs the horizon)
         var u = c.RaysFor(new Size(900, 640));
         Assert.True(u.Grid);
         Assert.Equal((float)cu.State.Spin, u.Spin);

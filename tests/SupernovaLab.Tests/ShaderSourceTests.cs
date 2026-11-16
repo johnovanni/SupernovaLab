@@ -119,7 +119,11 @@ public class ShaderSourceTests
         Assert.Contains($"const float FAR_START_RADIUS = {SupernovaLab.Core.Compact.BlackHoleOptics.FarStartRadius.ToString("0.00", inv)};", text);
         Assert.Contains("const float CAPTURE_MARGIN = 0.01;", text);
         Assert.Contains("const float MAX_STEP = 2.0;", text);
-        Assert.Contains("min(0.05 * max(r - rPlus, 0.5) * (1.0 + r / 20.0), MAX_STEP)", text);   // the step rule
+        Assert.Contains("min(0.05 * max(r - rPlus, stepFloor) * (1.0 + r / 20.0), MAX_STEP)", text);   // the step rule
+        // Inconsistency #64 (Task 10 fix round 1): the floor mirrors BlackHoleOptics.StepFloor.
+        Assert.Contains($"const float STEP_FLOOR_PER_PHOTON_GAP = {SupernovaLab.Core.Compact.BlackHoleOptics.StepFloorPerPhotonGap.ToString("0.0", inv)};", text);
+        Assert.Contains("float rPro = 2.0 * (1.0 + cos(2.0 / 3.0 * acos(-min(u_spin, 1.0))));", text);
+        Assert.Contains("clamp(STEP_FLOOR_PER_PHOTON_GAP * (rPro - rPlus), 0.02, 0.5)", text);
         Assert.Contains("2.0 * b / (c2 * (1.0 + cosG)) : 2.0 / b * (1.0 - cosG)", text);         // ruling R-P3-6's deflection
         // Ruling R-P3-7: step-limited rays sample the surroundings, as escaped ones do.
         Assert.Contains("fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT", text);

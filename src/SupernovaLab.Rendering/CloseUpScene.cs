@@ -187,7 +187,7 @@ public sealed class CloseUpScene
 
     /// <summary>What the lensing pass bends, said once.</summary>
     public const string SurroundingsNote =
-        "The surroundings are the main view's scene seen from the remnant, with their light bent as computed from general relativity (each pixel's ray traced through the hole's spacetime).";
+        "The surroundings are the main view's scene seen from the remnant, with their light bent as computed from general relativity (each pixel's ray traced through the hole's spacetime). The wind's schematic haze is left out: it marks unlit gas, and from inside it would only wash the sky evenly.";
 
     /// <summary>The black hole is framed at this many shadow radii (the shadow fills about a third of the view's height).</summary>
     public const double BlackHoleFrameShadowRadii = 1.5;
@@ -451,11 +451,11 @@ public sealed class CloseUpScene
               $"outcome's {UnitFormat.Mass(bh.FinalMassMsun)}; the lab has no accretion history, so the growth's timing is schematic (#63). "
             : "") + OgleComparison;
         var horizon = new Quantity(2 * BlackHoleOptics.HorizonRadius(a) * rgKm, "km", Worse(mass.Confidence, Confidence.Speculative), ShadowSource);
-        var shadow = new Quantity(BlackHoleOptics.ApparentShadowDiameterRad(m, 1e5, a), "km", mass.Confidence, ShadowSource);
+        var shadow = new Quantity(BlackHoleOptics.ApparentShadowDiameterRad(m, 1e5, a), "km", massQ.Confidence, ShadowSource);
         var kick = o.Remnant.KickKmS ?? new Quantity(0, "km/s", Confidence.Speculative, new Source("The outcome gives no kick", "spec §6.5"));
         var drift = new Quantity(bh.OffsetCm.Length, "cm", kick.Confidence, DriftSource);
         double dA = Observer.LuminosityDistanceCm / Math.Pow(1 + Observer.Redshift, 2);
-        var fromEarth = new Quantity(BlackHoleModel.ShadowNanoArcsec(m, dA), "nano-arcseconds", mass.Confidence, FromEarthSource);
+        var fromEarth = new Quantity(BlackHoleModel.ShadowNanoArcsec(m, dA), "nano-arcseconds", massQ.Confidence, FromEarthSource);
         string settledText = a.ToString("0.###", inv);
         var readouts = new[]
         {

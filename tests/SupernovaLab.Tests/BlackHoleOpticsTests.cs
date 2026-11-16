@@ -408,13 +408,54 @@ public class BlackHoleOpticsTests
         => AssertEdgeMatchesTracer(a, incDeg, r, 0.005);
 
     /// <summary>
-    /// At spin 0.998 the prograde photon orbit (r_ph+ = 1.0744) sits at the tracer's capture radius r₊ + 0.01 = 1.0732 (ruling P3-7), so
-    /// the tracer swallows rays that would still escape and its shadow is about 1.2% too wide on the flattened side (inconsistency
-    /// #64). The overlay keeps the exact edge; the tracer agrees within 2% there.
+    /// Inconsistency #64, fixed (Task 10 fix round 1). At spin 0.998 the prograde photon orbit r_ph+ = 1.0739 is only 0.011 above the
+    /// horizon (r₊ = 1.0632). With P3-7's step floor of 0.5 the step there stayed ≈ 0.026, and RK4's error carried rays that skim that
+    /// orbit below the capture radius: the lensed shadow came out 1.2% too wide on its flattened side (the capture margin was not the
+    /// cause: 0.001 instead of 0.01 changed nothing; a tenth of the step removed it). The floor now scales with the gap,
+    /// min(0.5, 16 (r_ph+ − r₊)), which changes nothing below a ≈ 0.987; the tracer then agrees with the exact edge within 0.5%.
     /// </summary>
+    [Theory, InlineData(0.998, 90, 20), InlineData(0.998, 60, 50), InlineData(0.99, 90, 20)]
+    public void ShadowEdgeDirections_NearMaximalSpin_TheStepFloorFollowsThePhotonOrbitGap(double a, double incDeg, double r)
+        => AssertEdgeMatchesTracer(a, incDeg, r, 0.005);
+
+    /// <summary>
+    /// #64's fix at the shader's own 400-step budget: from cameras at 20 and 50 GM/c², a = 0.998, rays at 0.9 of the exact edge's angle
+    /// are Captured, at 1.1 escape within the budget, and the StepLimit band (drawn as the photon ring, R-P3-7) stays under 1.5% of
+    /// the shadow's radius (it was about 0.3% with the old floor; Task 10 fix round 1 measured 0.96% and 1.06%).
+    /// </summary>
+    [Theory, InlineData(20), InlineData(50)]
+    public void NearMaximalSpin_AtTheShaderBudget_FatesAreSensible_StepLimitBandNarrow(double r)
+    {
+        const double a = 0.998;
+        var cam = r * new Vec3(Math.Cos(0.7), Math.Sin(0.7), 0);
+        Vec3 c = -cam.Normalized();
+        int stepLimited = 0, samples = 0;
+        foreach (var d in BlackHoleOptics.ShadowEdgeDirections(a, cam, 36))
+        {
+            double psi = Angle(c, d);
+            Vec3 u = (d - d.Dot(c) * c).Normalized();
+            RayResult At(double s) => BlackHoleOptics.TraceRay(a, cam, Math.Cos(s * psi) * c + Math.Sin(s * psi) * u, BlackHoleOptics.EscapeRadiusFor(r));
+            Assert.Equal(RayFate.Captured, At(0.9).Fate);
+            Assert.Equal(RayFate.Escaped, At(1.1).Fate);
+            for (int k = 0; k <= 100; k++, samples++)
+                if (At(0.9 + 0.2 * k / 100).Fate == RayFate.StepLimit) stepLimited++;
+        }
+        double band = 0.2 * stepLimited / samples;
+        Assert.True(band < 0.015, $"StepLimit band {band:P2} of the shadow radius");
+    }
+
+    /// <summary>The step floor: P3-7's 0.5 up to a ≈ 0.987, then 16 (r_ph+ − r₊), never below 0.02.</summary>
     [Fact]
-    public void ShadowEdgeDirections_AtSpin0998_TheTracersCaptureMarginWidensItsEdgeSlightly()
-        => AssertEdgeMatchesTracer(0.998, 90, 20, 0.02);
+    public void StepFloor_ScalesWithThePhotonOrbitGap_OnlyNearMaximalSpin()
+    {
+        Assert.Equal(0.5, BlackHoleOptics.StepFloor(0));
+        Assert.Equal(0.5, BlackHoleOptics.StepFloor(0.9));
+        Assert.Equal(0.5, BlackHoleOptics.StepFloor(0.95));
+        double rPro = 2 * (1 + Math.Cos(2.0 / 3 * Math.Acos(-0.998)));   // 1.0739
+        Assert.Equal(1.0739, rPro, 4);
+        Assert.Equal(16 * (rPro - BlackHoleOptics.HorizonRadius(0.998)), BlackHoleOptics.StepFloor(0.998), 12);   // 0.170
+        Assert.Equal(0.02, BlackHoleOptics.StepFloor(1));
+    }
 
     private static void AssertEdgeMatchesTracer(double a, double incDeg, double r, double tolerance)
     {

@@ -17,7 +17,8 @@
 //      no root or E <= 0: captured.
 //   6. Fates, at the camera and after every step, in this order: surface, captured (r < r+ + 0.01), escaped (r > R_esc),
 //      step limit (400 steps).
-//   7. Classical RK4, h = 0.05 max(r - r+, 0.5)(1 + r/20), capped at 2.0, r at the start of the step; k1 is reused.
+//   7. Classical RK4, h = 0.05 max(r - r+, floor)(1 + r/20), capped at 2.0, r at the start of the step; k1 is reused. The floor
+//      is 0.5, or 16 (r_ph+ - r+) near a = 1 (clamped to 0.02-0.5; inconsistency #64, BlackHoleOptics.StepFloor).
 //   8. Exit direction = normalize(dx/dl) at the stop.
 // Step-limited rays orbit near the photon sphere, so they take the surroundings along their final momentum and read as the
 // photon ring (ruling R-P3-7). All lengths in GM/c^2.
@@ -55,6 +56,7 @@ vec3 nsSurface(vec3 hit);      // nsurface.frag
 const int MAX_STEPS = 400;
 const float CAPTURE_MARGIN = 0.01;
 const float MAX_STEP = 2.0;
+const float STEP_FLOOR_PER_PHOTON_GAP = 16.0;
 const float FAR_CAMERA_RADIUS = 200.0;
 const float FAR_START_RADIUS = 199.99;
 
@@ -195,6 +197,9 @@ void main()
 
     float a = -u_spin;   // time reversal (item 2)
     float rPlus = 1.0 + sqrt(max(0.0, 1.0 - u_spin * u_spin));
+    // Inconsistency #64 (BlackHoleOptics.StepFloor): the step floor follows the prograde photon orbit's gap above the horizon near a = 1.
+    float rPro = 2.0 * (1.0 + cos(2.0 / 3.0 * acos(-min(u_spin, 1.0))));
+    float stepFloor = clamp(STEP_FLOOR_PER_PHOTON_GAP * (rPro - rPlus), 0.02, 0.5);
     float rCapture = rPlus + CAPTURE_MARGIN;
     float escapeRadius = u_escapeRadius;
     vec3 x = u_camPos;
@@ -251,7 +256,7 @@ void main()
             if (r < rCapture) { fate = FATE_CAPTURED; break; }
             if (r > escapeRadius) { fate = FATE_ESCAPED; break; }
             if (steps >= MAX_STEPS) { fate = FATE_STEP_LIMIT; break; }
-            float h = min(0.05 * max(r - rPlus, 0.5) * (1.0 + r / 20.0), MAX_STEP);
+            float h = min(0.05 * max(r - rPlus, stepFloor) * (1.0 + r / 20.0), MAX_STEP);
             rPrev = r;
             xPrev = x;
             rk4(a, h, x, p, k1x, k1p);

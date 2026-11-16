@@ -273,6 +273,43 @@ public class BlackHoleModelTests
 }
 
 /// <summary>Plan Task 10: the black hole's overlay geometry (<see cref="LensOverlay"/>), without OpenGL.</summary>
+/// <summary>Plan Task 10, fix round 1: the review's disclosure and confidence items.</summary>
+public class BlackHoleFixRound1Tests
+{
+    private static Core.Outcomes.Outcome Preset(string id)
+    {
+        var p = PresetCatalog.Get(id);
+        return TestOutcomes.Engine.Compute(p.Inputs, p.Pins);
+    }
+
+    /// <summary>The Close-up's surroundings leave out the wind's haze for every outcome, so every lensed era says so.</summary>
+    [Fact]
+    public void SurroundingsNote_DisclosesTheMissingWindHaze_InEveryLensedEra()
+    {
+        Assert.Contains("wind's schematic haze is left out", CloseUpScene.SurroundingsNote);
+        foreach (var (id, t) in new[] { ("n6946bh1", 10.0), ("sn1998bw", 5.0), ("sn1998bw", 1e8), ("sn1054", 3e10) })
+        {
+            var s = new CloseUpScene(Preset(id), ObserverSetup.Default, 1).At(t);
+            Assert.True(s.IsLensed);
+            Assert.Contains(CloseUpScene.SurroundingsNote, s.Notes);
+        }
+    }
+
+    /// <summary>While the hole grows its mass is Speculative, and so are the shadow and the size from Earth computed from it.</summary>
+    [Fact]
+    public void GrowingHole_ShadowAndFromEarth_TakeTheGrowingMassesConfidence()
+    {
+        var o = Preset("n6946bh1");
+        var s = new CloseUpScene(o, ObserverSetup.Default, 1).At(o.Remnant.FormationTimeS!.Value * 1.5);
+        var by = s.Readouts.ToDictionary(r => r.Label);
+        Assert.Equal(Confidence.Speculative, by["Mass"].Value.Confidence);
+        Assert.Equal(by["Mass"].Value.Confidence, by["Shadow"].Value.Confidence);
+        Assert.Equal(by["Mass"].Value.Confidence, by["From Earth"].Value.Confidence);
+        var settled = new CloseUpScene(o, ObserverSetup.Default, 1).At(1e6).Readouts.ToDictionary(r => r.Label);
+        Assert.Equal(o.Remnant.Mass!.Confidence, settled["Shadow"].Value.Confidence);
+    }
+}
+
 public class LensOverlayTests
 {
     private static readonly OpenTK.Mathematics.Vector3d Eye = 19 * new OpenTK.Mathematics.Vector3d(Math.Cos(0.5), Math.Sin(0.5), 0);
@@ -337,6 +374,9 @@ public class LensOverlayTests
             LensOverlay.Labels(0, across, OpenTK.Mathematics.Vector3d.UnitX, 1).Select(l => l.Text));
         Assert.Equal(new[] { LensOverlay.HorizonLabel, LensOverlay.ProgradeLabel, LensOverlay.RetrogradeLabel, LensOverlay.ErgosphereLabel },
             LensOverlay.Labels(0.9, across, OpenTK.Mathematics.Vector3d.UnitX, 1).Select(l => l.Text));
+        // Fix round 1: the ergosphere is labelled only from spin 0.3 (at 0.1 it lies 0.005 GM/c² outside the horizon).
+        Assert.DoesNotContain(LensOverlay.ErgosphereLabel, LensOverlay.Labels(0.1, across, OpenTK.Mathematics.Vector3d.UnitX, 1).Select(l => l.Text));
+        Assert.Contains(LensOverlay.ErgosphereLabel, LensOverlay.Labels(LensOverlay.ErgosphereLabelMinSpin, across, OpenTK.Mathematics.Vector3d.UnitX, 1).Select(l => l.Text));
         Assert.All(LensOverlay.Labels(0.998, across, OpenTK.Mathematics.Vector3d.UnitX, 300 * 1.477),
             l => Assert.True(double.IsFinite(l.AtKm.X) && double.IsFinite(l.AtKm.Z)));
         // Task 10's launch: the labels sit at the ends of leader lines outside the shadow (its edge reaches 6.83 GM/c² at a = 0.9), one per
