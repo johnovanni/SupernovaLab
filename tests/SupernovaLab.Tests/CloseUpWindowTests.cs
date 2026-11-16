@@ -610,9 +610,10 @@ public class CloseUpWindowTests
         Assert.StartsWith(Core.Compact.CoreCollapseHistory.FromSimulationsLabel, vm.StageLabel);
         Assert.NotEmpty(vm.StageKey);
         host.Tick();
+        double before = Enumerable.Range(0, c.Swarm.Count).Sum(c.Swarm.RadiusKm);
         wall += 0.1;
         host.Tick();
-        Assert.Equal(0.1 / CoreAnimation.InfallCycleS(vm.State.Core!), c.InfallCycles, 9);   // accumulated by wall time
+        Assert.True(Enumerable.Range(0, c.Swarm.Count).Sum(c.Swarm.RadiusKm) < before);           // Task 20: the dots fell, by wall time
         Assert.Empty(lensing.Steps);                                                              // nothing traced: drawn unlensed
         Assert.NotEmpty(c.RingLabels);                                                            // the distance rings still frame it
         main.Timeline.ObserverTimeS = SettledObserverTimeS;                                     // the neutron star: lensed, the core stops

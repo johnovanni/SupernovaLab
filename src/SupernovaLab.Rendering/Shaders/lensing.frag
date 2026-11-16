@@ -56,6 +56,7 @@ uniform float u_surfaceRadius; // a neutron star's surface (spin 0 only), GM/c^2
 // The surface is shaded by nsurface.frag (plan Task 6), linked into this program: nsSurface(hit point).
 uniform int u_grid;            // the grid sphere r = 50 GM/c^2 (plan ruling P3-8): 1 = on (plan Task 10)
 uniform vec3 u_gridColor;      // the grid lines' colour (the direct path; the ray map's shading pass has its own)
+uniform vec4 u_veil;           // Task 20 (#71): the opaque debris's glow (rgb) mixed over the surroundings by a (as lensing_shade.frag)
 uniform float u_diskInner;     // plan Task 11: the disk's inner edge, the ISCO (GM/c^2); shared with disk.frag
 uniform float u_diskOuter;     // the disk's outer edge (GM/c^2); 0 for no disk
 uniform samplerCube u_env;     // the surroundings seen from the remnant (EnvironmentCapture)
@@ -314,6 +315,6 @@ void main()
     vec3 color = vec3(0.0);
     if (fate == FATE_HIT_SURFACE) color = nsSurface(x);
     else if (fate == FATE_HIT_DISK) color = diskShade(diskG, diskR);
-    else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) color = mix(texture(u_env, dir).rgb, u_gridColor, grid);
+    else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) color = mix(mix(texture(u_env, dir).rgb, u_veil.rgb, u_veil.a), u_gridColor, grid);
     o_color = vec4(color, 1.0);
 }

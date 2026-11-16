@@ -61,12 +61,12 @@ public sealed class CoreCollapseRenderer : IDisposable
         GL.EnableVertexAttribArray(0);
         GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 2 * sizeof(float), 0);
 
-        float[] seeds = InfallSeeds(InfallParticles);
+        // Task 20: the dots' positions and opacities come from an InfallSwarm each frame (x, y, z in km, then alpha).
         _pointVao = GL.GenVertexArray();
         _pointVbo = GL.GenBuffer();
         GL.BindVertexArray(_pointVao);
         GL.BindBuffer(BufferTarget.ArrayBuffer, _pointVbo);
-        GL.BufferData(BufferTarget.ArrayBuffer, seeds.Length * sizeof(float), seeds, BufferUsageHint.StaticDraw);
+        GL.BufferData(BufferTarget.ArrayBuffer, 4 * InfallParticles * sizeof(float), IntPtr.Zero, BufferUsageHint.DynamicDraw);
         GL.EnableVertexAttribArray(0);
         GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 4 * sizeof(float), 0);
         GL.EnableVertexAttribArray(1);
@@ -74,21 +74,7 @@ public sealed class CoreCollapseRenderer : IDisposable
         GL.BindVertexArray(0);
     }
 
-    /// <summary>The particles' fixed directions (uniform on the sphere) and seeds, 4 floats each; the same every run (display randomness).</summary>
-    public static float[] InfallSeeds(int count)
-    {
-        var rng = new Random(1987);
-        var data = new float[4 * count];
-        for (int i = 0; i < count; i++)
-        {
-            double z = 2 * rng.NextDouble() - 1, phi = 2 * Math.PI * rng.NextDouble(), s = Math.Sqrt(1 - z * z);
-            data[4 * i] = (float)(s * Math.Cos(phi));
-            data[4 * i + 1] = (float)(s * Math.Sin(phi));
-            data[4 * i + 2] = (float)z;
-            data[4 * i + 3] = (float)rng.NextDouble();
-        }
-        return data;
-    }
+    private float[] _vertices = Array.Empty<float>();
 
     /// <summary>
     /// The sphere's HDR colour: its schematic colour, linearised, times its brightness and the colour gain (a level ÷ the exposure).
@@ -105,17 +91,23 @@ public sealed class CoreCollapseRenderer : IDisposable
     /// <summary>
     /// Draws the core's stage (<see cref="CloseUpState.IsCoreStage"/>): the infalling particles beyond the centre's plane, then the
     /// surfaces (composited over them), then the particles on the near side (fix round 1: so the opaque sphere never erases a particle
-    /// in front of it). <paramref name="sloshPhaseRad"/> swings the shock's shape; <paramref name="infallCycles"/> is the
-    /// particles' accumulated fall phase (cycles, wrapped to [0, 1)); <paramref name="gain"/> scales every colour into the HDR target.
+    /// in front of it). <paramref name="sloshPhaseRad"/> swings the shock's shape; <paramref name="swarm"/> holds the falling dots (Task 20:
+    /// each its own radius, only ever falling); <paramref name="gain"/> scales every colour into the HDR target.
     /// </summary>
-    public void Render(OrbitCamera cam, Size viewportPx, double pxPerDip, CloseUpState s, double sloshPhaseRad, double infallCycles, float gain)
+    public void Render(OrbitCamera cam, Size viewportPx, double pxPerDip, CloseUpState s, double sloshPhaseRad, InfallSwarm? swarm, float gain)
     {
         if (s.Core is not { } core || !(viewportPx.Height > 0) || !(viewportPx.Width > 0)) return;
         bool shock = double.IsFinite(core.ShockRadiusKm) && core.ShockRadiusKm > 0;
         GL.Enable(EnableCap.Blend);
 
-        bool infall = shock && double.IsFinite(core.InfallSpeedKmS) && s.Era == CloseUpEra.FirstSecond;
-        if (infall) RenderInfall(cam, viewportPx, pxPerDip, core, infallCycles, gain, side: 1);
+        bool infall = shock && double.IsFinite(core.InfallSpeedKmS) && s.Era == CloseUpEra.FirstSecond && swarm is { Count: > 0 };
+        if (infall)
+        {
+            _vertices = swarm!.Vertices(_vertices);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, _pointVbo);
+            GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, 4 * Math.Min(swarm.Count, InfallParticles) * sizeof(float), _vertices);
+            RenderInfall(cam, viewportPx, pxPerDip, Math.Min(swarm.Count, InfallParticles), gain, side: 1);
+        }
 
         var (right, up) = cam.ScreenAxes();
         double tanY = Math.Tan(cam.FieldOfViewDeg * Math.PI / 360);
@@ -140,17 +132,14 @@ public sealed class CoreCollapseRenderer : IDisposable
         GL.BindVertexArray(_quadVao);
         GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
         GL.BindVertexArray(0);
-        if (infall) RenderInfall(cam, viewportPx, pxPerDip, core, infallCycles, gain, side: 2);
+        if (infall) RenderInfall(cam, viewportPx, pxPerDip, Math.Min(swarm!.Count, InfallParticles), gain, side: 2);
     }
 
     /// <summary>The infalling particles on one side of the centre's plane (1: far, 2: near; coreinfall.vert's u_side).</summary>
-    private void RenderInfall(OrbitCamera cam, Size viewportPx, double pxPerDip, CoreState core, double infallCycles, float gain, int side)
+    private void RenderInfall(OrbitCamera cam, Size viewportPx, double pxPerDip, int count, float gain, int side)
     {
         _infall.Use();
         _infall.SetCamera(cam, viewportPx);
-        _infall.Set("u_rIn", (float)core.ShockRadiusKm);
-        _infall.Set("u_rOut", (float)(CoreAnimation.InfallOuterFactor * core.ShockRadiusKm));
-        _infall.Set("u_cycles", (float)(infallCycles - Math.Floor(infallCycles)));
         _infall.Set("u_pointPx", (float)(ParticleDip * pxPerDip));
         _infall.Set("u_color", InfallColor * gain);
         _infall.Set("u_alpha", InfallAlpha);
@@ -158,7 +147,7 @@ public sealed class CoreCollapseRenderer : IDisposable
         GL.Enable(EnableCap.ProgramPointSize);
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
         GL.BindVertexArray(_pointVao);
-        GL.DrawArrays(PrimitiveType.Points, 0, InfallParticles);
+        GL.DrawArrays(PrimitiveType.Points, 0, count);
         GL.BindVertexArray(0);
     }
 

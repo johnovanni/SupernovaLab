@@ -151,6 +151,22 @@ public sealed record CloseUpState
     public bool InsideStar { get; init; }
 
     /// <summary>
+    /// Task 20 (#71): how much the opaque debris hides the surroundings seen from the remnant, 0 (clear) to 1 (opaque)
+    /// (<see cref="DebrisOpacity.VeilAt"/>); the lensing pass mixes the surroundings with <see cref="DebrisGlowSrgb"/> by it. 0 inside the
+    /// star (that is <see cref="InsideStar"/>'s haze) and without ejecta.
+    /// </summary>
+    public float DebrisVeil { get; init; }
+
+    /// <summary>Task 20: the opaque debris's glow, the blackbody colour of the lab's photosphere temperature (sRGB, schematic brightness).</summary>
+    public (float R, float G, float B) DebrisGlowSrgb { get; init; }
+
+    /// <summary>
+    /// Task 20 (the owner: "a visible note in the closeup screen saying why the screen is opaque"): shown on the view itself while the
+    /// surroundings are hidden, inside the star or inside the opaque debris, or while the debris clears; null otherwise.
+    /// </summary>
+    public string? ViewNote { get; init; }
+
+    /// <summary>
     /// Plan Task 10: the black hole now (<see cref="BlackHoleModel.At"/>: its mass, spin, settling, disk and drift); null for any other
     /// era. <see cref="MassMsun"/> and <see cref="Spin"/> are then its drawn (stepped) mass and spin.
     /// </summary>
@@ -314,6 +330,7 @@ public sealed class CloseUpScene
             bool breaksOut = breakout > 0 && double.IsFinite(breakout);
             InsideStarUntilS = breaksOut ? breakout : _stageEndS;
             InsideStarNote = string.Format(inv, breaksOut ? InsideStarNoteFormat : InsideFailedStarNoteFormat, UnitFormat.Time(InsideStarUntilS));
+            InsideStarViewNote = string.Format(inv, breaksOut ? InsideStarViewNoteFormat : InsideFailedStarViewNoteFormat, UnitFormat.Time(InsideStarUntilS));
         }
         else InsideStarUntilS = double.NaN;
         // Fix round 1 (review item 1): the jets' times, from the GRB model (as the main view) and the disk's end (BlackHoleModel).
@@ -330,18 +347,20 @@ public sealed class CloseUpScene
 
     /// <summary>Ruling R-P3-21, the coordinator's exact words; {0} is the breakout time.</summary>
     public const string InsideStarNoteFormat =
-        "Inside the star until the shock breaks out ({0}): opaque hot gas surrounds the core; drawn as a dim haze (schematic)";
+        "Inside the star until the shock breaks out ({0}): opaque hot gas surrounds the core; drawn as a warm glow (schematic)";
 
     /// <summary>Ruling R-P3-21 for a star that never explodes; {0} is when the black hole forms.</summary>
     public const string InsideFailedStarNoteFormat =
-        "Inside the star: it never explodes, so opaque hot gas surrounds the core until the black hole forms ({0}); drawn as a dim haze (schematic)";
+        "Inside the star: it never explodes, so opaque hot gas surrounds the core until the black hole forms ({0}); drawn as a warm glow (schematic)";
 
     /// <summary>
     /// [Schematic, presentation] Ruling R-P3-21: the haze inside the star, in the HDR target's linear units at the main view's base exposure,
     /// and as sRGB for the no-HDR path (a dim warm brown). Fix round 1's launch: at (0.11, 0.06, 0.03) it read as a medium brown (about
     /// sRGB 0.36, 0.22, 0.12) that competed with the shock, so it was made 5× dimmer (not yet seen in a launch).
     /// </summary>
-    public static readonly (float R, float G, float B) InsideStarHazeHdr = (0.022f, 0.012f, 0.006f), InsideStarHazeSrgb = (0.12f, 0.08f, 0.05f);
+    /// Task 20 (the owner: "I don't see a haze ... I see a black screen"): brighter again, between the two (about 3× the dim one), so it
+    /// reads as a warm glow without hiding the shock.
+    public static readonly (float R, float G, float B) InsideStarHazeHdr = (0.065f, 0.036f, 0.017f), InsideStarHazeSrgb = (0.26f, 0.16f, 0.08f);
 
     /// <summary>Ruling R-P3-22: above this fraction of c the infall readout's Newtonian estimate is flagged (Project 1's R28 limit).</summary>
     public const double RelativisticInfallBeta = 0.3;
@@ -365,10 +384,50 @@ public sealed class CloseUpScene
     public CloseUpState At(double sourceTimeS)
     {
         var state = AtTime(sourceTimeS);
+        if (state.Era == CloseUpEra.None) return state;
         // Ruling R-P3-21: inside the star until the shock breaks out (or, with no explosion, until the black hole forms).
-        if (!(sourceTimeS < InsideStarUntilS) || state.Era == CloseUpEra.None) return state;
-        return state with { InsideStar = true, Notes = state.Notes.Append(InsideStarNote!).ToList() };
+        if (sourceTimeS < InsideStarUntilS)
+            return state with { InsideStar = true, ViewNote = InsideStarViewNote, Notes = state.Notes.Append(InsideStarNote!).ToList() };
+        // Task 20 (#71): then inside the debris, opaque from the centre for months, clearing smoothly.
+        double veil = DebrisOpacity.VeilAt(_outcome, sourceTimeS);
+        if (!(veil > 0) || !(state.IsLensed)) return state;
+        double kelvin = Core.Signals.EjectaKinematics.PhotosphereTemperatureK(_outcome, sourceTimeS);
+        var glow = BlackbodyColor.FromTemperature(double.IsFinite(kelvin) ? Math.Clamp(kelvin, GlowMinK, GlowMaxK) : GlowMinK);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string note = veil >= 1
+            ? string.Format(inv, InsideDebrisViewNoteFormat, UnitFormat.Time(DebrisOpacity.OpaqueUntilS(_outcome)))
+            : string.Format(inv, ClearingViewNoteFormat, UnitFormat.Time(DebrisOpacity.ClearByS(_outcome)));
+        return state with
+        {
+            DebrisVeil = (float)veil, DebrisGlowSrgb = glow, ViewNote = note,
+            Notes = state.Notes.Append(DebrisNote).ToList(),
+        };
     }
+
+    /// <summary>[Schematic] The debris glow's colour range, K: the lab's photosphere temperature, clamped.</summary>
+    public const double GlowMinK = 3500, GlowMaxK = 15000;
+
+    /// <summary>Task 20: the view's note inside the star (the owner asked for the reason on screen).</summary>
+    public string? InsideStarViewNote { get; }
+
+    public const string InsideStarViewNoteFormat =
+        "Inside the star: the gas round the core is opaque until the shock breaks out ({0}), so nothing beyond it can be seen. Drawn as a warm glow.";
+
+    public const string InsideFailedStarViewNoteFormat =
+        "Inside the star: it never explodes, and the gas round the core is opaque until the black hole forms ({0}). Drawn as a warm glow.";
+
+    /// <summary>Task 20: the view's note while the debris is opaque; {0} is when it starts to clear.</summary>
+    public const string InsideDebrisViewNoteFormat =
+        "Inside the debris: the expanding gas round the remnant stays opaque until about {0}, so the sky is hidden. Drawn as a glow.";
+
+    /// <summary>Task 20: the view's note while the debris clears; {0} is when it is clear.</summary>
+    public const string ClearingViewNoteFormat = "The debris is thinning: the sky shows through by about {0}.";
+
+    /// <summary>Task 20: the Notes column's entry, with the source.</summary>
+    public const string DebrisNote =
+        "Seen from the remnant the debris stays opaque for months: until its light curve's plateau ends (at least 100 days), clear by twice " +
+        "that (approximate; Kasen & Woosley 2009, Jerkstrand 2017). Blue light stays blocked for years, and dust dims the centre again from " +
+        "about 1.5 years (SN 1987A); neither is drawn";
 
     /// <summary>
     /// Ruling R-P3-21: until when (source s) the compact object is inside the star: the shock breakout (EjectaKinematics.BreakoutTimeS);

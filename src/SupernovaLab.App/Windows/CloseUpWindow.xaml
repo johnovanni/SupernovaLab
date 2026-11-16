@@ -304,6 +304,15 @@
                                    FontWeight="SemiBold" Foreground="#FF9A4D"/>
                     </Border>
 
+                    <!-- Task 20 (the owner: "a visible note in the closeup screen saying why the screen is opaque"): inside the star, inside
+                         the opaque debris, and while the debris clears. -->
+                    <Border Margin="6,4" Padding="8,5" CornerRadius="4" Background="#E0020308" HorizontalAlignment="Right"
+                            VerticalAlignment="Top" MaxWidth="300" IsHitTestVisible="False" BorderBrush="#FF9A4D" BorderThickness="1"
+                            Visibility="{Binding DataContext.State.ViewNote, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
+                        <TextBlock Text="{Binding DataContext.State.ViewNote, RelativeSource={RelativeSource AncestorType=Window}}"
+                                   TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource TextBrush}" AutomationProperties.Name="Why the view is hidden"/>
+                    </Border>
+
                     <!-- Spec §6.5: the view's honest label, whenever a remnant is drawn. -->
                     <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
                             VerticalAlignment="Bottom" IsHitTestVisible="False"

@@ -19,7 +19,7 @@ namespace SupernovaLab.Rendering;
 public readonly record struct LensingUniforms(float Spin, Vector3 CameraPosition, Vector3 Forward, Vector3 Right, Vector3 Up,
     Vector2 TanHalf, float EscapeRadius, float SurfaceRadius = 0, Vector3 SurfaceColor = default, bool Grid = false,
     float SurfacePhaseRad = 0, float SurfaceTiltRad = 0, float SurfaceCapCos = 1, bool SurfaceMarkings = false, Vector3 GridColor = default,
-    float DiskInner = 0, float DiskOuter = 0, float DiskLevel = 0);
+    float DiskInner = 0, float DiskOuter = 0, float DiskLevel = 0, Vector4 Veil = default);
 
 /// <summary>
 /// The Close-up's light bending (spec §6.6, plan rulings P3-7 and P3-9, ruling R-P3-10). <c>lensing.frag</c>, the GLSL mirror of
@@ -194,6 +194,7 @@ public sealed class LensingPass : ILensingPass
         program.Set("u_capCos", u.SurfaceCapCos);
         program.Set("u_markings", u.SurfaceMarkings ? 1 : 0);
         program.Set("u_gridColor", u.GridColor);   // plan Task 10: the grid lines, applied when the map is sampled
+        program.Set("u_veil", u.Veil);             // Task 20 (#71): the opaque debris's glow (rgb) over the surroundings, by a
         DiskRenderer.Apply(program, u);             // plan Task 11: the disk's edges (traced), level and colour ramp (sampled)
     }
 

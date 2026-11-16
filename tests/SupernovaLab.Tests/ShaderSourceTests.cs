@@ -91,8 +91,7 @@ public class ShaderSourceTests
         string infall = Text("coreinfall.vert");
         foreach (string needle in new[]
                  {
-                     "uniform float u_rIn", "uniform float u_rOut", "uniform float u_cycles", "uniform float u_pointPx",
-                     "float r = pow(outer - tau * (outer - inner), 2.0 / 3.0);", "fract(u_cycles + a_seed)",
+                     "uniform float u_pointPx", "in vec3 a_pos", "in float a_alpha",   // Task 20: positions and fades from InfallSwarm
                  })
             Assert.Contains(needle, infall);
         Assert.Contains("uniform vec3 u_color", Text("coreinfall.frag"));

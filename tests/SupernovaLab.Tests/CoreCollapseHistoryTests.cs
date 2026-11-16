@@ -417,7 +417,7 @@ public class CoreCollapseHistoryTests
         var scene = SceneFor(o);
         Assert.Equal(breakout, scene.InsideStarUntilS);
         string note = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-            "Inside the star until the shock breaks out ({0}): opaque hot gas surrounds the core; drawn as a dim haze (schematic)",
+            "Inside the star until the shock breaks out ({0}): opaque hot gas surrounds the core; drawn as a warm glow (schematic)",   // Task 20
             UnitFormat.Time(breakout));
         Assert.Equal(note, scene.InsideStarNote);
         foreach (double t in new[] { 1e-3, 0.05, 0.9, 2, 0.99 * breakout })   // the core's eras and the neutron star before breakout
@@ -425,11 +425,16 @@ public class CoreCollapseHistoryTests
             var st = scene.At(t);
             Assert.True(st.InsideStar, $"{t}");
             Assert.Contains(note, st.Notes);
+            Assert.StartsWith("Inside the star: the gas round the core is opaque", st.ViewNote);   // Task 20: the reason on the view itself
         }
         var after = scene.At(1.01 * breakout);
         Assert.False(after.InsideStar);
         Assert.DoesNotContain(note, after.Notes);
         Assert.Equal(CloseUpEra.NeutronStar, after.Era);
+        Assert.Equal(1f, after.DebrisVeil);                                                // Task 20 (#71): then inside the opaque debris
+        Assert.StartsWith("Inside the debris:", after.ViewNote);
+        Assert.Equal(0f, scene.At(3 * DebrisOpacity.ClearByS(o)).DebrisVeil);             // clear later
+        Assert.Null(scene.At(3 * DebrisOpacity.ClearByS(o)).ViewNote);
     }
 
     [Fact]

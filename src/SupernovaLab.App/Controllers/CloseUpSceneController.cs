@@ -153,7 +153,9 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     // Plan Task 9: the infalling matter's fall phase (cycles, wrapped to [0, 1)), accumulated frame by frame so a change of the shown
     // slow-down never makes the particles jump (as ruling R-P3-18's beam clock), and the wall time of the last core frame.
-    private double _infallCycles;
+    private readonly InfallSwarm _swarm = new(CoreCollapseRenderer.InfallParticles);   // Task 20: the falling dots, each its own radius
+    private Outcome? _swarmOutcome;
+    private double _swarmSourceS = double.NaN;
     private double? _lastCoreFrameS;
 
     // Task 4b review carry-over: failures in a row, and what was given up (reset with a new context or viewport).
@@ -890,26 +892,33 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         return LensingFrameTag.Encode(step, captured);
     }
 
-    /// <summary>The infalling matter's fall phase now (cycles, in [0, 1)); the test hook for its frame-by-frame accumulation.</summary>
-    public double InfallCycles => _infallCycles;
+    /// <summary>Task 20: the infalling matter's dots (the test hook for their frame-by-frame fall).</summary>
+    public InfallSwarm Swarm => _swarm;
 
     /// <summary>The shock's sloshing phase now (radians): the wall clock over <see cref="CoreAnimation.SloshPeriodS"/>.</summary>
     public double SloshPhaseRad => 2 * Math.PI * _clock() / CoreAnimation.SloshPeriodS;
 
     /// <summary>
     /// Plan Task 9: the core's stage (unlensed surfaces, as ruling R-P3-19; the surroundings, the star's inside, are not drawn): the
-    /// exposure is the main view's base, the fall phase advances by this frame's wall time over the shown fall's duration.
+    /// exposure is the main view's base. Task 20: the dots fall by this frame's wall time (slowed down); a new outcome or a step back in
+    /// time spreads them afresh.
     /// </summary>
     private void DrawCore(CloseUpState state, Size viewportPx)
     {
         double now = _clock();
         double dt = _lastCoreFrameS is { } last ? Math.Clamp(now - last, 0, MaxFrameGapS) : 0;
         _lastCoreFrameS = now;
-        double cycle = state.Core is { } core ? CoreAnimation.InfallCycleS(core) : double.NaN;
-        if (cycle > 0) _infallCycles = (_infallCycles + dt / cycle) % 1;
+        if (state.Core is { } core && core.ShockRadiusKm > 0 && double.IsFinite(core.ShockRadiusKm))
+        {
+            double t = _vm.SourceTimeS;
+            var outcome = _vm.Main.CurrentOutcome;
+            if (!ReferenceEquals(outcome, _swarmOutcome) || !(t >= _swarmSourceS)) _swarm.Reset(core.ShockRadiusKm);
+            else _swarm.Step(dt, core.ShockRadiusKm, core.InfallSpeedKmS, CoreAnimation.Slowdown(core));
+            (_swarmOutcome, _swarmSourceS) = (outcome, t);
+        }
         _exposure = ExplosionScene.BaseExposure;
         double pxPerDip = _viewDip.Height > 0 ? viewportPx.Height / _viewDip.Height : 1;
-        _coreRenderer?.Render(Camera, viewportPx, pxPerDip, state, SloshPhaseRad, _infallCycles, Gain(CoreLevel));
+        _coreRenderer?.Render(Camera, viewportPx, pxPerDip, state, SloshPhaseRad, _swarm, Gain(CoreLevel));
     }
 
     /// <summary>[Presentation] The bloom strength, the main view's.</summary>
@@ -995,7 +1004,24 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star,
             GridLineColor(HdrEnabled, _exposure),
             disk ? (float)state.DiskInnerGm : 0f, disk ? (float)state.DiskOuterGm : 0f,
-            disk ? Gain(DiskRenderer.Level) * (float)state.DiskBrightness : 0f);
+            disk ? Gain(DiskRenderer.Level) * (float)state.DiskBrightness : 0f,
+            Veil(state));
+    }
+
+    /// <summary>[Schematic, presentation] Task 20 (#71): the opaque debris's glow brightness, a level as the others (÷ the exposure).</summary>
+    public const float DebrisGlowLevel = 0.03f;   // Task 20 launch: 0.3 washed the view near white and hid the star
+
+    /// <summary>
+    /// Task 20 (#71): the debris's veil for the lensing pass: its glow (the photosphere temperature's blackbody colour, linearised, at
+    /// <see cref="DebrisGlowLevel"/> through the HDR target; as it is without one) in rgb, and how opaque it is in w.
+    /// </summary>
+    private Vector4 Veil(CloseUpState state)
+    {
+        if (!(state.DebrisVeil > 0)) return default;
+        var c = state.DebrisGlowSrgb;
+        static float Linear(float x) => x <= 0.04045f ? x / 12.92f : MathF.Pow((x + 0.055f) / 1.055f, 2.4f);
+        var rgb = HdrEnabled ? new Vector3(Linear(c.R), Linear(c.G), Linear(c.B)) * Gain(DebrisGlowLevel) : new Vector3(c.R, c.G, c.B) * DebrisGlowLevel;
+        return new Vector4(rgb, state.DebrisVeil);
     }
 
     /// <summary>Plan Task 11: the escape sphere is at least this many times the disk's outer edge, so no ray leaves before meeting it.</summary>
