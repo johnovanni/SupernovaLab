@@ -17,12 +17,14 @@ formulas and citations are in `docs/research/`.
 It is built in three projects:
 
 - **Project 1.** The physics core, the lab, the six instrument panels and a simple 3D explosion view.
-- **Project 2 (this version, built on Project 1).** The 3D showpiece of the explosion: distance rings and a director
+- **Project 2 (built on Project 1).** The 3D showpiece of the explosion: distance rings and a director
   camera, layered debris with mixing and a cutaway, shocks, the gas around the star, a pulsar wind nebula, SN 1987A's
   rings, the breakout flash, and a guided tour. See "The 3D view" below. It draws only: the instrument panels still use
   Project 1's models.
-- **Project 3.** A close-up of the remnant: the neutron star, pulsar beams, a magnetar, a black hole bending light.
-  Not started.
+- **Project 3 (this version).** The **Close-up window**: the remnant from close by, on the same timeline. The first
+  second at the core (the stalled shock and the proto-neutron star), the neutron star with its layers, spin, field and
+  pulsar beams, a magnetar's giant flares, and a black hole bending the light of the explosion behind it. See "The
+  Close-up window" below. Signals never observed from any supernova now say "Expected" instead of "Detected".
 
 All views read from one physics core, and shared quantities (the explosion's energy and ejecta, the remnant, the
 colour temperature, the magnetar's and the plateau's light) are defined once. Where a view still simplifies (the 3D
@@ -44,6 +46,12 @@ If the GPU cannot give OpenGL 4.1, the 3D view shows a message that says so. The
 working.
 
 These are the design targets. The minimum class has not been measured (see `docs/perf-2026-11.md`).
+
+**Known performance gap (Project 3).** On the recommended Intel Iris Xe the final benchmark met 50 fps with the Close-up
+open for a black hole without debris (N6946-BH1: 64 fps, 52 fps while turning the Close-up), but not for outcomes with
+debris (the Crab: 30 fps; SN 1998bw: 34 fps). The main window alone was also slow there (34–39 fps, against 70–78 fps
+measured earlier in Project 3), so the cause is in the main and Instruments windows' drawing, not the Close-up; it is not
+yet identified. If the Close-up is slow on your machine, View > Light-bending detail > Quarter makes it cheapest.
 
 ## How to use
 
@@ -103,6 +111,32 @@ Hover over any term for a plain-language explanation.
   "Observed", with the source on hover. The tour moves the timeline, turns on the cutaway before breakout, brightens the
   instrument that sees the event, and pauses when you touch the timeline, the camera or Explode ("Resume tour"
   continues). A tour lasts well under two and a half minutes. Previous, Next and Exit are on the caption.
+
+**The Close-up window** (the **Close-up** button beside the remnant, or View > Close-up). It follows the main window's
+outcome, observer, run and timeline, and can sit on a second monitor. The view is on the left; the numbers, each with its
+confidence and source, and the notes are on the right; its own View menu holds the switches below. "Camera where no telescope
+could be": from Earth every object here is far too small to picture.
+
+- **Before 1 ms:** the iron (or O-Ne-Mg) core before it collapses. **The first second**, labelled "From simulations": the
+  bounce, the shock stalling 100–200 km out, the gain region, the sloshing (SASI) and the proto-neutron star, until the
+  shock revives (or never does). Only SN 1987A's neutrinos have ever been seen of this. Inside the unexploded star the
+  surroundings are a dim haze.
+- **A neutron star**, contracting to 12 km in the first minute, cooling, spinning down. Its light is bent by its gravity
+  (exact for a non-spinning star), its colour is its temperature (tone-mapped), and its field lines, light cylinder and
+  radio beams are drawn. The spin is shown at most one turn in 2 s ("Shown 60× slower" for the Crab), so nothing flashes.
+  View > Cutaway opens it: the crust, the neutron drip line, nuclear pasta and the core, to scale, with a magnified strip
+  of the crust. The pulse trace at the bottom marks each beam crossing Earth; View > Sound plays the real pulse rate as
+  clicks (off by default; nothing depends on hearing it). The kick moves the star, in both windows.
+- **A magnetar**: its stronger field and its rare giant flares (drawn at random from the run number: Re-roll redraws
+  them), each a single modest brightening, also shown as a spike on the gamma-ray panel's burst tab.
+- **A black hole** bends the main view's real scene behind it (general relativity, traced ray by ray). Its shadow,
+  photon ring, horizon and, once it has settled and spins, the flattened Kerr shadow; View > Grid adds a bent measuring
+  grid with the horizon, photon orbits and ergosphere labelled. A collapsar has its accretion disk (inner edge at the
+  ISCO) and jets. A newborn hole is drawn growing and settling; its spin fades in.
+- **No compact remnant** (a Type Ia, a pair-instability supernova, a white dwarf): the window says why.
+- **View > Light-bending detail** (Auto, Full, Half, Quarter, remembered): Auto keeps the frame rate up on slower graphics.
+- The guided tour has Close-up stops (bounce, stall, revival, the crust, the pulses, the black hole forming and settling,
+  a giant flare); it opens the window and brightens its outline at those stops.
 
 **View menu.** Instruments, Outcome details, Preset info, **Distance rings** (on or off), **Cutaway** (on or off) and
 **Quality**: High (200,000 particles), Medium (100,000) or Low (50,000). Quality steps down by itself if the 3D view
@@ -174,6 +208,20 @@ Notes on these:
   Kamiokande-II fact in the app says so.
 - Betelgeuse has no observation to compare with. Its two checks are only plausibility bounds.
 
+**The Close-up's checks (Project 3, spec §1 criteria 2 and 3).** Each is a unit test (`Project3ValidationTests`).
+
+| Check | Exact or observed | Lab | Result |
+|---|---|---|---|
+| Non-spinning shadow radius | √27 GM/c² (exact) | the ray tracer's edge within 0.5% | Pass |
+| Kerr shadow outline, spin 0.9, side-on and from 17° | Bardeen 1973's analytic curve | the tracer within 1% of the shadow radius | Pass |
+| ISCO and ergosphere | Bardeen, Press & Teukolsky 1972 | the formulas, the disk's inner edge and the drawn outline | Pass |
+| Neutron star's visible surface | the exact Schwarzschild integral (75% for 1.4 M☉, 12 km) | the tracer within 0.01 | Pass |
+| Crab's period and light cylinder | 33.39 ms; c P / 2π ≈ 1,600 km | 33.4 ms at its 1991 age; 1,594 km | Pass (consistency check, as above) |
+| M87*'s ring | 42 ± 3 µas (EHT 2019) | 39.7 µas from the stellar-dynamics mass | Pass |
+| Sgr A*'s shadow | 44.2–53.8 µas (EHT 2022, VLTI prior) | 53.3 µas | Pass (but see #55 below) |
+| SN 1987A's neutrinos | 2–3 × 10⁵³ erg; 11 events in 12.4 s at Kamiokande-II | 3.0 × 10⁵³ erg; 18.4 expected, 99% of them in 12.4 s | Pass (count high, as above) |
+| Cas A's neutron star, seen from afar | about 1.4–1.5 million K at 340 yr (Heinke & Ho 2010, redshifted) | about 1.8 million K | **Miss, disclosed** (#54) |
+
 ### Known misses
 
 These are places where a preset's lab result visibly disagrees with what was observed. They are disclosed, not tuned
@@ -210,6 +258,43 @@ screen:
 - **#44, the 3 to 10 year shock join.** The reverse shock moves outward through the debris across the join. Shocked
   debris stay shocked, and since the final review they are never drawn ahead of free expansion (SN 1987A's fastest
   particles were up to 1.72 times too far out at 10 years before that fix).
+
+**The Close-up's misses (Project 3).** Each is disclosed in the Close-up's notes or tooltips unless marked "list only";
+the full entries are in `docs/research/scientific-inconsistencies.md`.
+
+- **#53, SN 1987A's disputed gravitational-wave claim.** Bar detectors reported signals in 1987 that would need about
+  1,000 solar masses turned into gravitational waves. SN 1987A's preset note mentions it, marked disputed, and the
+  gravitational-wave badge says "Expected".
+- **#54, Cas A's neutron star reads about 20–30% warm** (1.8 against 1.4–1.5 million K seen from afar). The spec first
+  had this the wrong way round (10% cool). The temperature tooltip gives both; the cooling model is not tuned, since
+  that would change the X-ray panel.
+- **#55, Sgr A*'s ring** comes out 2σ larger than M87's calibration predicts; the shadow is tested against the EHT's own
+  shadow range instead (list only). **#56, M87's two published masses** differ by 1.8×; the test uses the independent
+  one (list only).
+- **#57, the lab's fast-born magnetars** spin at about 0.2 s for 1,000 years; real magnetars spin at 2–12 s.
+- **#58, the cooling curve** sits between theory's two levels (list only; changing it changes the X-ray panel).
+- **#60, Cas A is drawn as a pulsar,** but no pulses have ever been seen from it. **#61, its kick** is 348 km/s in the
+  lab against 433 km/s measured (about 1σ).
+- **#62, an O-Ne-Mg core's shock** is drawn from the iron cores' track (it revives earlier).
+- **#63, the newborn black hole** is drawn growing from 2.2 solar masses; the lab has no accretion history, so the
+  timing is schematic.
+- **#65, the black-hole picture is a "coordinate camera's"**: close in it is a few percent larger than a real camera at
+  rest would see.
+- **#66, the collapsar's disk is drawn thin;** the simulation's is a thick torus. **#67, SN 1998bw's engine** stops a
+  few seconds into its 23 s burst in the simulation the lab follows.
+- **#68, #69, giant flares:** their rate comes from old magnetars, and their spectrum (for the gamma-ray panel's
+  verdict) is assumed.
+- **#70, a fallback black hole forms at 3 s,** while fallback takes minutes to hours. Both views agree on the 3 s; the
+  time is labelled Speculative (list only; changing it would change the neutrino panel).
+
+Fixed or annotated during Project 3: #59 (the beam-width coefficient), #64 (a 1% shadow error at the highest spin).
+
+**Flagged for later (spec §10; not built, because each would change a panel or needs new research):** a neutron star's
+thermal X-rays and a magnetar's persistent X-rays in the X-ray panel; a real birth-spin model for black holes (today's
+spin follows the Rotation input, Speculative); the cooling model (#54, #58; the X-ray panel's curve starts at 30 years,
+the Close-up's early band at about a minute); Kerr light bending for a fast-spinning neutron star (its own spin is
+neglected); a later fallback black-hole time (#70); and Project 2's two flagged items (the remnant panel's ejecta profile,
+and mixing in the gamma-ray model).
 
 ### Other known limits
 
@@ -284,7 +369,8 @@ SupernovaLab.App.exe --snapshot <out-dir> [--preset <list>] [--time <seconds>] [
 - `--time <seconds>`: the observer time for every preset that has no `@seconds`. Positive number.
 - `--size <WxH list>`: the main window size, for example `1366x768,1920x1080`. Default 1366x768.
 - `--window <list>`: which windows to render: `main`, `main-advanced`, `instruments`, `instrument-tabs`, `details`,
-  `presetinfo`. Default `main`.
+  `presetinfo`, `closeup`. Default `main`. For a magnetar with giant flares, `instruments` and `instrument-tabs` also
+  capture the gamma-ray panel's burst tab (`instruments-burst…png`).
 - `--cutaway`: turns on the 3D view's wedge cutaway for every capture.
 - `--tour <stops>`: starts the guided tour of each preset (or of each `+tour` entry, if any has it) and captures the requested windows at each listed stop
   (`0,3,last`; stop 0 is the first). The caption, cutaway and instrument highlight are those of that stop. Nothing ticks
@@ -302,6 +388,21 @@ SupernovaLab.App.exe --snapshot <out-dir> [--preset <list>] [--time <seconds>] [
   size and quality (`default` is the lab as launched). The tour sets the length of the run; the seconds only cap it.
   `bench.log` then also gives the 3D draw rate while travelling and while dwelling on a stop.
 
+The Close-up (Project 3):
+
+- `--closeup`: opens the Close-up window (off-screen) before the captures, so `--bench` measures both 3D views and
+  `--sweep` also counts the Close-up's own model errors (and then plays 14 of the lab's own outcomes after the presets).
+- `--window closeup`: captures it (its GL frame read back), with extra captures of a neutron star's light cylinder
+  (`-wide`) and a collapsar's disk (`-disk`), and a moving view (`-moving`). An entry's `+cutaway` also opens the
+  Close-up's cutaway; `+grid` turns on its grid.
+- `--closeup-size <WxH list>`: the Close-up's sizes for its captures (default: its own 900x640).
+- `--bench-preset <list>`: with `--bench`, plays the whole timeline once for each listed preset (`default` is the lab).
+- `--bench-detail <auto,full,half,quarter>` and `--bench-camera <still,still-forced,orbit>`: the Close-up's light-bending
+  detail and camera in each bench run (still is drawn on demand, as the app; orbit turns the camera 30° a second). With
+  either, each preset and size also gets a run with the Close-up hidden, before and after.
+- `--bench-baseline`, `--bench-spin <a>` and `--lab-mass <M>`: Task 4's diagnostics (the per-frame cost's baseline runs,
+  a black hole's spin for the bench, and the lab's initial mass for `default` entries).
+
 An example, one launch for several checks:
 
 ```
@@ -309,6 +410,8 @@ SupernovaLab.App.exe --snapshot out --preset sn1987a@1e7,sn1998bw@86400 --window
 SupernovaLab.App.exe --snapshot out --preset default,sn1987a --tour 0,2,last --size 1100x700
 SupernovaLab.App.exe --snapshot out --preset sn1987a@86400+cutaway --quality medium
 SupernovaLab.App.exe --snapshot out --preset default,sn1987a --size 1366x768,1920x1080 --bench 20 --bench-tour
+SupernovaLab.App.exe --snapshot out --sweep 40 --closeup
+SupernovaLab.App.exe --snapshot out --preset sn1054@1e6+cutaway --window closeup --closeup-size 900x640,1366x768 --bench 30 --bench-preset sn1054,n6946bh1 --bench-detail auto --bench-camera still,orbit
 ```
 
 The windows are placed off-screen. Tooltips cannot be rendered this way, so they are checked by unit tests instead.
