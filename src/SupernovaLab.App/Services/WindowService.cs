@@ -107,6 +107,21 @@ public sealed class WindowService : IWindowService
     });
 
     /// <summary>
+    /// Task 17 (the owner: "open the close up window right from the start ... I'd like to see it all the time"): opens the Close-up once
+    /// the main window has first rendered, so it is placed against the main window's final size and screen (R-P3-43, lower right). Once
+    /// only: a Close-up the user closes stays closed until asked for again (View ▸ Close-up, or the Close-up button by the remnant).
+    /// </summary>
+    public void OpenCloseUpWhenShown(Window main)
+    {
+        void OnRendered(object? sender, EventArgs e)
+        {
+            main.ContentRendered -= OnRendered;
+            if (main.IsVisible) ShowCloseUp();
+        }
+        main.ContentRendered += OnRendered;
+    }
+
+    /// <summary>
     /// Spec §2.2: opens the Close-up at most once (asking again brings it to the front), remembers its size and position for the
     /// session, and closes it with the main window (its owner). Its view model follows the shared one and is disposed when it closes.
     /// Ruling R-P3-43 (Task 15): the first time in a session it opens at the lower right of the main window's screen

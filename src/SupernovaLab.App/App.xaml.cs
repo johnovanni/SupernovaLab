@@ -50,6 +50,7 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandledException;
         new PlaybackClock(vm.Timeline).Start();
         new TourClock(vm.Tour.Director).Start();
+        windows.OpenCloseUpWhenShown(main);   // Task 17: the Close-up is open from the start
         main.Show();
     }
 
