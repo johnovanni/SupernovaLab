@@ -1018,7 +1018,7 @@ public static class SnapshotRenderer
                      $"HDR {(c.HdrEnabled ? "on" : "off")}; GPU {(c.GlInfo.Length > 0 ? c.GlInfo : "not reported")}";
         yield return c.IsFailed ? $"Close-up: failed ({c.FailureMessage})"
             : $"Close-up frames drawn {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps; " +
-              $"whole ray maps traced {c.MapTraces}, refinement bands {c.RefineBands}; environment refreshes {c.EnvironmentCaptures - captures0}";
+              $"{RayLog(c)}; environment refreshes {c.EnvironmentCaptures - captures0}";
         yield return !c.GpuTimingAvailable || c.GpuSamples == 0
             ? "Close-up GPU time: not available"
             : $"Close-up GPU time (GL timer query): mean {(c.MeanGpuRenderTimeS * 1000).ToString("0.00", inv)} ms, " +
@@ -1061,13 +1061,13 @@ public static class SnapshotRenderer
             scene.ResetGpuStats();
             scene.SetLevel(LensingLevel.Quarter);
             scene.Orbit(0.25);
-            log.Add(await w.ShowFrameForSnapshotAsync() + $" (moving: shown {Shown(scene)})");
+            log.Add(await w.ShowFrameForSnapshotAsync() + $" (moving: shown {Shown(scene)}; {RayLog(scene)})");
             await NextFrame(w);
             log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}-moving.png")));
             w.HideFrameForSnapshot();
             int k0 = 0;
             for (; k0 < 120 && scene.ShownLevel != LensingLevel.Full; k0++) await NextFrame(w);
-            log.Add($"closeup{suffix}: after {k0} frames shown {Shown(scene)}: {scene.MapTraces} whole maps traced, {scene.RefineBands} refinement bands; {cvm.LightBendingNote}");
+            log.Add($"closeup{suffix}: after {k0} composition frames shown {Shown(scene)}; {RayLog(scene)}; host drawing every frame {scene.HostAnimating}; {cvm.LightBendingNote}");
             scene.SetLevel(LensingLevel.Full);
             cvm.LensingDetail = detail;
         }
@@ -1078,6 +1078,12 @@ public static class SnapshotRenderer
     }
 
     private static string Shown(SupernovaLab.App.Controllers.CloseUpSceneController c) => c.ShownLevel is { } s ? LensingLevels.Text(s) : "none";
+
+    /// <summary>Fix round 1's diagnostics: the Close-up's frames drawn, whole maps by reason, and bands, each with its failures.</summary>
+    private static string RayLog(SupernovaLab.App.Controllers.CloseUpSceneController c)
+        => $"frames drawn {c.FramesSinceReset} (skipped while hidden {c.SkippedFrames} in all); whole maps traced {c.MapTraces} " +
+           $"(first {c.TracesFor(RayMapTraceReason.First)}, viewport {c.TracesFor(RayMapTraceReason.Viewport)}, rays {c.TracesFor(RayMapTraceReason.Rays)}, " +
+           $"coarser level {c.TracesFor(RayMapTraceReason.CoarserLevel)}), failed {c.MapTracesFailed}; bands {c.RefineBands}, failed {c.RefineBandsFailed}";
 
     /// <summary>Closes the Close-up (as a user would) and logs whether its view released its GL objects with the context current.</summary>
     private static void LogCloseUpRelease(WindowService windows, List<string> log)

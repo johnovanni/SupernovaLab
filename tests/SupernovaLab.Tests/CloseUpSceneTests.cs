@@ -373,4 +373,45 @@ public class CloseUpSceneTests
         for (int k = 0; k < 400; k++) fine.Update(0.006, 0.019);    // 53 fps: stays
         Assert.Equal(LensingLevel.Half, fine.Level);
     }
+
+    /// <summary>
+    /// Ruling R-P3-14: at the end of a window the governor predicts one level down (a quarter of the rays) as the interval less 3/4 of
+    /// the lensing's GPU time; if that would still miss 50 fps, or 12 ms of GPU time, it steps two levels at once.
+    /// </summary>
+    [Fact]
+    public void LensingGovernor_StepsTwoLevels_WhenOneWouldStillMissTheTarget()
+    {
+        static LensingGovernor Run(LensingLevel start, double gpuMs, double intervalMs)
+        {
+            var g = new LensingGovernor(start);
+            for (int k = 0; k * intervalMs < 3000 + 1e-6; k++) g.Update(gpuMs / 1000, intervalMs / 1000);
+            return g;
+        }
+        // Task 4b's 1920x1080 Full orbit (18.5 fps: 54 ms apart, 33 ms of lensing): 54 - 24.75 = 29.25 ms predicted: straight to 1/4.
+        Assert.Equal(LensingLevel.Quarter, Run(LensingLevel.Full, 33, 54).Level);
+        // Its 1366x768 Full orbit (22.6 fps: 44 ms, 30.4 ms): 44 - 22.8 = 21.2 ms, still over 20: 1/4 too.
+        Assert.Equal(LensingLevel.Quarter, Run(LensingLevel.Full, 30.4, 44).Level);
+        // A borderline case: 30 ms apart with 15 ms of lensing predicts 18.75 ms at 1/2 (53 fps): one level.
+        Assert.Equal(LensingLevel.Half, Run(LensingLevel.Full, 15, 30).Level);
+        // A very slow card that is the whole frame: 60 ms of lensing, 1/2 would still be 15 ms of GPU: two levels.
+        Assert.Equal(LensingLevel.Quarter, Run(LensingLevel.Full, 60, 16.7).Level);
+        // Already under the target: no step at all.
+        Assert.Equal(LensingLevel.Full, Run(LensingLevel.Full, 8, 16.7).Level);
+        // From 1/2 there is only one level left.
+        Assert.Equal(LensingLevel.Quarter, Run(LensingLevel.Half, 33, 54).Level);
+    }
+
+    [Fact]
+    public void RayMap_NamesWhyItTracedAWholeMap()
+    {
+        var p = new RayMapPlanner();
+        p.Next(Rays(), 900, 600, LensingLevel.Full, LensingLevel.Full);
+        Assert.Equal(RayMapTraceReason.First, p.LastTraceReason);
+        p.Next(Rays(), 901, 600, LensingLevel.Full, LensingLevel.Full);
+        Assert.Equal(RayMapTraceReason.Viewport, p.LastTraceReason);
+        p.Next(Rays(yaw: 0.1f), 901, 600, LensingLevel.Full, LensingLevel.Full);
+        Assert.Equal(RayMapTraceReason.Rays, p.LastTraceReason);
+        p.Next(Rays(yaw: 0.1f), 901, 600, LensingLevel.Quarter, LensingLevel.Quarter);
+        Assert.Equal(RayMapTraceReason.CoarserLevel, p.LastTraceReason);
+    }
 }

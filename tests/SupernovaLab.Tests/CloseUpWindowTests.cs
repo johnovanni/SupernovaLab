@@ -526,4 +526,145 @@ public class CloseUpWindowTests
         Assert.True(CloseUpSceneController.TimeStepNeedsFrame(true, false, false, 3.000, 3.000, true, 0));    // a new state record
         Assert.True(CloseUpSceneController.TimeStepNeedsFrame(false, true, false, 3.000, 3.000, true, 0));    // a menu switch
     }
+
+    // ---- Task 4b fix round 1: the controller's per-frame lensing decisions, through the ILensingPass seam ----
+
+    /// <summary>A lensing pass that draws nothing and records each frame's step; bands can be made to fail.</summary>
+    private sealed class FakeLensing : ILensingPass
+    {
+        public List<RayMapStep> Steps { get; } = new();
+        public bool FailBands { get; set; }
+        public bool CachesRays => true;
+        public bool Render(Size viewportPx, RayMapStep step, in LensingUniforms u, int environmentCubeMap)
+        {
+            Steps.Add(step);
+            return !(FailBands && step.Work == RayMapWork.RefineStrip);
+        }
+        public void RenderDirect(Size viewportPx, LensingLevel level, in LensingUniforms u, int environmentCubeMap) { }
+        public void Dispose() { }
+    }
+
+    private static (CloseUpSceneController C, FakeHost Host, FakeLensing Lensing, CloseUpViewModel Vm) Drawn(string preset = "n6946bh1")
+    {
+        var vm = OpenCloseUp(preset, out _);
+        var host = new FakeHost();
+        var lensing = new FakeLensing();
+        var c = new CloseUpSceneController(vm, () => host, gpuFactory: () => new CloseUpGpu(lensing));
+        c.Start();
+        host.FirstFrame("Intel | Intel(R) Iris(R) Xe Graphics | 4.1.0 - Build 30.0.101.1960");
+        Assert.True(c.IsReady);
+        return (c, host, lensing, vm);
+    }
+
+    /// <summary>
+    /// R-P3-10 at the controller: after a move traced at 1/4 (Auto's governed level), the still frames build the full map in bands, the
+    /// view keeps drawing (IsAnimating, the host's Animating) until the last band, then rests, and the note follows the level shown.
+    /// </summary>
+    [Fact]
+    public void Controller_AfterAMoveAt1_4_RefinesToFullInBands_ThenRests()
+    {
+        var (c, host, lensing, vm) = Drawn();
+        c.SetLevel(LensingLevel.Quarter);   // Auto: the governor's moving level
+        c.Orbit(1);
+        host.Tick();
+        Assert.Equal(RayMapWork.Trace, lensing.Steps[^1].Work);
+        Assert.Equal(LensingLevel.Quarter, lensing.Steps[^1].Level);
+        Assert.Equal(LensingLevel.Quarter, c.ShownLevel);
+        Assert.Equal("Light bending: quarter resolution (automatic)", vm.LightBendingNote);
+        Assert.True(c.IsAnimating);
+        Assert.True(host.Animating, "a refinement owed keeps the host drawing");
+        int bands = 0;
+        for (int k = 0; k < 100 && c.ShownLevel != LensingLevel.Full; k++)
+        {
+            host.Tick();
+            Assert.Equal(RayMapWork.RefineStrip, lensing.Steps[^1].Work);
+            Assert.Equal(LensingLevel.Full, lensing.Steps[^1].Level);
+            bands++;
+            if (c.ShownLevel != LensingLevel.Full) Assert.True(host.Animating);
+        }
+        Assert.Equal(LensingLevel.Full, c.ShownLevel);
+        Assert.True(bands > 1);
+        Assert.Equal(bands, c.RefineBands);
+        Assert.Equal(0, c.RefineBandsFailed);
+        Assert.False(c.IsAnimating);
+        Assert.False(host.Animating, "refined: the view rests");
+        Assert.Equal("Light bending: full resolution (automatic)", vm.LightBendingNote);
+        host.Tick();
+        Assert.Equal(RayMapWork.None, lensing.Steps[^1].Work);   // and only samples from then on
+        c.Dispose();
+    }
+
+    [Fact]
+    public void Controller_AFailingBand_IsCounted_AndTheMapIsTracedAgain()
+    {
+        var (c, host, lensing, _) = Drawn();
+        c.SetLevel(LensingLevel.Quarter);
+        lensing.FailBands = true;
+        host.Tick();                     // the whole map at 1/4
+        int traces = c.MapTraces;
+        host.Tick();                     // a band: fails
+        Assert.Equal(1, c.RefineBandsFailed);
+        Assert.Equal(0, c.RefineBands);
+        host.Tick();                     // the map was forgotten: traced whole again
+        Assert.Equal(RayMapWork.Trace, lensing.Steps[^1].Work);
+        Assert.Equal(traces + 1, c.MapTraces);
+        c.Dispose();
+    }
+
+    [Fact]
+    public void Controller_AFixedLevel_IsTracedOnce_AndNeverRefined()
+    {
+        var (c, host, lensing, vm) = Drawn();
+        vm.LensingDetail = LensingDetail.Half;
+        for (int k = 0; k < 5; k++) host.Tick();
+        Assert.Equal(1, lensing.Steps.Count(s => s.Work == RayMapWork.Trace));
+        Assert.Equal(LensingLevel.Half, lensing.Steps.First(s => s.Work == RayMapWork.Trace).Level);
+        Assert.DoesNotContain(lensing.Steps, s => s.Work == RayMapWork.RefineStrip);
+        Assert.False(c.IsAnimating);
+        Assert.Equal("Light bending: half resolution (your setting)", vm.LightBendingNote);
+        c.Dispose();
+    }
+
+    [Fact]
+    public void LensingFrameTag_RoundTrips()
+    {
+        var band = new RayMapStep(RayMapWork.RefineStrip, LensingLevel.Full, 737, 705, 96, 88, false);
+        Assert.Equal((737 * 88, false, true), LensingFrameTag.Decode(LensingFrameTag.Encode(band, environmentCaptured: true)));
+        var whole = new RayMapStep(RayMapWork.Trace, LensingLevel.Quarter, 185, 177, 0, 177, true);
+        Assert.Equal((185 * 177, true, false), LensingFrameTag.Decode(LensingFrameTag.Encode(whole, false)));
+        Assert.Equal((0, false, true), LensingFrameTag.Decode(LensingFrameTag.Encode(default, true)));
+        Assert.Equal((519_585, true, false), LensingFrameTag.Decode(LensingFrameTag.EncodeDirect(519_585, false)));
+    }
+
+    /// <summary>
+    /// Fix round 1's root cause: GLWpfControl 4.3.6 only renders continuously after its control has been hidden and shown again, so
+    /// GlHost drives continuous frames itself. Animating, or a requested frame still owed, keeps the host's own composition-frame
+    /// handler on; nothing owed turns it off. (Built on an STA thread with an unstarted control: no GL context is made.)
+    /// </summary>
+    [Fact]
+    public void GlHost_DrivesContinuousFramesItself()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var host = new GlHost(new OpenTK.Wpf.GLWpfControl());
+                Assert.False(host.IsTicking);
+                host.Animating = true;
+                Assert.True(host.IsTicking);
+                host.Animating = false;
+                Assert.False(host.IsTicking);
+                host.RequestRender();   // two frames owed: ticks until they are drawn
+                Assert.True(host.IsTicking);
+                Assert.False(host.Shutdown(() => throw new InvalidOperationException("no context, nothing to release")));
+                Assert.False(host.IsTicking);
+            }
+            catch (Exception e) { error = e; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        Assert.Null(error);
+    }
 }

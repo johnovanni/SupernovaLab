@@ -84,7 +84,8 @@ public static class LensingDetails
 /// <see cref="GpuTimer"/>) and the wall time since the previous frame; over each 3 s of frames it takes the mean GPU time, and above
 /// 12 ms, or (ruling proposal R-P3-12) the frames average over 20 ms apart while the lensing takes over 2 ms of them, it steps down one
 /// level (1/1 to 1/2 to 1/4). It never steps up by itself; <see cref="Reset"/> is the only way up. With the ray cache (R-P3-10) the
-/// Close-up feeds it only the frames that traced a whole map (a moving camera), under the Auto detail only.
+/// Close-up feeds it only the frames that traced a whole map (a moving camera), under the Auto detail only. Ruling R-P3-14: when one
+/// level down (a quarter of the rays) would predictably still miss 50 fps or 12 ms, it steps two levels at once (1/1 to 1/4).
 /// </summary>
 public sealed class LensingGovernor
 {
@@ -126,6 +127,11 @@ public sealed class LensingGovernor
         // P3-9's rule, and (ruling proposal R-P3-12) below 50 fps while the lensing is a real part of the frame.
         bool tooSlow = mean > MaxGpuMs / 1000 || (meanInterval > MaxFrameIntervalMs / 1000 && mean > MinGpuMsForFrameRule / 1000);
         if (!tooSlow || LensingLevels.NextDown(Level) is not { } next) return false;
+        // Ruling R-P3-14: one level down quarters the rays, so predict that level's frame: the interval less 3/4 of the lensing's GPU
+        // time. If it would still be under 50 fps, or its GPU time still over 12 ms, go straight down two levels.
+        double predictedInterval = meanInterval - mean * (1 - 1.0 / 4);
+        if ((predictedInterval > MaxFrameIntervalMs / 1000 || mean / 4 > MaxGpuMs / 1000) && LensingLevels.NextDown(next) is { } two)
+            next = two;
         Level = next;
         return true;
     }

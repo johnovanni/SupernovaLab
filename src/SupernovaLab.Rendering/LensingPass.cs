@@ -28,7 +28,7 @@ public readonly record struct LensingUniforms(float Spin, Vector3 CameraPosition
 /// RGBA8 without) and upsamples it. Without RGBA32F the pass traces colour directly every frame, as before
 /// (<see cref="RenderDirect"/>).</para>
 /// </summary>
-public sealed class LensingPass : IDisposable
+public sealed class LensingPass : ILensingPass
 {
     private readonly ShaderProgram _trace = ShaderProgram.FromResources("fullscreen.vert", "lensing.frag");
     private readonly ShaderProgram _shade = ShaderProgram.FromResources("fullscreen.vert", "lensing_shade.frag");
@@ -243,4 +243,20 @@ public sealed class LensingPass : IDisposable
         _shade.Dispose();
         _upsample.Dispose();
     }
+}
+
+/// <summary>
+/// The lensing pass as the Close-up's controller uses it (Task 4b fix round 1: a seam, so the per-frame decisions of ruling R-P3-10
+/// can be tested without OpenGL). <see cref="LensingPass"/> is the real one.
+/// </summary>
+public interface ILensingPass : IDisposable
+{
+    /// <summary>Whether the ray map can be cached; false: <see cref="RenderDirect"/> every frame.</summary>
+    bool CachesRays { get; }
+
+    /// <summary>Does this frame's tracing, colours the shown ray map and upsamples it; false when a target could not be made.</summary>
+    bool Render(System.Windows.Size viewportPx, RayMapStep step, in LensingUniforms u, int environmentCubeMap);
+
+    /// <summary>The fallback without a ray cache: traces the colour at this level and upsamples it.</summary>
+    void RenderDirect(System.Windows.Size viewportPx, LensingLevel level, in LensingUniforms u, int environmentCubeMap);
 }

@@ -1,5 +1,9 @@
 namespace SupernovaLab.Rendering;
 
+/// <summary>Why the planner traced a whole map (fix round 1's diagnostics): no map yet, a new viewport, new rays (the camera, spin,
+/// surface or grid moved: a moving camera), or a still level coarser than the map shown.</summary>
+public enum RayMapTraceReason { None, First, Viewport, Rays, CoarserLevel }
+
 /// <summary>What the lensing pass traces this frame (ruling R-P3-10).</summary>
 public enum RayMapWork
 {
@@ -65,6 +69,9 @@ public sealed class RayMapPlanner
     /// <summary>Whether a finer map is being built behind the shown one.</summary>
     public bool IsRefining { get; private set; }
 
+    /// <summary>Why the last whole map was traced.</summary>
+    public RayMapTraceReason LastTraceReason { get; private set; }
+
     /// <summary>The most rays one refinement band traces.</summary>
     public int PixelsPerFrame { get; private set; } = DefaultPixelsPerFrame;
 
@@ -83,11 +90,16 @@ public sealed class RayMapPlanner
     /// <summary>The next frame's tracing for these inputs: the moving level while they change, then the still level.</summary>
     public RayMapStep Next(in LensingUniforms rays, int viewWidth, int viewHeight, LensingLevel movingLevel, LensingLevel stillLevel)
     {
-        bool changed = !HasMap || viewWidth != _viewW || viewHeight != _viewH || !SameRays(rays, _shownRays);
+        bool viewportChanged = HasMap && (viewWidth != _viewW || viewHeight != _viewH);
+        bool changed = !HasMap || viewportChanged || !SameRays(rays, _shownRays);
         if (changed || (int)stillLevel > (int)ShownLevel)
         {
             // Moving (or a coarser still level): the whole map now. A coarser level is cheap, and a moving camera needs it this frame.
             var level = changed ? movingLevel : stillLevel;
+            LastTraceReason = !HasMap ? RayMapTraceReason.First
+                : viewportChanged ? RayMapTraceReason.Viewport
+                : changed ? RayMapTraceReason.Rays
+                : RayMapTraceReason.CoarserLevel;
             (HasMap, _shownRays, _viewW, _viewH, ShownLevel, IsRefining) = (true, rays, viewWidth, viewHeight, level, false);
             var (w, h) = LensingLevels.TargetSize(viewWidth, viewHeight, level);
             return new RayMapStep(RayMapWork.Trace, level, w, h, 0, h, true);
@@ -134,5 +146,30 @@ public sealed class RayMapPlanner
         if (!(perRay > 0)) return;
         _secondsPerRay = double.IsNaN(_secondsPerRay) ? perRay : _secondsPerRay + Smoothing * (perRay - _secondsPerRay);
         PixelsPerFrame = PixelsFor(_secondsPerRay);
+    }
+}
+
+/// <summary>
+/// What one Close-up frame did, packed into its GPU timer query's tag (<see cref="GpuTimer.End"/>) so that the late measurement can
+/// be charged correctly: the rays traced, whether they were a whole map (a moving camera) or a refinement band, and whether the frame
+/// also captured the environment cube map. Task 4b fix round 1: a capture frame's time is not the rays' cost, so it is kept out of
+/// the planner's cost per ray and the governor's mean.
+/// </summary>
+public static class LensingFrameTag
+{
+    private const long CaptureBit = 1L << 40;
+    private const long BandBit = 1L << 41;
+    private const long RayMask = CaptureBit - 1;
+
+    public static long Encode(RayMapStep step, bool environmentCaptured)
+        => (step.Pixels & RayMask) | (step.Work == RayMapWork.RefineStrip ? BandBit : 0) | (environmentCaptured ? CaptureBit : 0);
+
+    /// <summary>A direct trace (no ray cache): a whole frame of rays.</summary>
+    public static long EncodeDirect(long rays, bool environmentCaptured) => (rays & RayMask) | (environmentCaptured ? CaptureBit : 0);
+
+    public static (int Rays, bool WholeMap, bool EnvironmentCaptured) Decode(long tag)
+    {
+        int rays = (int)Math.Min(tag & RayMask, int.MaxValue);
+        return (rays, rays > 0 && (tag & BandBit) == 0, (tag & CaptureBit) != 0);
     }
 }

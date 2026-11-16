@@ -82,7 +82,7 @@ public sealed class GlHost : IRenderHost
         _control.Render -= OnRender;
         _animating = false;
         _framesOwed = 0;
-        if (_control.RenderContinuously) _control.RenderContinuously = false;
+        SetTicking(false);
         if (!_contextReady || _control.Context is not { } context) return false;
         context.MakeCurrent();
         release();
@@ -98,9 +98,31 @@ public sealed class GlHost : IRenderHost
 
     private void UpdateContinuous()
     {
-        bool on = _failure == null && (_animating || _framesOwed > 0);
-        if (_control.RenderContinuously != on) _control.RenderContinuously = on;
+        SetTicking(_failure == null && (_animating || _framesOwed > 0));
     }
+
+    /// <summary>
+    /// Task 4b fix round 1: the host drives continuous frames itself, with a CompositionTarget.Rendering handler that invalidates the
+    /// control, instead of GLWpfControl's RenderContinuously. GLWpfControl 4.3.6 subscribes its own Rendering handler only from an
+    /// IsVisibleChanged handler that its Start() registers, so a control that is already visible when Start() runs (every view here
+    /// starts in its window's Loaded) never gets one, and RenderContinuously did nothing until the window was hidden and shown again.
+    /// Measured in fix round 1's diagnostic launch: a Close-up refinement owed, with Animating on, drew 1 frame in 120 composition
+    /// frames; only frames asked for from outside a render (RequestRender's own InvalidateVisual) were drawn.
+    /// </summary>
+    private void SetTicking(bool on)
+    {
+        if (on == _ticking) return;
+        _ticking = on;
+        if (on) System.Windows.Media.CompositionTarget.Rendering += OnTick;
+        else System.Windows.Media.CompositionTarget.Rendering -= OnTick;
+    }
+
+    private bool _ticking;
+
+    /// <summary>Whether the host asks for a frame every composition frame now (Animating, or a requested frame still owed).</summary>
+    public bool IsTicking => _ticking;
+
+    private void OnTick(object? sender, EventArgs e) => _control.InvalidateVisual();
 
     private void OnRender(TimeSpan delta)
     {

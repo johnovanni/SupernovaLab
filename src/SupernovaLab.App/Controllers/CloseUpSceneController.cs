@@ -14,6 +14,24 @@ using SupernovaLab.Rendering;
 namespace SupernovaLab.App.Controllers;
 
 /// <summary>
+/// The Close-up's GL objects, made together once the context exists (<see cref="Create"/>). Task 4b fix round 1: a seam, so tests can
+/// give the controller a fake <see cref="ILensingPass"/> (and nothing else) and drive its per-frame lensing decisions without OpenGL.
+/// </summary>
+public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, EnvironmentCapture? Environment = null,
+    ExplosionPainter? Painter = null, RingRenderer? Rings = null, GpuTimer? Timer = null)
+{
+    /// <summary>The real objects (call with the GL context current).</summary>
+    public static CloseUpGpu Create()
+    {
+        var hdr = new HdrPipeline();
+        var environment = new EnvironmentCapture(hdr.Enabled);
+        var painter = new ExplosionPainter((int)QualityLevel.Low);
+        var rings = new RingRenderer();
+        var timer = new GpuTimer();
+        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer);
+    }
+}
+/// <summary>
 /// The Close-up window's 3D view (spec §2, §6.6), on <see cref="SceneController"/>'s pattern with a GL host of its own: an
 /// <see cref="IRenderHost"/> made by the factory given (a fake in tests), the failure message when OpenGL 4.1 is missing (spec §8.4),
 /// a GPU timer, and the GL objects released with the context current on <see cref="Dispose"/> (<see cref="GlReleased"/>).
@@ -49,6 +67,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private readonly CloseUpViewModel _vm;
     private readonly Func<IRenderHost> _hostFactory;
     private readonly Func<Outcome, double, ExplosionScene> _envSceneFactory;
+    private readonly Func<CloseUpGpu> _gpuFactory;
     private readonly Func<double> _clock;
     private IRenderHost? _host;
     private double? _lastFrameS;
@@ -60,7 +79,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     // GL objects (null until the context exists).
     private HdrPipeline? _hdr;
-    private LensingPass? _lensing;
+    private ILensingPass? _lensing;
     private EnvironmentCapture? _environment;
     private ExplosionPainter? _painter;
     private RingRenderer? _rings;
@@ -79,10 +98,13 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     /// <param name="envSceneFactory">Builds the environment's scene of an outcome at a time dilation; null for <see cref="ExplosionScene"/>'s own.</param>
     /// <param name="wallClock">Wall-clock seconds; null for the real clock (tests pass a fake).</param>
+    /// <param name="gpuFactory">Makes the GL objects once the context exists; null for the real ones (tests pass a fake lensing pass).</param>
     /// <param name="beamClock">The beams' wall clock shared with the main view (plan ruling P3-5); the beams are drawn from Task 6.</param>
     public CloseUpSceneController(CloseUpViewModel vm, Func<IRenderHost> hostFactory, BeamClock? beamClock = null,
-        Func<double>? wallClock = null, Func<Outcome, double, ExplosionScene>? envSceneFactory = null)
+        Func<double>? wallClock = null, Func<Outcome, double, ExplosionScene>? envSceneFactory = null,
+        Func<CloseUpGpu>? gpuFactory = null)
     {
+        _gpuFactory = gpuFactory ?? CloseUpGpu.Create;
         _vm = vm ?? throw new ArgumentNullException(nameof(vm));
         _hostFactory = hostFactory ?? throw new ArgumentNullException(nameof(hostFactory));
         BeamClock = beamClock ?? new BeamClock();
@@ -93,7 +115,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         vm.StateChanged += OnStateChanged;
         vm.PropertyChanged += OnViewModelChanged;
         vm.Main.Timeline.PropertyChanged += OnTimelineChanged;
-        (_drawnState, _drawnSwitches) = (vm.State, (vm.ShowGrid, vm.ShowLabels, vm.IsCutaway));
+        (_drawnState, _drawnSwitches) = (vm.State, DrawnSwitches());
     }
 
     /// <summary>The beams' clock, the same instance as the main view's (plan ruling P3-5).</summary>
@@ -187,6 +209,21 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     public int MapTraces { get; private set; }
     public int RefineBands { get; private set; }
 
+    /// <summary>Whole-map traces and refinement bands whose pass failed (no target could be made); the map is then traced again.</summary>
+    public int MapTracesFailed { get; private set; }
+    public int RefineBandsFailed { get; private set; }
+
+    private readonly int[] _traceReasons = new int[Enum.GetValues<RayMapTraceReason>().Length];
+
+    /// <summary>Whole maps traced since <see cref="ResetGpuStats"/> for each reason (diagnostics: a map retraced every frame shows here).</summary>
+    public int TracesFor(RayMapTraceReason reason) => _traceReasons[(int)reason];
+
+    /// <summary>Frames the host offered while shown, and the frames drawn, since <see cref="ResetGpuStats"/> (diagnostics).</summary>
+    public int FramesSinceReset { get; private set; }
+
+    /// <summary>Whether the host is asked to draw every frame now (diagnostics).</summary>
+    public bool HostAnimating => _host?.Animating == true;
+
     /// <summary>Whether the governor may step the level down (on by default; the bench measures fixed levels with it off).</summary>
     public bool AutoLevel { get; set; } = true;
 
@@ -245,7 +282,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     public int GpuSamples { get; private set; }
     public double MeanGpuRenderTimeS => GpuSamples > 0 ? _gpuSumS / GpuSamples : double.NaN;
     public double MaxGpuRenderTimeS { get; private set; }
-    public void ResetGpuStats() { _gpuSumS = 0; GpuSamples = 0; MaxGpuRenderTimeS = 0; MapTraces = RefineBands = 0; }
+    public void ResetGpuStats() { _gpuSumS = 0; GpuSamples = 0; MaxGpuRenderTimeS = 0; MapTraces = RefineBands = MapTracesFailed = RefineBandsFailed = FramesSinceReset = 0; Array.Clear(_traceReasons); }
 
     private void RecordGpuTime(double t)
     {
@@ -384,7 +421,11 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     // What the last state change left on screen (Task 4b's on-demand drawing): the state record and the menu switches it draws.
     private CloseUpState _drawnState;
-    private (bool Grid, bool Labels, bool Cutaway) _drawnSwitches;
+    private (bool Grid, bool Labels, bool Cutaway, bool FieldLines, bool LightCylinder) _drawnSwitches;
+
+    /// <summary>The menu switches the view draws (or will: field lines and the light cylinder from Tasks 6 and 7).</summary>
+    private (bool, bool, bool, bool, bool) DrawnSwitches()
+        => (_vm.ShowGrid, _vm.ShowLabels, _vm.IsCutaway, _vm.ShowFieldLines, _vm.ShowLightCylinder);
 
     /// <summary>
     /// Task 4b (ruling proposal R-P3-11): whether a time step must redraw the Close-up. Only when the state record changed, a menu
@@ -410,7 +451,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     {
         if (_disposed) return;
         var state = _vm.State;
-        var switches = (_vm.ShowGrid, _vm.ShowLabels, _vm.IsCutaway);
+        var switches = DrawnSwitches();
         if (!rebuilt)
         {
             var main = _vm.Main;
@@ -479,12 +520,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         string version = glInfo.Split('|').ElementAtOrDefault(2)?.Trim() ?? "";
         if (!SceneController.IsSupported(version))
             throw new NotSupportedException($"this computer's OpenGL is {(version.Length > 0 ? version : "unknown")}");
-        _hdr = new HdrPipeline();
-        _environment = new EnvironmentCapture(_hdr.Enabled);
-        _painter = new ExplosionPainter((int)QualityLevel.Low);
-        _rings = new RingRenderer();
-        _gpuTimer = new GpuTimer();
-        _lensing = new LensingPass(_hdr.Enabled);
+        var gpu = _gpuFactory();
+        (_hdr, _environment, _painter, _rings, _gpuTimer, _lensing) = (gpu.Hdr, gpu.Environment, gpu.Painter, gpu.Rings, gpu.Timer, gpu.Lensing);
         _planner.Invalidate();
         _uploadEnvParticles = true;
         _envOutcome = null;
@@ -511,28 +548,34 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             return;
         }
         double interval = delta.TotalSeconds;
-        // Measurements of earlier frames, read late. The tag is the rays that frame traced: positive for a whole map (a moving camera:
-        // the governor's cost), negative for a refinement band. The planner learns the cost per ray from both (its band size).
+        // Measurements of earlier frames, read late. The tag says what that frame did (LensingFrameTag): the planner learns the cost per
+        // ray from whole maps and bands (its band size), the governor from whole maps (a moving camera); a frame that also captured
+        // the environment is left out of both, since the capture's time is not the rays' cost (fix round 1).
         _gpuTimer?.Poll((t, tag) =>
         {
             RecordGpuTime(t);
-            _planner.ReportGpuTime((int)Math.Abs(tag), t);
-            if (tag > 0) FeedRenderTime(t, interval);
+            var (rays, wholeMap, captured) = LensingFrameTag.Decode(tag);
+            if (captured) return;
+            _planner.ReportGpuTime(rays, t);
+            if (wholeMap) FeedRenderTime(t, interval);
         });
         StepDirector();
-        if (_hdr is null || _lensing is null || _environment is null || _painter is null || _rings is null) return;
+        if (_lensing is null) return;   // the GL objects are made together (a test's fake has only the lensing pass)
         FramesDrawn++;
+        FramesSinceReset++;
         var state = _vm.State;
         _gpuTimer?.Begin();
         bool lens = state.IsLensed && _lensingEnabled;
+        int captures = EnvironmentCaptures;
         if (lens) RefreshEnvironment();
-        _hdr.Begin(viewportPx);
-        long tracedTag = 0;
+        bool captured = EnvironmentCaptures != captures;
+        _hdr?.Begin(viewportPx);
+        long tracedTag = LensingFrameTag.Encode(default, captured);
         if (lens && viewportPx.Width > 0 && viewportPx.Height > 0)
-            tracedTag = DrawLensing(state, viewportPx);
+            tracedTag = DrawLensing(state, viewportPx, captured);
         if (state.IsLensed)
-            foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / UnitCm, ring.Opacity);
-        _hdr.End(_exposure, BloomStrength);
+            foreach (var ring in CurrentRings()) _rings?.Render(Camera, viewportPx, ring.RadiusCm / UnitCm, ring.Opacity);
+        _hdr?.End(_exposure, BloomStrength);
         _gpuTimer?.End(tracedTag);
         UpdateAnimating();   // a refinement still owed keeps the view drawing; a finished one lets it rest
         if (_readback is { } readback)
@@ -545,30 +588,40 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// <summary>
     /// Ruling R-P3-10: the light bending through the cached ray map (the planner says what to trace this frame, the pass colours the
     /// shown map from the surroundings as they are now), or without a float target the direct trace at the moving level. Returns
-    /// the GPU timer's tag: the rays traced, positive for a whole map, negative for a refinement band, 0 for none.
+    /// the GPU timer's tag (<see cref="LensingFrameTag"/>): the rays traced, whole map or band, and whether the frame captured the
+    /// environment.
     /// </summary>
-    private long DrawLensing(CloseUpState state, Size viewportPx)
+    private long DrawLensing(CloseUpState state, Size viewportPx, bool captured)
     {
         var u = Uniforms(state, viewportPx);
-        if (_lensing is null || _environment is null) return 0;
+        if (_lensing is null) return LensingFrameTag.Encode(default, captured);
+        int env = _environment?.Texture ?? 0;
         if (!_lensing.CachesRays)
         {
-            _lensing.RenderDirect(viewportPx, MovingLevel, u, _environment.Texture);
+            _lensing.RenderDirect(viewportPx, MovingLevel, u, env);
             _vm.ShownLensingLevel = MovingLevel;
             MapTraces++;
             var (w, h) = LensingLevels.TargetSize((int)viewportPx.Width, (int)viewportPx.Height, MovingLevel);
-            return (long)w * h;
+            return LensingFrameTag.EncodeDirect((long)w * h, captured);
         }
         var step = _planner.Next(u, (int)viewportPx.Width, (int)viewportPx.Height, MovingLevel, StillLevel);
-        if (!_lensing.Render(viewportPx, step, u, _environment.Texture))
+        if (!_lensing.Render(viewportPx, step, u, env))
         {
+            // The pass could not make a target: forget the map (the next frame traces it whole again) and count it, so a failing band
+            // shows in the bench and snapshot logs instead of looking like a refinement that never starts.
+            if (step.Work == RayMapWork.RefineStrip) RefineBandsFailed++;
+            else if (step.Work == RayMapWork.Trace) MapTracesFailed++;
             _planner.Invalidate();
-            return 0;
+            return LensingFrameTag.Encode(default, captured);
         }
         _vm.ShownLensingLevel = _planner.ShownLevel;
-        if (step.Work == RayMapWork.Trace) MapTraces++;
+        if (step.Work == RayMapWork.Trace)
+        {
+            MapTraces++;
+            _traceReasons[(int)_planner.LastTraceReason]++;
+        }
         if (step.Work == RayMapWork.RefineStrip) RefineBands++;
-        return step.Work == RayMapWork.RefineStrip ? -step.Pixels : step.Pixels;
+        return LensingFrameTag.Encode(step, captured);
     }
 
     /// <summary>[Presentation] The bloom strength, the main view's.</summary>
@@ -668,7 +721,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     {
         if (_disposed || IsFailed || _host is null) return null;
         _readback?.TrySetResult(null);
-        var tcs = new TaskCompletionSource<BitmapSource?>();
+        // Fix round 1: the waiting code resumes on the dispatcher, never inline inside this view's OnDraw (with the GL context current).
+        var tcs = new TaskCompletionSource<BitmapSource?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _readback = tcs;
         _host.RequestRender();
         var done = await Task.WhenAny(tcs.Task, Task.Delay(timeout));
