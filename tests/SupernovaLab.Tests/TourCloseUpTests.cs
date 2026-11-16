@@ -260,4 +260,63 @@ public class TourCloseUpTests
         d.Start();
         Assert.Contains(nameof(TourViewModel.HighlightCloseUp), raised);
     }
+
+    // ---- fix round 1 ----
+
+    [Fact]
+    public void RerollMidTour_OfAMagnetar_EndsTheTour_WithTheNewExplosionNote()
+    {
+        var vm = new MainViewModel(TestOutcomes.Engine, new FakeWindowService());
+        vm.Lab.InitialMass = 30; vm.Lab.Stripping = Stripping.Full; vm.Lab.Rotation = Rotation.Fast; vm.Lab.Field = CoreField.Strong;
+        Assert.Equal(RemnantKind.Magnetar, vm.CurrentOutcome.Remnant.Kind);
+        var d = vm.Tour.Director;
+        d.Start();
+        d.Next();
+        vm.RerollCommand.Execute(null);   // a new run: its flare is not the one the stops describe
+        Assert.Equal(TourState.Off, d.State);
+        Assert.Equal(TourDirector.NewExplosionNote, d.Note);
+        Assert.False(vm.Tour.HighlightCloseUp);
+    }
+
+    [Fact]
+    public void RerollMidTour_OfANonMagnetar_LeavesTheTourRunning()
+    {
+        var (vm, _, d) = Rig("sn1987a");
+        d.Start();
+        vm.RerollCommand.Execute(null);   // no stop depends on the run
+        Assert.NotEqual(TourState.Off, d.State);
+        Assert.Null(d.Note);
+    }
+
+    [Fact]
+    public void Resume_AfterTheWindowIsClosed_DoesNotLandOnACloseUpOnlyStop()
+    {
+        var (vm, windows, d) = Rig("sn1987a");
+        d.Start();
+        d.Next();
+        windows.IsCloseUpOpen = false;
+        d.Pause();
+        var skipped = d.Stops.Select((s, i) => (s, i)).Where(t => t.i > 1 && t.s.CloseUpOnly).Select(t => t.i).First();
+        vm.Timeline.ObserverTimeS = d.Stops[skipped].ObserverTimeS;   // the user scrubs onto a close-up-only stop
+        d.Resume();
+        Assert.False(d.Current!.CloseUpOnly);
+        Assert.True(d.StopIndex < skipped);
+    }
+
+    [Fact]
+    public void BounceSentence_SharesTheNeutrinoStop_ForEveryPresetWithBoth()
+    {
+        int checkedCount = 0;
+        foreach (var p in PresetCatalog.LoadEmbedded())
+        {
+            var o = ForPreset(p);
+            var stops = TourBuilder.For(o, p.Observer, p, 1);
+            var bounce = stops.FirstOrDefault(s => s.Caption.Contains("has rebounded"));
+            var neutrinos = stops.FirstOrDefault(s => s.Caption.Contains("burst of neutrinos"));
+            if (bounce is null || neutrinos is null) continue;
+            Assert.Same(bounce, neutrinos);   // if the marker time moves, the stops would split here
+            checkedCount++;
+        }
+        Assert.True(checkedCount >= 5, $"{checkedCount} presets checked");
+    }
 }

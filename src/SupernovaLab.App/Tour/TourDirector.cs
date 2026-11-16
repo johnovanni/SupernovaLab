@@ -49,6 +49,7 @@ public sealed class TourDirector
     {
         _vm = vm ?? throw new ArgumentNullException(nameof(vm));
         _vm.OutcomeChanged += OnOutcomeChanged;
+        _vm.PropertyChanged += OnMainPropertyChanged;   // a Re-roll changes only the run number (Task 13 fix round 1)
         _vm.Timeline.UserInteracted += OnUserInput;   // only the timeline pauses the tour (Task 15)
         Scene = scene;
     }
@@ -142,6 +143,7 @@ public sealed class TourDirector
     /// <summary>Continues from the stop the time is at: the dwell if it was held on the stop, else travel to the next one.</summary>
     public void Resume()
     {
+        DetectCloseUpClosed();
         if (State != TourState.Paused || Current is not { } stop) return;
         _vm.Timeline.IsPlaying = false;
         double t = _vm.Timeline.ObserverTimeS;
@@ -156,7 +158,8 @@ public sealed class TourDirector
         int i = 0;
         for (int k = 0; k < _stops.Count; k++)
             if (_stops[k].ObserverTimeS <= t * (1 + 1e-9)) i = k;
-        if (i == _stops.Count - 1) { Exit(); return; }   // at or past the last stop: nothing left to play
+        while (i > 0 && Skipped(i)) i--;                 // not onto a Close-up-only stop whose window is closed
+        if (NextPlayable(i) < 0) { Exit(); return; }       // nothing playable left after it
         if (i != StopIndex) ApplyStop(i);
         State = TourState.Playing;
         RaiseChanged();
@@ -354,6 +357,17 @@ public sealed class TourDirector
         // caption layout at the first tour stop captured after Start with the opposite order; this order is not yet re-checked.)
         Changed?.Invoke(this, EventArgs.Empty);
         SyncOrbit();
+    }
+
+    /// <summary>
+    /// A Re-roll changes only the run number. The one stop that depends on it is a magnetar's giant flare (the stops are built at Start),
+    /// so the tour ends with the same note as a new outcome (a Re-roll is a new run of the explosion); a tour of any other outcome is unaffected.
+    /// </summary>
+    private void OnMainPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(MainViewModel.RunNumber) || State == TourState.Off) return;
+        if (!Core.Compact.MagnetarFlares.Applies(_vm.CurrentOutcome)) return;
+        OnOutcomeChanged(sender, EventArgs.Empty);
     }
 
     private void OnOutcomeChanged(object? sender, EventArgs e)
