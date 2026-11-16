@@ -1259,32 +1259,44 @@ public static class SnapshotRenderer
         vm.Lab.SelectedPreset = crab;   // a preset is an outcome change too: back to t = 0
         log.Add($"lab-change check: chose the Crab again: {Timeline()}");
 
-        // The sound, by log: switched on low, at 100 yr (pulses received), playing at the slowest speed, then paused.
-        cu.Volume = 0.05f;
-        cu.IsSoundOn = true;
-        log.Add($"sound check: switched on at t = 0: \"{cu.SpeakerState}\"; {Audio()}");
-        tl.DecadesPerSecond = TimelineViewModel.MinDecadesPerSecond;
-        tl.ObserverTimeS = 100 * PhysicalConstants.Year;
-        tl.IsPlaying = true;
-        await Task.Delay(TimeSpan.FromSeconds(seconds));
-        long playing = Clicks();
-        log.Add($"sound check: after {seconds.ToString("0.#", inv)} s playing: {Timeline()}; \"{cu.SpeakerState}\"; {Audio()}");
-        tl.IsPlaying = false;
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        long paused = Clicks();
-        log.Add($"sound check: 1 s paused: {paused - playing} more clicks queued; \"{cu.SpeakerState}\"; {Audio()}");
-        if (windows.CloseUp is not null && request.Windows.Contains(SnapshotWindow.CloseUp))
-            await CaptureCloseUp(request, windows, "-sn1054-sound-on", log);
+        // The sound, by log: switched on low, at 100 yr (pulses received), playing at the slowest speed, then paused. A snapshot run does not
+        // start the app's playback clock (the bench starts its own), so the check runs one while it plays (Task 15's launch found the time
+        // held at 100 yr without it; the sound itself does not depend on it).
+        var clock = new PlaybackClock(tl);
+        clock.Start();
+        try
+        {
+            cu.Volume = 0.05f;
+            cu.IsSoundOn = true;
+            log.Add($"sound check: switched on at t = 0: \"{cu.SpeakerState}\"; {Audio()}");
+            tl.DecadesPerSecond = TimelineViewModel.MinDecadesPerSecond;
+            tl.ObserverTimeS = 100 * PhysicalConstants.Year;
+            tl.IsPlaying = true;
+            await Task.Delay(TimeSpan.FromSeconds(seconds));
+            long playing = Clicks();
+            log.Add($"sound check: after {seconds.ToString("0.#", inv)} s playing from 100 years: {Timeline()}; \"{cu.SpeakerState}\"; {Audio()}");
+            tl.IsPlaying = false;
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            long paused = Clicks();
+            log.Add($"sound check: 1 s paused: {paused - playing} more clicks queued; \"{cu.SpeakerState}\"; {Audio()}");
+            if (windows.CloseUp is not null && request.Windows.Contains(SnapshotWindow.CloseUp))
+                await CaptureCloseUp(request, windows, "-sn1054-sound-on", log);
 
-        // R-P3-41 while sounding: a preset change pauses at t = 0; SN 1998bw leaves a black hole, so the clicks stop and the status says why.
-        tl.IsPlaying = true;
-        vm.Lab.SelectedPreset = PresetCatalog.Get("sn1998bw");
-        long atChange = Clicks();
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        log.Add($"sound check: chose SN 1998bw while sounding: {Timeline()}; \"{cu.SpeakerState}\"; {Clicks() - atChange} clicks queued in the next second; {Audio()}");
-        cu.IsSoundOn = false;
-        log.Add($"sound check: switched off: \"{cu.SpeakerState}\"; {Audio()}");
-        tl.DecadesPerSecond = TimelineViewModel.DefaultDecadesPerSecond;
+            // R-P3-41 while sounding: a preset change pauses at t = 0; SN 1998bw leaves a black hole, so the clicks stop and the status says why.
+            tl.IsPlaying = true;
+            vm.Lab.SelectedPreset = PresetCatalog.Get("sn1998bw");
+            long atChange = Clicks();
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            log.Add($"sound check: chose SN 1998bw while sounding: {Timeline()}; \"{cu.SpeakerState}\"; {Clicks() - atChange} clicks queued in the next second; {Audio()}");
+            cu.IsSoundOn = false;
+            log.Add($"sound check: switched off: \"{cu.SpeakerState}\"; {Audio()}");
+        }
+        finally
+        {
+            tl.IsPlaying = false;
+            clock.Stop();
+            tl.DecadesPerSecond = TimelineViewModel.DefaultDecadesPerSecond;
+        }
     }
 
     /// <summary>Saves the Close-up window with its GL frame shown in place of the GL control (as the main window's).</summary>

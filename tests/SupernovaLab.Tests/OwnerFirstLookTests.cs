@@ -563,6 +563,34 @@ public class OwnerFirstLookTests
         Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--sound-check", "31" }));
     }
 
+    [Fact]
+    public void APlaybackClock_CanBeStopped_SoTheSoundCheckHandsOverToTheBench()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                InstrumentsWindowTests.EnsureApplication();
+                var tl = new TimelineViewModel();
+                var clock = new PlaybackClock(tl);
+                clock.Start();
+                tl.IsPlaying = true;
+                Assert.True(clock.IsTicking);
+                clock.Stop();
+                Assert.False(clock.IsTicking);
+                tl.IsPlaying = false;
+                tl.IsPlaying = true;
+                Assert.False(clock.IsTicking);   // no longer following the timeline
+            }
+            catch (Exception e) { error = e; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        Assert.Null(error);
+    }
+
     /// <summary>Within a device pixel (Windows rounds a moved window's position to whole pixels, 0.8 DIP at 125%).</summary>
     private static void Near(double expected, double actual) => Assert.InRange(actual, expected - 1, expected + 1);
 

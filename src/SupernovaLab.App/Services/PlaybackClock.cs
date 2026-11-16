@@ -24,6 +24,19 @@ public sealed class PlaybackClock
         Follow();
     }
 
+    /// <summary>Stops following the timeline (Task 15: the --snapshot sound check runs its own clock, then hands over to the bench's).</summary>
+    public void Stop()
+    {
+        _timeline.PropertyChanged -= OnTimelineChanged;
+        if (!_subscribed) return;
+        _subscribed = false;
+        CompositionTarget.Rendering -= OnRendering;
+        _clock.Stop();
+    }
+
+    /// <summary>True while the clock is ticking the timeline (it plays and the clock is started).</summary>
+    public bool IsTicking => _subscribed;
+
     private void OnTimelineChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(TimelineViewModel.IsPlaying)) Follow();
