@@ -287,6 +287,9 @@ public class BlackHoleFixRound1Tests
     public void SurroundingsNote_DisclosesTheMissingWindHaze_InEveryLensedEra()
     {
         Assert.Contains("wind's schematic haze is left out", CloseUpScene.SurroundingsNote);
+        Assert.Contains("cutaway", CloseUpScene.SurroundingsNote);   // R-P3-40: every omission is named
+        Assert.Contains("jets", CloseUpScene.SurroundingsNote);
+        Assert.Contains("SN 1987A's rings", CloseUpScene.SurroundingsNote);
         foreach (var (id, t) in new[] { ("n6946bh1", 10.0), ("sn1998bw", 5.0), ("sn1998bw", 1e8), ("sn1054", 3e10) })
         {
             var s = new CloseUpScene(Preset(id), ObserverSetup.Default, 1).At(t);

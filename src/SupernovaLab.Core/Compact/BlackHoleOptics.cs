@@ -68,7 +68,8 @@ public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 Ex
 /// analytically, toward the hole: Δ = (2/b)(1 − cos γ), b the line's distance from the hole and γ the angle between the
 /// camera's position vector and d (the 4/b of a line passing the hole from far away, integrated from the camera onwards
 /// along the straight line; computed as 2b/(|x|²(1 + cos γ)) when cos γ &gt; 0, without cancellation). Its ExitPosition is
-/// the camera. [APPROX] The bending outside r = 200 on the way in (below 0.5° for any ray that reaches it) is
+/// the camera. [APPROX] The bending outside r = 200 on the way in (about 4/b, up to about 1° in a thin ring near b ≈ 200 GM/c²,
+/// seen only when zoomed out about 10× past the default view; well under that elsewhere) is
 /// neglected; the 400-step budget then covers every camera distance.</item>
 /// <item><b>Start.</b> d = normalize(direction). With s = l·d at the camera, the null vector v = (T, d) has
 /// T = (1 + f s²)/(√(1 − f(1 − s²)) − f s) (the future-directed root of −T² + 1 + f(T + s)² = 0, stable form);

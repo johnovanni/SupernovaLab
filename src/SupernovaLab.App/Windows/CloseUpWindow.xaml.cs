@@ -34,6 +34,7 @@ public partial class CloseUpWindow : Window
         Closing += (_, _) => DisposeScene();
         Closed += (_, _) =>
         {
+            UnhookOwner();
             DisposeScene();
             (DataContext as CloseUpViewModel)?.Dispose();
         };
@@ -64,11 +65,35 @@ public partial class CloseUpWindow : Window
         ViewGrid.MouseUp += OnMouseUp;
         ViewGrid.LostMouseCapture += OnLostMouseCapture;
         ViewGrid.MouseWheel += OnMouseWheel;
+        HookOwner();
         UpdateVisible();
         Scene.Start();
     }
 
-    private void UpdateVisible() => Scene?.SetVisible(IsVisible && WindowState != WindowState.Minimized);
+    private void UpdateVisible() => Scene?.SetVisible(IsEffectivelyVisible(IsVisible, WindowState, Owner?.WindowState));
+
+    /// <summary>The window draws only while it is shown and neither it nor its owner (the main window) is minimized.</summary>
+    public static bool IsEffectivelyVisible(bool isVisible, WindowState own, WindowState? owner)
+        => isVisible && own != WindowState.Minimized && owner != WindowState.Minimized;
+
+    private Window? _hookedOwner;
+
+    /// <summary>Follow the owner's minimized state (the owner is set by the window service before Show, and may change).</summary>
+    private void HookOwner()
+    {
+        if (ReferenceEquals(_hookedOwner, Owner)) return;
+        UnhookOwner();
+        _hookedOwner = Owner;
+        if (_hookedOwner is not null) _hookedOwner.StateChanged += OnOwnerStateChanged;
+    }
+
+    private void UnhookOwner()
+    {
+        if (_hookedOwner is not null) _hookedOwner.StateChanged -= OnOwnerStateChanged;
+        _hookedOwner = null;
+    }
+
+    private void OnOwnerStateChanged(object? sender, EventArgs e) => UpdateVisible();
 
     private void DisposeScene()
     {

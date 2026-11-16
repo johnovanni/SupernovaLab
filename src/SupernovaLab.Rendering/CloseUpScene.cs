@@ -215,13 +215,16 @@ public sealed class CloseUpScene
     /// <summary>The bench's note when its diagnostic spin replaces the model's settled spin.
     public const string BenchSpinNote = "Spin set by the --bench-spin diagnostic, not by the lab's model.";
 
+    /// <summary>The Surface readout's tooltip addition before 1 minute: the research does not cover the first minute.</summary>
+    public const string SurfaceHeldTip = "(Before 1 minute the value is held at its 1-minute value.)";
+
     /// <summary>The neutron star's note while only its size is drawn.</summary>
     public const string PlaceholderNeutronStarNote =
         "The neutron star is drawn as a plain sphere of its radius (placeholder colour), with the bending of light around it.";
 
     /// <summary>What the lensing pass bends, said once.</summary>
     public const string SurroundingsNote =
-        "The surroundings are the main view's scene seen from the remnant, with their light bent as computed from general relativity (each pixel's ray traced through the hole's spacetime). The wind's schematic haze is left out: it marks unlit gas, and from inside it would only wash the sky evenly.";
+        "The surroundings are Project 2's scene (at Low quality) seen from the remnant, with their light bent as computed from general relativity (each pixel's ray traced through the hole's spacetime). The wind's schematic haze is left out: it marks unlit gas, and from inside it would only wash the sky evenly. The main view's cutaway, the jets (drawn separately along +z) and SN 1987A's rings are also left out.";
 
     /// <summary>The black hole is framed at this many shadow radii (the shadow fills about a third of the view's height).</summary>
     public const double BlackHoleFrameShadowRadii = 1.5;
@@ -243,7 +246,7 @@ public sealed class CloseUpScene
 
     /// <summary>Before the magnetosphere forms (compact §C4.2): no beams yet.</summary>
     public const string BeamsNotYetNote =
-        "The beams are drawn once the star's magnetosphere forms, about 30 s after bounce (approximate: 10 to 100 s, compact §C4.2)";
+        "The beams, the field lines and the light cylinder are drawn once the star's magnetosphere forms, about 30 s after bounce (approximate: 10 to 100 s, compact §C4.2)";
 
     /// <summary>Spec §4.1: the colour and where the star really shines.</summary>
     public const string SurfaceColourNote =
@@ -655,7 +658,8 @@ public sealed class CloseUpScene
                          ". The second number is the distance from the explosion's centre (" + DriftSource.Citation.ToLowerInvariant() + ")." +
                          (o.Discloses(KickSpeedInconsistency) ? " " + CasAKickComparison(kick.Value) : "");
         string surfaceTip = NeutronStarModel.CasAComparison(o, t)
-                            ?? "Seen from afar (redshifted): the lab's cooling model; before 30 years an early-cooling band (compact §C3).";
+                            ?? "Seen from afar (redshifted): the lab's cooling model; before 30 years an early-cooling band (compact §C3)." +
+                               (t < NeutronStarModel.EarlyStartS ? " " + SurfaceHeldTip : "");
         var readouts = new[]
         {
             new Readout("Mass", r.Mass!, "Gravitational mass"),

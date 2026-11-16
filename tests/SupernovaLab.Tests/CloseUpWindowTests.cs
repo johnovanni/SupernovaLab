@@ -5,6 +5,7 @@ using SupernovaLab.App.Controllers;
 using SupernovaLab.App.Services;
 using SupernovaLab.App.ViewModels;
 using SupernovaLab.App.Windows;
+using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Presets;
 using SupernovaLab.Rendering;
@@ -1134,5 +1135,65 @@ public class CloseUpWindowTests
         Assert.True(right <= width - CloseUpSceneController.CutawayKeyWidthDip || drip.YDip - 10 >= CloseUpSceneController.CutawayKeyBottomDip);
         // With no room on the left either, nothing is drawn rather than a label under the key.
         Assert.Equal(onTheLeft, CloseUpSceneController.DripLabelPlacement(text, new Point(cx + edge, cy), null, width) is null);
+    }
+
+    // ---- Final fix wave ----
+
+    /// <summary>Item 4: the Close-up draws only while shown and neither it nor its owner is minimized.</summary>
+    [Fact]
+    public void Window_IsHidden_WhenItsOwnerIsMinimized()
+    {
+        Assert.True(CloseUpWindow.IsEffectivelyVisible(true, WindowState.Normal, WindowState.Normal));
+        Assert.True(CloseUpWindow.IsEffectivelyVisible(true, WindowState.Normal, null));
+        Assert.False(CloseUpWindow.IsEffectivelyVisible(true, WindowState.Normal, WindowState.Minimized));
+        Assert.False(CloseUpWindow.IsEffectivelyVisible(true, WindowState.Minimized, WindowState.Normal));
+        Assert.False(CloseUpWindow.IsEffectivelyVisible(false, WindowState.Normal, WindowState.Normal));
+    }
+
+    /// <summary>Item 5: before 1 minute the Surface readout says the temperature is held; after, it does not.</summary>
+    [Fact]
+    public void SurfaceReadout_SaysItIsHeldBeforeOneMinute()
+    {
+        var p = PresetCatalog.Get("sn1054");
+        var o = TestOutcomes.Engine.Compute(p.Inputs, p.Pins);
+        string Tip(double t) => new CloseUpScene(o, ObserverSetup.Default, 1).At(t).Readouts.First(r => r.Label == "Surface").ToolTip!;
+        Assert.Contains(CloseUpScene.SurfaceHeldTip, Tip(20));
+        Assert.DoesNotContain(CloseUpScene.SurfaceHeldTip, Tip(120));
+    }
+
+    /// <summary>Item 6: a Re-roll keeps the zoom the user chose; a new outcome reframes.</summary>
+    [Fact]
+    public void Reroll_KeepsTheZoom_ButANewOutcomeReframes()
+    {
+        var vm = OpenCloseUp("sn1054", out var main);
+        var c = new CloseUpSceneController(vm, () => new FakeHost());
+        c.Zoom(3);
+        double zoomed = c.Camera.DistanceMpc;
+        Assert.False(c.IsAutoFraming);
+        main.RerollCommand.Execute(null);
+        Assert.False(c.IsAutoFraming);
+        Assert.Equal(zoomed, c.Camera.DistanceMpc, 12);
+        main.Lab.SelectedPreset = PresetCatalog.Get("n6946bh1");
+        Assert.True(c.IsAutoFraming);
+        c.Dispose();
+    }
+
+    /// <summary>Item 7: field lines and the light cylinder wait for the magnetosphere, as the beams do.</summary>
+    [Fact]
+    public void FieldLinesAndLightCylinder_WaitForTheMagnetosphere()
+    {
+        var vm = OpenCloseUp("sn1054", out var main);
+        var c = new CloseUpSceneController(vm, () => new FakeHost());
+        vm.ShowFieldLines = true;
+        vm.ShowLightCylinder = true;
+        main.Timeline.ObserverTimeS = 1;
+        Assert.False(c.ShowsBeams);
+        Assert.False(c.DrawsFieldLines);
+        Assert.False(c.DrawsLightCylinder);
+        Assert.Contains("field lines", CloseUpScene.BeamsNotYetNote);
+        main.Timeline.ObserverTimeS = 1e6;
+        Assert.True(c.DrawsFieldLines);
+        Assert.True(c.DrawsLightCylinder);
+        c.Dispose();
     }
 }

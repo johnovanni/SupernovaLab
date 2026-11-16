@@ -168,6 +168,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private object? _envObserver;
     private int _envRun;
     private double _envWallS = double.NegativeInfinity;
+    private Outcome? _framedOutcome;   // the outcome the camera was last framed for (a Re-roll keeps the user's zoom)
     private bool _envPending;
     private bool _envHaze;   // ruling R-P3-21: the cube map holds the haze inside the star
 
@@ -195,6 +196,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         _envSceneFactory = envSceneFactory ?? ((o, z1) => new ExplosionScene(o, z1, _vm.Main.CurrentObserver, _vm.Main.RunNumber));
         BuildEnvironmentScene();
         Home(jumpOnly: true);
+        _framedOutcome = vm.Main.CurrentOutcome;   // the first framing is for this outcome
         vm.StateChanged += OnStateChanged;
         vm.PropertyChanged += OnViewModelChanged;
         vm.Main.Timeline.PropertyChanged += OnTimelineChanged;
@@ -213,6 +215,12 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     /// <summary>Whether the beams are drawn now (spec C6: from the magnetosphere's formation).</summary>
     public bool ShowsBeams => _vm.State.ShowBeams;
+
+    /// <summary>Whether the field lines are drawn now: switched on, and the magnetosphere has formed (as the beams, spec §4.3).</summary>
+    public bool DrawsFieldLines => _vm.ShowFieldLines && _vm.State.ShowBeams;
+
+    /// <summary>Whether the light cylinder is drawn now: switched on, and the magnetosphere has formed (as the beams).</summary>
+    public bool DrawsLightCylinder => _vm.ShowLightCylinder && _vm.State.ShowBeams;
 
     private IReadOnlyList<RingLabel> _viewLabels = Array.Empty<RingLabel>();
 
@@ -614,10 +622,16 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         {
             BuildEnvironmentScene();
             // A new outcome reframes at once (as the main view does), keeping the angles the user chose.
-            _frozenHalfHeightCm = null;
-            IsAutoFraming = true;
-            Director.Jump(_vm.State.FrameRadiusKm * UnitCm);
-            ApplyAutoDistance();
+            // A Re-roll (the same outcome, a new run) keeps the zoom and framing the user chose, as the main view does.
+            bool reroll = ReferenceEquals(_framedOutcome, _vm.Main.CurrentOutcome) && !IsAutoFraming;
+            _framedOutcome = _vm.Main.CurrentOutcome;
+            if (!reroll)
+            {
+                _frozenHalfHeightCm = null;
+                IsAutoFraming = true;
+                Director.Jump(_vm.State.FrameRadiusKm * UnitCm);
+                ApplyAutoDistance();
+            }
         }
         ClampDistance();
         UpdateAnimating();
@@ -921,7 +935,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         if (_cutawayFrame is { } cutaway && _cutawayRenderer is not null)
             _cutawayRenderer.Render(Camera, viewport, cutaway, ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure),
                 c => ToneMappedSurface(c, HdrEnabled, _exposure));
-        _neutronStar?.RenderLines(Camera, viewport, state, phase, _vm.ShowFieldLines, _vm.ShowLightCylinder, gain, occluder);
+        _neutronStar?.RenderLines(Camera, viewport, state, phase, DrawsFieldLines, DrawsLightCylinder, gain, occluder);
     }
 
     /// <summary>The overlays' colour gain: through the HDR target, <see cref="OverlayLevel"/> ÷ the exposure (so they read whatever the surroundings' brightness); 1 without it.</summary>
@@ -1147,7 +1161,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         // Fix round 1: kept on screen; when the tip is off the view (zoomed in) the label sits at the edge in its direction.
         if (EdgeDip(e * (NeutronStarRenderer.ArrowTipRadii + 0.15) * s.SurfaceRadiusKm) is { } tip)
             labels.Add(new RingLabel(ToEarthLabel, tip.X, tip.Y, 1));
-        if (_vm.ShowLightCylinder && double.IsFinite(s.LightCylinderKm))
+        if (DrawsLightCylinder && double.IsFinite(s.LightCylinderKm))
         {
             // The ring's point nearest the camera, else its sides: the first on screen with room for the label to its right (Task 6's
             // launch: the right-hand point alone put the label past the view's edge).

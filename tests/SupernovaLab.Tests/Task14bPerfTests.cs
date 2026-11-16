@@ -15,7 +15,7 @@ using SupernovaLab.Rendering;
 namespace SupernovaLab.Tests;
 
 /// <summary>
-/// Task 14b (ruling R-P3-28's main-view regression): the bench's per-subsystem timing line, and the Close-up's readout rows kept and
+/// Task 14b (ruling R-P3-36's main-view regression): the bench's per-subsystem timing line, and the Close-up's readout rows kept and
 /// updated in place (replacing the bound list rebuilt every row's elements on every frame, shown or hidden), showing exactly the
 /// readouts the model gives.
 /// </summary>

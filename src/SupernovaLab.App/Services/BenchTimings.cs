@@ -5,7 +5,7 @@ using SupernovaLab.Rendering;
 namespace SupernovaLab.App.Services;
 
 /// <summary>
-/// Task 14b (ruling R-P3-28's regression hunt): the bench's per-subsystem timings of the UI thread's work in each composition frame.
+/// Task 14b (ruling R-P3-36's regression hunt): the bench's per-subsystem timings of the UI thread's work in each composition frame.
 /// Off unless <c>--bench</c> turns it on for a run: then <see cref="Begin"/> reads the clock and <see cref="End"/> adds the span; off,
 /// <see cref="Begin"/> returns 0 and <see cref="End"/> does nothing, so a normal run pays one static read per measured call.
 /// UI thread only (the time step, the controllers and the pulse trace all run there).
