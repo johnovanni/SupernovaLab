@@ -14,6 +14,7 @@ namespace SupernovaLab.App.Services;
 public sealed class WindowService : IWindowService
 {
     private readonly BeamClock _beamClock;
+    private readonly Func<IPulseAudio> _audioFactory;
     private readonly Func<CloseUpViewModel, Window> _closeUpFactory;
     private Window? _owner;
     private InstrumentsWindow? _instruments;
@@ -23,11 +24,14 @@ public sealed class WindowService : IWindowService
     private Rect? _instrumentsBounds, _closeUpBounds;
 
     /// <param name="beamClock">The beams' clock, shared by both 3D views; null for one of its own.</param>
+    /// <param name="audioFactory">Makes the Close-up's pulse sound when it is first switched on (null: NAudio's); tests pass a fake.</param>
     /// <param name="closeUpFactory">Makes the Close-up window for its view model (null: <see cref="Windows.CloseUpWindow"/>); tests pass
     /// a plain window, so no GL context is made.</param>
-    public WindowService(BeamClock? beamClock = null, Func<CloseUpViewModel, Window>? closeUpFactory = null)
+    public WindowService(BeamClock? beamClock = null, Func<CloseUpViewModel, Window>? closeUpFactory = null,
+        Func<IPulseAudio>? audioFactory = null)
     {
         _beamClock = beamClock ?? new BeamClock();
+        _audioFactory = audioFactory ?? (() => new NAudioPulseAudio());
         _closeUpFactory = closeUpFactory ?? (vm => new CloseUpWindow { DataContext = vm, BeamClock = _beamClock });
     }
 
@@ -96,7 +100,7 @@ public sealed class WindowService : IWindowService
     {
         var main = _owner?.DataContext as MainViewModel
                    ?? throw new InvalidOperationException("WindowService.Attach must be called with the main window first.");
-        var vm = new CloseUpViewModel(main);
+        var vm = new CloseUpViewModel(main, _audioFactory);   // the sound stops and is released when the window closes (vm.Dispose)
         var w = _closeUpFactory(vm);
         w.DataContext = vm;
         CloseUpWindowsMade++;

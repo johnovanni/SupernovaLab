@@ -4,6 +4,7 @@
         xmlns:gl="clr-namespace:OpenTK.Wpf;assembly=GLWpfControl"
         xmlns:r="clr-namespace:SupernovaLab.Rendering;assembly=SupernovaLab.Rendering"
         xmlns:text="clr-namespace:SupernovaLab.Core.Text;assembly=SupernovaLab.Core"
+        xmlns:views="clr-namespace:SupernovaLab.App.Views"
         Title="{Binding WindowTitle}" Width="900" Height="640" MinWidth="560" MinHeight="400"
         WindowStartupLocation="CenterOwner" TextOptions.TextFormattingMode="Display"
         Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}" FontSize="13">
@@ -45,6 +46,9 @@
                           ToolTip="{x:Static text:Glossary.CloseUpLabels}"/>
                 <MenuItem Header="F_ocus view" Foreground="Black" IsCheckable="True" InputGestureText="F"
                           IsChecked="{Binding IsFocusView, Mode=TwoWay}" ToolTip="{x:Static text:Glossary.CloseUpFocusView}"/>
+                <!-- Spec §4.4: the pulsar's sound, off by default; the pulse trace shows the speaker's state and the volume. -->
+                <MenuItem Header="_Sound (pulsar clicks)" Foreground="Black" IsCheckable="True" IsChecked="{Binding IsSoundOn, Mode=TwoWay}"
+                          ToolTip="{x:Static text:Glossary.CloseUpSound}"/>
                 <Separator/>
                 <!-- Spec §2.5, ruling R-P3-9: the light-bending detail, remembered in layout.json; the notes name the level shown. -->
                 <MenuItem Header="Light-bending _detail" Foreground="Black" ToolTip="{x:Static text:Glossary.CloseUpLightBendingDetail}">
@@ -56,9 +60,37 @@
             </MenuItem>
         </Menu>
 
-        <!-- The pulse trace (spec §4.4): a pulsar's or magnetar's pulses; collapsed until Task 8 draws it. -->
-        <Border x:Name="PulseTraceRow" DockPanel.Dock="Bottom" Height="56" Margin="8,0,8,8" Visibility="Collapsed"
-                Style="{StaticResource Panel}"/>
+        <!-- The pulse trace (spec §4.4): a pulsar's or magnetar's pulses, with the speaker's state and volume and the rates in words
+             (nothing depends on hearing the sound). Shown for a pulsar or magnetar only. -->
+        <Border x:Name="PulseTraceRow" DockPanel.Dock="Bottom" Height="84" Margin="8,0,8,8" Padding="10,6"
+                Visibility="{Binding ShowPulseTrace, Converter={StaticResource VisibleWhen}}"
+                Style="{StaticResource Panel}" ToolTip="{x:Static text:Glossary.CloseUpPulseTrace}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Width="230" Margin="0,0,12,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Margin="0,0,8,0"
+                                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SpeakerState}" Style="{StaticResource Muted}" Width="190" VerticalAlignment="Center"
+                                   AutomationProperties.Name="Speaker state"/>
+                    </StackPanel>
+                    <Slider Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Width="200" Margin="0,4,0,0" HorizontalAlignment="Left"
+                            SmallChange="0.05" LargeChange="0.1" ToolTip="Sound volume" AutomationProperties.Name="Sound volume"/>
+                </StackPanel>
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{Binding TraceText}" FontWeight="SemiBold" Margin="0,0,0,3"
+                               AutomationProperties.Name="Pulse trace"/>
+                    <views:PulseTrace Grid.Row="1" x:Name="Trace"/>
+                </Grid>
+            </Grid>
+        </Border>
 
         <Grid Margin="8">
             <Grid.ColumnDefinitions>

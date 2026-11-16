@@ -2,6 +2,10 @@ using System.ComponentModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SupernovaLab.App.Services;
+using SupernovaLab.Core.Compact;
+using SupernovaLab.Core.Observer;
+using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Units;
 using SupernovaLab.Rendering;
 
@@ -39,9 +43,12 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     private string? _modelError;
     private bool _disposed;
 
-    public CloseUpViewModel(MainViewModel main)
+    /// <param name="main">The shared lab state.</param>
+    /// <param name="audioFactory">Makes the pulse sound when it is first switched on (plan Task 8); null: the window has no sound.</param>
+    public CloseUpViewModel(MainViewModel main, Func<IPulseAudio>? audioFactory = null)
     {
         Main = main ?? throw new ArgumentNullException(nameof(main));
+        _audioFactory = audioFactory;
         BuildScene();
         ComputeState();
         main.OutcomeChanged += OnOutcomeChanged;
@@ -285,6 +292,11 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
 
     private void OnTimelineChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(TimelineViewModel.IsPlaying))   // plan Task 8: the sound plays only while the timeline does
+        {
+            UpdatePulses();
+            return;
+        }
         if (e.PropertyName != nameof(TimelineViewModel.ObserverTimeS)) return;
         ComputeState();
         StateChanged?.Invoke(this, false);
@@ -313,6 +325,12 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     }
 
     private void ComputeState()
+    {
+        ComputeStateCore();
+        UpdatePulses();
+    }
+
+    private void ComputeStateCore()
     {
         var before = (State, _modelError);
         if (_scene is not null)
@@ -351,11 +369,134 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         return $"Close-up: model error ({e.GetType().Name}: {e.Message}). The other views are unaffected.";
     }
 
-    /// <summary>Stops following the main view model (the window closed).</summary>
+    // ---- Plan Task 8: the pulse trace and the optional pulsar sound (spec §4.4) ----
+
+    private readonly Func<IPulseAudio>? _audioFactory;
+    private IPulseAudio? _audio;
+    private PulseVisibility _pulseVisibility = PulseVisibility.NotAPulsar;
+    private string _traceText = "";
+    private string _speakerState = "Sound off";
+    private string? _audioProblem;
+    private double[] _crossings = Array.Empty<double>();
+    private (Outcome Outcome, ObserverSetup Observer)? _crossingsFor;
+
+    /// <summary>Spec C19: the sound is off by default, so nothing sounds unasked (Close-up menu ▸ Sound). Not saved between runs.</summary>
+    [ObservableProperty] private bool _isSoundOn;
+
+    /// <summary>The sound's loudness, 0 to 1 (a gentle half by default).</summary>
+    [ObservableProperty] private float _volume = 0.5f;
+
+    partial void OnIsSoundOnChanged(bool value)
+    {
+        if (value && _audio is null && !_disposed) CreateAudio();
+        if (_audio is not null) _audio.Enabled = value;
+        UpdatePulses();
+        OnPropertyChanged(nameof(SpeakerGlyph));
+    }
+
+    partial void OnVolumeChanged(float value)
+    {
+        if (_audio is not null) _audio.Volume = value;
+        UpdatePulses();
+    }
+
+    private void CreateAudio()
+    {
+        if (_audioFactory is null)
+        {
+            _audioProblem = "this window has no sound output";
+            return;
+        }
+        try
+        {
+            _audio = _audioFactory();
+            _audio.Volume = Volume;
+            _audioProblem = null;
+        }
+        catch (Exception e)
+        {
+            Trace.TraceError($"Close-up sound: {e}");
+            _audioProblem = "no audio output device";
+        }
+    }
+
+    /// <summary>Whether the trace row shows: the remnant is a pulsar or magnetar (a black hole has none).</summary>
+    public bool ShowPulseTrace => _pulseVisibility != PulseVisibility.NotAPulsar;
+
+    /// <summary>True while pulses reach Earth (beam toward Earth, out of the debris): the trace draws, and the Close-up keeps animating (R-P3-11).</summary>
+    public bool PulsesShown => _pulseVisibility == PulseVisibility.Received;
+
+    /// <summary>The trace's words: both rates, or the reason there are no pulses (spec §4.4).</summary>
+    public string TraceText => _traceText;
+
+    /// <summary>The spin phases at which a drawn beam crosses the Earth arrow (for the trace's marks); empty when none can.</summary>
+    public IReadOnlyList<double> CrossingPhasesRad => _crossings;
+
+    /// <summary>The speaker symbol's text: Segoe MDL2 volume or mute.</summary>
+    public string SpeakerGlyph => IsSoundOn ? "" : "";
+
+    /// <summary>The speaker's state in words, with its volume and, when it is silent, why: nothing depends on hearing it.</summary>
+    public string SpeakerState => _speakerState;
+
+    private void UpdatePulses()
+    {
+        if (_disposed) return;
+        var o = Main.CurrentOutcome;
+        var obs = Main.CurrentObserver;
+        double t = SourceTimeS;
+        var vis = State.NeutronStar is null || _modelError is not null ? PulseVisibility.NotAPulsar : PulseSchedule.Visibility(o, obs, t);
+        string text = vis == PulseVisibility.NotAPulsar ? "" : PulseSchedule.TraceText(o, obs, t);
+        bool playing = Main.Timeline.IsPlaying;
+        bool sounding = IsSoundOn && vis == PulseVisibility.Received && playing;
+        _audio?.SetPulsePeriod(sounding ? PulseSchedule.ReceivedPeriodS(o, obs, t) : null);
+
+        string problem = (IsSoundOn ? _audioProblem ?? _audio?.Problem : null) ?? "";
+        string speaker = !IsSoundOn ? "Sound off"
+            : problem.Length > 0 ? $"Sound on, but unavailable: {problem}"
+            : $"Sound on, volume {(int)Math.Round(Volume * 100)}%" + (sounding ? ""
+                : vis switch
+                {
+                    PulseVisibility.Received => " · silent while the timeline is paused",
+                    PulseVisibility.HiddenByDebris => " · silent: hidden by debris",
+                    PulseVisibility.BeamMissesEarth => " · silent: beam misses Earth",
+                    _ => " · silent: no pulsar",
+                });
+
+        var changed = new List<string>();
+        if (vis != _pulseVisibility)
+        {
+            bool shownBefore = ShowPulseTrace, pulsesBefore = PulsesShown;
+            _pulseVisibility = vis;
+            if (shownBefore != ShowPulseTrace) changed.Add(nameof(ShowPulseTrace));
+            if (pulsesBefore != PulsesShown) changed.Add(nameof(PulsesShown));
+        }
+        if (vis != PulseVisibility.Received)
+        {
+            if (_crossings.Length > 0) (_crossings, _crossingsFor) = (Array.Empty<double>(), null);
+        }
+        else if (!ReferenceEquals(_crossingsFor?.Outcome, o) || _crossingsFor.Value.Observer != obs)
+            (_crossings, _crossingsFor) = (PulseSchedule.CrossingPhasesRad(o, obs).ToArray(), (o, obs));
+        if (text != _traceText) { _traceText = text; changed.Add(nameof(TraceText)); }
+        if (speaker != _speakerState) { _speakerState = speaker; changed.Add(nameof(SpeakerState)); }
+        foreach (var name in changed) OnPropertyChanged(name);
+    }
+
+    /// <summary>Stops following the main view model (the window closed), and stops and releases the sound.</summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        if (_audio is not null)
+        {
+            try
+            {
+                _audio.SetPulsePeriod(null);
+                _audio.Enabled = false;
+                _audio.Dispose();
+            }
+            catch (Exception e) { Trace.TraceError($"Close-up sound: {e}"); }
+            _audio = null;
+        }
         Main.OutcomeChanged -= OnOutcomeChanged;
         Main.Timeline.PropertyChanged -= OnTimelineChanged;
         Main.PropertyChanged -= OnMainChanged;

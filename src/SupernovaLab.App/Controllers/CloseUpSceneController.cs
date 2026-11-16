@@ -613,7 +613,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// </summary>
     public bool IsAnimating => !IsFailed && _visible &&
                                (_forceAnimating || (Director.IsEasing && _frozenHalfHeightCm is null) || (_envPending && !_vm.Main.Timeline.IsPlaying)
-                                || RefineOwed || Turns);
+                                || RefineOwed || Turns || _vm.PulsesShown);
 
     /// <summary>Whether something drawn turns with the spin now: a neutron star (its surface markings, field lines and beams).</summary>
     private bool Turns => _vm.State.NeutronStar is not null && _vm.State.IsLensed;

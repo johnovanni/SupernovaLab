@@ -55,6 +55,7 @@ public partial class CloseUpWindow : Window
     {
         if (Scene is not null || DataContext is not CloseUpViewModel vm) return;
         Scene = new CloseUpSceneController(vm, () => _glHost = new GlHost(GlControl), BeamClock);
+        Trace.Attach(vm, Scene.BeamClock);   // the trace reads the same clock the beams turn by
         ViewHost.DataContext = Scene;
         Scene.SetViewSize(new Size(ViewGrid.ActualWidth, ViewGrid.ActualHeight));
         ViewGrid.SizeChanged += OnViewSizeChanged;
