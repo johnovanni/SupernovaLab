@@ -32,6 +32,7 @@
     <res:ConfidenceBrushConverter x:Key="ConfidenceBrush"/>
     <res:ConfidenceTextConverter x:Key="ConfidenceText"/>
     <res:GlossaryConverter x:Key="GlossaryText"/>
+    <res:CloseUpTermConverter x:Key="CloseUpTerm"/>
     <res:FateBrushConverter x:Key="FateBrush"/>
     <res:VisibleWhenConverter x:Key="VisibleWhen"/>
     <res:FractionToOffsetConverter x:Key="FractionToOffset"/>

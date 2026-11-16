@@ -1160,10 +1160,44 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         if (CutawayDrawn(s) && s.Cutaway is { HasCrust: true, DripLabel: { } dripLabel } cut)
         {
             var (screenRight, _) = Camera.ScreenAxes();
-            if (EdgeDip(screenRight * (1.12 * s.SurfaceRadiusKm)) is { } dripAt)
-                labels.Add(new RingLabel("◄ " + dripLabel, dripAt.X, dripAt.Y, 1));
+            if (EdgeDip(screenRight * (1.12 * s.SurfaceRadiusKm)) is { } dripAt
+                && DripLabelPlacement(dripLabel, dripAt, EdgeDip(-screenRight * (1.12 * s.SurfaceRadiusKm)), _viewDip.Width) is { } drip)
+                labels.Add(drip);
         }
         if (!labels.SequenceEqual(_viewLabels)) ViewLabels = labels;
+    }
+
+    /// <summary>A view label's text width per character, DIP (12 px Segoe UI, about 6.5; the black hole's left-hand labels use it too).</summary>
+    public const double LabelCharDip = 6.5;
+
+    /// <summary>
+    /// The cutaway key's box from the view's top-right corner, DIP: its MaxWidth 250 and margins, and its height as Task 14's launch drew it
+    /// (about 235 DIP at 900x640, where three rows wrap; less when wider).
+    /// </summary>
+    public const double CutawayKeyWidthDip = 262, CutawayKeyBottomDip = 245;
+
+    /// <summary>
+    /// Task 14: whether a view label placed to the right of this point (its 6 DIP margin, 4 DIP padding each side, about
+    /// <see cref="LabelCharDip"/> a character, 20 DIP tall around the point) would run under the cutaway key in the top-right corner.
+    /// </summary>
+    public static bool DripLabelUnderKey(Point at, string text, double viewWidthDip)
+    {
+        double left = at.X + 6, right = left + 8 + LabelCharDip * text.Length, top = at.Y - 10;
+        return right > viewWidthDip - CutawayKeyWidthDip && top < CutawayKeyBottomDip;
+    }
+
+    /// <summary>
+    /// Task 14's launch: at the default 900x640 window the drip label on the star's right ran under the cutaway key (top right). The label
+    /// beside the star's right edge (<paramref name="rightAt"/>, "◄ text"), or, where that would run under the key, beside its left edge
+    /// (<paramref name="leftAt"/>, "text ►", ending at its leader as the black hole's left-hand labels do); null if neither is on the view.
+    /// </summary>
+    public static RingLabel? DripLabelPlacement(string dripLabel, Point rightAt, Point? leftAt, double viewWidthDip)
+    {
+        string right = "◄ " + dripLabel;
+        if (!DripLabelUnderKey(rightAt, right, viewWidthDip)) return new RingLabel(right, rightAt.X, rightAt.Y, 1);
+        if (leftAt is not { } left) return null;
+        string text = dripLabel + " ►";
+        return new RingLabel(text, Math.Max(0, left.X - 20 - LabelCharDip * text.Length), left.Y, 1);
     }
 
     /// <summary>The DIP margin a clamped label keeps from the top and bottom edges.</summary>

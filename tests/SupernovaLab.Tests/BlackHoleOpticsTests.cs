@@ -598,7 +598,7 @@ public class BlackHoleOpticsTests
 
     // ---- Helpers ----
 
-    private static double MicroArcsec(double rad) => rad * (180 / Math.PI) * 3600 * 1e6;
+    internal static double MicroArcsec(double rad) => rad * (180 / Math.PI) * 3600 * 1e6;
 
     private static Vec3 Normal(double incRad) => new(Math.Sin(incRad), 0, Math.Cos(incRad));
     private static Vec3 EAlpha => new(0, 1, 0);
@@ -614,7 +614,7 @@ public class BlackHoleOpticsTests
     }
 
     /// <summary>Largest captured impact parameter, by bisection in the equatorial plane (i = 90°).</summary>
-    private static double BisectCaptureEdge(double spin, double cameraR)
+    internal static double BisectCaptureEdge(double spin, double cameraR)
     {
         double lo = 0, hi = 10;
         Assert.Equal(RayFate.Captured, Fire(spin, Math.PI / 2, lo, 0, cameraR).Fate);
@@ -628,7 +628,7 @@ public class BlackHoleOpticsTests
     }
 
     /// <summary>The tracer's shadow edge along the screen ray from (0, 0) through (α, β): its distance from (0, 0).</summary>
-    private static double EdgeAlongRay(double spin, double incDeg, double alpha, double beta)
+    internal static double EdgeAlongRay(double spin, double incDeg, double alpha, double beta)
     {
         double inc = incDeg * Math.PI / 180, rho = Math.Sqrt(alpha * alpha + beta * beta);
         double ua = alpha / rho, ub = beta / rho;
@@ -647,7 +647,7 @@ public class BlackHoleOpticsTests
     /// Total deflection of a ray with impact parameter b, fired from 10⁵ GM/c² (so the uncollected deflection beyond
     /// both ends, about 2b/D² of 4/b, is negligible) and escaping at 1.2 × 10⁵.
     /// </summary>
-    private static double DeflectionAt(double spin, double b)
+    internal static double DeflectionAt(double spin, double b)
     {
         const double d = 1e5;
         var r = BlackHoleOptics.Trace(spin, new(d, b, 0), new(-1, 0, 0), 1.2 * d, 0, 200_000);
@@ -661,7 +661,7 @@ public class BlackHoleOpticsTests
     /// observer's direction to the tangent point is half its total sweep: ψ_max = (π + deflection) / 2, and
     /// f = (1 − cos ψ_max) / 2.
     /// </summary>
-    private static double TracerVisibleFraction(double massMsun, double radiusKm)
+    internal static double TracerVisibleFraction(double massMsun, double radiusKm)
     {
         double rs = radiusKm * 1e5 / BlackHoleOptics.GravitationalRadiusCm(massMsun);
         double lo = 0, hi = 2 * rs;

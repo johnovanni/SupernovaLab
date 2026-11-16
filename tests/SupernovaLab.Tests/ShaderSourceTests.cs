@@ -195,4 +195,22 @@ public class ShaderSourceTests
         Assert.Contains("float t = -eyeZ / p.z;", cone);
         Assert.Contains("rho >= u_diskRadii.x && rho <= u_diskRadii.y", cone);
     }
+
+    /// <summary>
+    /// Task 14 (Task 7's carried minor): nscut.frag repeats the cutaway lines' widths and pixel floors as literals; they must equal
+    /// <see cref="NeutronStarCutawayRenderer"/>'s constants, which the tests and the strip use.
+    /// </summary>
+    [Fact]
+    public void Nscut_LineWidthsAndFloors_MatchTheRenderer()
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string text = System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith(".nscut.frag")).Bytes);
+        string F(double v) => v.ToString("0.0##", inv);
+        Assert.Contains($"const float BOUNDARY_WIDTH = {F(NeutronStarCutawayRenderer.BoundaryWidthRadii)};", text);
+        Assert.Contains($"const float DRIP_WIDTH = {F(NeutronStarCutawayRenderer.DripWidthRadii)};", text);
+        Assert.Contains($"const float ATMOSPHERE_WIDTH = {F(NeutronStarCutawayRenderer.AtmosphereWidthRadii)};", text);
+        Assert.Contains($"max(BOUNDARY_WIDTH, {F(NeutronStarCutawayRenderer.BoundaryMinPx)} * u_radiiPerPx)", text);
+        Assert.Contains($"max(DRIP_WIDTH, {F(NeutronStarCutawayRenderer.DripMinPx)} * u_radiiPerPx)", text);
+        Assert.Contains($"max(ATMOSPHERE_WIDTH, {F(NeutronStarCutawayRenderer.AtmosphereMinPx)} * u_radiiPerPx)", text);
+    }
 }

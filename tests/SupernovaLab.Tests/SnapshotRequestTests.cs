@@ -350,4 +350,19 @@ public class SnapshotRequestTests
         Assert.Equal("-n6946bh1-t10-grid", SnapshotRequest.FileSuffix(r.PresetIds[0]));
         Assert.Equal("-sn1998bw-t10-grid-cutaway", SnapshotRequest.FileSuffix("sn1998bw@10+grid+cutaway"));
     }
+
+    [Fact]
+    public void Task14_CloseUpSizes_AndBenchPresets()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--closeup-size", "900x640,1366x768", "--bench-preset", "sn1054, n6946bh1,default", "--bench", "30" })!;
+        Assert.True(r.OpenCloseUp);   // a Close-up size opens the Close-up
+        Assert.Equal(new[] { new SnapshotSize(900, 640), new SnapshotSize(1366, 768) }, r.CloseUpSizes);
+        Assert.Equal(new[] { "sn1054", "n6946bh1", "default" }, r.BenchPresets);
+        Assert.Equal(new[] { new SnapshotSize(1366, 768) }, r.Sizes);   // the main window's sizes are unchanged
+        var plain = SnapshotRequest.Parse(new[] { "--snapshot", "out" })!;
+        Assert.Empty(plain.CloseUpSizes);
+        Assert.Empty(plain.BenchPresets);
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench-preset", "sn9999" }));
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--closeup-size", "900" }));
+    }
 }

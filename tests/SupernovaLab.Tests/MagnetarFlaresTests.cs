@@ -405,7 +405,7 @@ public class MagnetarFlaresTests
         var panel = new GammaPanelViewModel();
         panel.Update(o, DefaultObserver, run, Array.Empty<SupernovaLab.Core.Presets.ObservedFact>(), true);
         panel.SelectedSubTab = GammaPanelViewModel.LinesTab;
-        Assert.Contains(GammaPanelViewModel.FlaresPointer, panel.PanelNote);
+        Assert.StartsWith(GammaPanelViewModel.FlaresPointer, panel.PanelNote);   // Task 14: first, so the note's trimming never hides it
         int none = Enumerable.Range(1, 200).First(r => MagnetarFlares.For(o, r).Count == 0);
         panel.Update(o, DefaultObserver, none, Array.Empty<SupernovaLab.Core.Presets.ObservedFact>(), true);
         Assert.DoesNotContain(GammaPanelViewModel.FlaresPointer, panel.PanelNote);

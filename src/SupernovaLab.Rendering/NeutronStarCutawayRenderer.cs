@@ -32,6 +32,12 @@ public sealed class NeutronStarCutawayRenderer : IDisposable
     public const double DripMinPx = 2, BoundaryMinPx = 1, AtmosphereMinPx = 1.5;
 
     /// <summary>
+    /// The lines' widths as fractions of the radius (nscut.frag's DRIP_WIDTH, BOUNDARY_WIDTH and ATMOSPHERE_WIDTH). The shader keeps its
+    /// own literals (GLSL cannot read these); ShaderSourceTests pins the two copies together (Task 14, Task 7's carried minor).
+    /// </summary>
+    public const double DripWidthRadii = 0.007, BoundaryWidthRadii = 0.004, AtmosphereWidthRadii = 0.007;
+
+    /// <summary>
     /// A line's half-width in radii: its width as a fraction of the radius, but never narrower than <paramref name="minPx"/> pixels
     /// (<paramref name="radiiPerPixel"/> is one pixel's size across the star, in radii), so it stays visible at any zoom.
     /// </summary>

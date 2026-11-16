@@ -19,7 +19,17 @@ public sealed record ReadoutRow(string Label, string? LabelToolTip, string Value
     public static ReadoutRow From(Readout r)
     {
         var q = new QuantityRow("", r.Label, "", r.Value, r.ValueText);
-        return new ReadoutRow(r.Label, r.ToolTip, r.ValueText, q.Confidence, q.BadgeToolTip, q.Published, q.PublishedToolTip);
+        return new ReadoutRow(r.Label, LabelTip(r), r.ValueText, q.Confidence, q.BadgeToolTip, q.Published, q.PublishedToolTip);
+    }
+
+    /// <summary>
+    /// Task 14 (glossary): a label that names a term (Horizon, Shadow, Gain radius, …) explains it first, then the readout's own note.
+    /// </summary>
+    public static string? LabelTip(Readout r)
+    {
+        string? term = Core.Text.Glossary.CloseUpReadoutTerms.TryGetValue(r.Label, out var key) ? Core.Text.Glossary.Get(key) : null;
+        if (term is null) return r.ToolTip;
+        return string.IsNullOrEmpty(r.ToolTip) ? term : term + Environment.NewLine + Environment.NewLine + r.ToolTip;
     }
 }
 

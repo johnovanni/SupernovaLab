@@ -37,4 +37,37 @@ public static class NeverObserved
                 return false;
         }
     }
+
+    /// <summary>
+    /// Why the signal has never been observed (compact.md §C10's reason column), for the "Expected" badge's tooltip (Task 14, Task 2's
+    /// carried minor). Null when <see cref="Applies"/> is false. The most specific reason wins: the outcome's fate, then the channel, then
+    /// the model.
+    /// </summary>
+    public static string? Reason(string modelId, string? channelId, Outcome o)
+    {
+        if (!Applies(modelId, channelId, o)) return null;
+        if (o.Fate == Fate.PairInstabilitySupernova)
+            return "No pair-instability supernova has been confirmed (SN 2007bi and SN 2018ibb are candidates).";
+        if (o.Fate == Fate.PulsationalPairInstability)
+            return "No pulsational pair-instability event has been confirmed.";
+        return modelId switch
+        {
+            "gw" => "No gravitational waves have been detected from any supernova; the 1987 bar-detector claim for SN 1987A is disputed.",
+            "neutrino" when channelId is "lum_nue" or "rate@dune" or "cumulative@dune" =>
+                "No electron neutrinos (νe) from a supernova have ever been identified, not even the neutronization burst; " +
+                "SN 1987A's 24 neutrinos were electron antineutrinos.",
+            "neutrino" when channelId is "lum_nux" => "Muon and tau neutrinos from a supernova have never been separately identified.",
+            "neutrino" => "The only supernova neutrinos ever detected (SN 1987A) came from a collapse that left a neutron star; no " +
+                          "collapse that made a black hole has been seen in neutrinos.",
+            "pulsar" => "No pulsar has been seen in SN 1987A; the evidence for its neutron star is indirect (JWST, Fransson et al. 2024).",
+            "lightcurve" => "No failed supernova has been confirmed; N6946-BH1's vanished star is a candidate.",
+            _ => "No instance of this signal has been observed from any supernova.",
+        };
+    }
+
+    /// <summary>The tooltip paragraph for an "Expected" badge: the rule and <see cref="Reason"/>, with its source.</summary>
+    public static string? ToolTip(string modelId, string? channelId, Outcome o)
+        => Reason(modelId, channelId, o) is { } reason
+            ? $"Expected, not detected: this signal has never been observed from any supernova. {reason} (compact.md §C10)"
+            : null;
 }

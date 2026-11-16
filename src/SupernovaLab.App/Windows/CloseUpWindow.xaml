@@ -32,9 +32,11 @@
     <!-- DataContext: the CloseUpViewModel (spec §2.1's layout): the view on the left, the readouts column (with Notes) on the
          right, the pulse-trace row at the bottom (collapsed until the pulse trace exists, Task 8). -->
     <!-- Task 13: the guided tour brightens this outline frame at a Close-up stop (as it brightens an instrument panel's outline). -->
-    <Border x:Name="TourOutline" BorderThickness="3" BorderBrush="Transparent">
+    <!-- Task 14's launch: the transparent default is the style's setter, not a local value, which the trigger could never override. -->
+    <Border x:Name="TourOutline" BorderThickness="3">
         <Border.Style>
             <Style TargetType="Border">
+                <Setter Property="BorderBrush" Value="Transparent"/>
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding Main.Tour.HighlightCloseUp}" Value="True">
                         <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
@@ -319,7 +321,9 @@
                             <ItemsControl ItemsSource="{Binding Notes}" Margin="0,4,0,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2"/>
+                                        <!-- Task 14: a note that names a term (ergosphere, ISCO, SASI, …) explains it on hover. -->
+                                        <TextBlock Text="{Binding}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2"
+                                                   ToolTip="{Binding Converter={StaticResource CloseUpTerm}}"/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>

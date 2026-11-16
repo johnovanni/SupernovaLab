@@ -675,7 +675,7 @@ public sealed class CloseUpScene
         };
 
         var notes = new List<string>();
-        if (noPulsesSeen) notes.Add(NoPulsesSeenNote);
+        if (noPulsesSeen && beams) notes.Add(NoPulsesSeenNote);   // Task 14 (Task 6's carried minor): only once the beams exist
         // Plan Task 12: a giant flare in progress is first; then the magnetar's standing notes (spec §5): its spin against the observed
         // magnetars' (#57), the field's decay, which is not modelled, and the flares of this run.
         var flare = ns.IsMagnetar ? MagnetarFlares.Active(_flares, t) : null;
@@ -689,9 +689,7 @@ public sealed class CloseUpScene
         }
         notes.AddRange(new[]
         {
-            Magnetosphere.SlowdownLabel(period, Observer.TimeDilation) + (period < Magnetosphere.MinDrawnPeriodS
-                ? ": the drawn spin never turns faster than once in 2 s, so no beam crosses Earth more than once a second"
-                : ""),
+            SpeedNote(period, Observer.TimeDilation),
             SurfaceColourNote,
             ToneMappedNote,
             SurfaceBendingNote,
@@ -738,6 +736,21 @@ public sealed class CloseUpScene
                 : contracting ? CutawayInfo.Build(o, ns.MassMsun, radius, false)
                 : _cutawayProto ??= CutawayInfo.Build(o, ns.MassMsun, radius, false),
         };
+    }
+
+    /// <summary>
+    /// The speed note (Task 14, Task 8's carried minor). The label (<see cref="Magnetosphere.SlowdownLabel"/>) compares the drawing with the
+    /// clock a telescope on Earth keeps, so under redshift a star that turns faster than once in 2 s can still be "Shown at real speed"
+    /// (its pulses arrive stretched by 1 + z). The note then says so instead of seeming to contradict the label.
+    /// </summary>
+    public static string SpeedNote(double periodS, double timeDilation)
+    {
+        string label = Magnetosphere.SlowdownLabel(periodS, timeDilation);
+        if (!(periodS < Magnetosphere.MinDrawnPeriodS)) return label;
+        const string Floor = "the drawn spin never turns faster than once in 2 s, so no beam crosses Earth more than once a second";
+        if (label != Magnetosphere.SlowdownLabel(Magnetosphere.MinDrawnPeriodS, 1)) return label + ": " + Floor;
+        return $"Shown at about real speed as received on Earth: the star turns once in {UnitFormat.Time(periodS)}, the redshift stretches its " +
+               $"pulses to once in {UnitFormat.Time(periodS * timeDilation)}, and {Floor}";
     }
 
     /// <summary>Ruling R-P3-17: the inconsistency a preset lists when its neutron star has never shown pulses (Cas A's CCO).</summary>

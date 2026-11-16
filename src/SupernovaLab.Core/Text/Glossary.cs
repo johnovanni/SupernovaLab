@@ -332,6 +332,38 @@ public static class Glossary
         "scene is bent exactly as general relativity says. Drag to turn, wheel to zoom, Home to frame it again.";
     public const string CloseUpGrid =
         "A measuring grid of latitude and longitude lines on a sphere round the black hole, bent like everything behind it. It also outlines the horizon, the photon orbits and (for a spinning hole) the ergosphere, where they are.";
+    // Task 14: the Close-up's black-hole and first-second terms (spec §3, §6; compact §C1, §C7, §C8), each shown as a tooltip on the
+    // readout or note that names it.
+    public const string EventHorizon =
+        "The black hole's surface of no return: anything inside it, light included, can never get out. For a hole that does not spin its " +
+        "radius is 2GM/c², about 3 km for each solar mass; spin shrinks it, to half that at the fastest spin.";
+    public const string BlackHoleShadow =
+        "The dark disc a black hole casts on the light behind it. It is bigger than the horizon (about 2.6 times its width for a hole " +
+        "that does not spin) because light that passes close enough is bent in and captured. The Event Horizon Telescope has seen the " +
+        "shadows of M87* and Sgr A*.";
+    public const string PhotonRing =
+        "The thin bright ring at the shadow's edge: light that has looped part of the way, or several times, round the black hole before " +
+        "escaping toward the camera. It lies on the photon sphere, where light can orbit, at 1.5 times the horizon's radius for a hole " +
+        "that does not spin.";
+    public const string Ergosphere =
+        "The region just outside a spinning black hole's horizon where space itself is dragged round so fast that nothing can stand still " +
+        "there, though it can still escape. It is widest at the equator (2GM/c²) and touches the horizon at the poles.";
+    public const string FrameDragging =
+        "A spinning mass drags space round with it (frame dragging, or the Lense–Thirring effect). Near a spinning black hole it twists " +
+        "the light that passes, so the shadow is flattened and shifted to one side. It has been measured round Earth (Gravity Probe B).";
+    public const string Isco =
+        "The innermost stable circular orbit (ISCO): the closest a particle can circle a black hole without spiralling in. It is the " +
+        "inner edge of an accretion disk: 6GM/c² for a hole that does not spin, closer for gas orbiting with a fast spin (Bardeen, " +
+        "Press & Teukolsky 1972).";
+    public const string GainRegion =
+        "The gain region, between the gain radius and the stalled shock: there the neutrinos from the hot core heat the infalling gas " +
+        "more than it cools. That heating is what revives the shock in the simulations (from simulations; nothing of it is observed).";
+    public const string Sasi =
+        "SASI, the standing accretion shock instability: in the simulations the stalled shock sloshes and spins from side to side tens " +
+        "of times a second, with boiling convection behind it. It helps the shock restart. Its shape here is schematic.";
+    public const string StalledShock =
+        "The shock wave made when the collapsing core rebounds. In the simulations it soon stalls about 100–200 km out, held back by " +
+        "infalling gas, until neutrino heating restarts it (or never does, and a black hole forms).";
     public const string FieldLines = "The neutron star's magnetic field lines, which leave and re-enter its surface.";
     public const string LightCylinder =
         "Where the neutron star's field would have to turn as fast as light to keep up with the spin: the edge of the region it drags round with it.";
@@ -366,7 +398,7 @@ public static class Glossary
     public const string CloseUpSound =
         "Plays the pulsar's pulses as clicks, one per pulse at the real rate, as radio astronomers hear pulsars. The click itself is schematic: a short click on a 1 kHz tone, made in code. Off until you switch it on. It sounds only while the timeline is playing and pulses would reach Earth; the trace says why when it is silent. Nothing here depends on hearing it.";
     public const string CloseUpPulseTrace =
-        "A radio telescope's trace: a mark each time a drawn beam sweeps across Earth, over the last 10 seconds. The picture is slowed so nothing flashes more than once a second; the sound, if on, plays at the real rate.";
+        "A radio telescope's trace: a mark each time a drawn beam sweeps across Earth, over the last 10 seconds. The picture is slowed to one turn in 2 s at the fastest, so the two beams give at most about one mark a second (far below the 3-a-second flash limit); the sound, if on, plays at the real rate.";
     public const string CloseUpFocusView = "Shows the view alone, without the column of numbers beside it.";
     public const string CloseUpLightBendingDetail =
         "How finely the bending of light round the black hole is worked out. Full is sharpest and slowest. Auto picks a coarser level while the view moves, if the graphics card needs it, and full resolution once it stops.";
@@ -456,6 +488,53 @@ public static class Glossary
 
     /// <summary>Every term, by key (the constant's name).</summary>
     public static IReadOnlyDictionary<string, string> All => Terms.Value;
+
+    /// <summary>
+    /// Task 14: the Close-up's readout labels that name a glossary term (the row's label tooltip starts with the term's text). Readout
+    /// labels are exact; the notes use <see cref="CloseUpNoteTerms"/>.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> CloseUpReadoutTerms = new Dictionary<string, string>
+    {
+        ["Horizon"] = nameof(EventHorizon),
+        ["Shadow"] = nameof(BlackHoleShadow),
+        ["Gain radius"] = nameof(GainRegion),
+        ["Shock radius"] = nameof(StalledShock),
+        ["Shock distortion"] = nameof(Sasi),
+        ["Proto-neutron star"] = nameof(ProtoNeutronStar),
+    };
+
+    /// <summary>
+    /// Task 14: the phrases that make a Close-up note (or a cutaway key line) carry a term's tooltip, most specific first; matched without
+    /// regard to case, except the abbreviations (ISCO, SASI).
+    /// </summary>
+    public static readonly IReadOnlyList<(string Phrase, string Key)> CloseUpNoteTerms = new[]
+    {
+        ("ergosphere", nameof(Ergosphere)),
+        ("photon ring", nameof(PhotonRing)),
+        ("frame dragging", nameof(FrameDragging)),
+        ("ISCO", nameof(Isco)),
+        ("SASI", nameof(Sasi)),
+        ("gain radius", nameof(GainRegion)),
+        ("giant flare", nameof(GiantFlare)),
+        ("drip", nameof(NeutronDrip)),
+        ("pasta", nameof(NuclearPasta)),
+        ("light cylinder", nameof(LightCylinder)),
+        ("proto-neutron star", nameof(ProtoNeutronStar)),
+        ("shadow", nameof(BlackHoleShadow)),
+        ("horizon", nameof(EventHorizon)),
+    };
+
+    /// <summary>The glossary text for the first <see cref="CloseUpNoteTerms"/> phrase in this text, or null.</summary>
+    public static string? CloseUpTermFor(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+        foreach (var (phrase, key) in CloseUpNoteTerms)
+        {
+            var comparison = phrase.All(char.IsUpper) ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+            if (text.Contains(phrase, comparison)) return Get(key);
+        }
+        return null;
+    }
 
     /// <summary>The text for this key. Throws <see cref="KeyNotFoundException"/> for an unknown key.</summary>
     public static string Get(string key)

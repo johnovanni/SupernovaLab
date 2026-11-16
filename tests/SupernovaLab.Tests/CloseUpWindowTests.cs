@@ -1058,4 +1058,81 @@ public class CloseUpWindowTests
         Assert.Equal(0, after.DiskLevel);
         c.Dispose();
     }
+
+    /// <summary>
+    /// Task 14's launch found the tour's outline never lit: the Border's local BorderBrush beat its style's trigger. Now the window's
+    /// outline frame takes the accent brush at a Close-up stop and is transparent elsewhere (constructed, not shown: no GL context).
+    /// </summary>
+    [Fact]
+    public void CloseUpWindow_TourOutline_LightsAtACloseUpStop()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                InstrumentsWindowTests.EnsureApplication();
+                var cu = OpenCloseUp("n6946bh1", out var main);
+                var w = new CloseUpWindow { DataContext = cu };
+                Pump();
+                var outline = (System.Windows.Controls.Border)w.FindName("TourOutline");
+                var accent = (System.Windows.Media.SolidColorBrush)Application.Current.FindResource("AccentBrush");
+                Assert.Equal(System.Windows.Media.Colors.Transparent, ((System.Windows.Media.SolidColorBrush)outline.BorderBrush).Color);
+                var director = main.Tour.Director;
+                director.Start();
+                int stop = director.Stops.ToList().FindIndex(s => s.CloseUpOnly);
+                director.GoTo(stop);
+                Pump();
+                Assert.True(main.Tour.HighlightCloseUp);
+                Assert.Equal(accent.Color, ((System.Windows.Media.SolidColorBrush)outline.BorderBrush).Color);
+                director.GoTo(0);   // the first stop (1 ms) is not a Close-up stop
+                Pump();
+                Assert.False(main.Tour.HighlightCloseUp);
+                Assert.Equal(System.Windows.Media.Colors.Transparent, ((System.Windows.Media.SolidColorBrush)outline.BorderBrush).Color);
+                director.Exit();
+                w.Close();
+                cu.Dispose();
+            }
+            catch (Exception e)
+            {
+                error = e;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        Assert.Null(error);
+    }
+
+    /// <summary>
+    /// Task 14's launch: at the default 900x640 window the drip label on the star's right ran under the cutaway key. Where it would, it
+    /// now goes on the star's left, ending before the star; at 1366x768 it stays on the right, clear of the key. The anchors are the
+    /// launch's: the star's centre at the view's centre, its edge about 50 DIP out (the label sits at 1.12 radii).
+    /// </summary>
+    [Theory]
+    [InlineData(584, 465, true)]     // the GL view of the default 900x640 window (Task 14's capture)
+    [InlineData(1050, 593, false)]   // the GL view of a 1366x768 window
+    public void Controller_DripLabel_KeepsClearOfTheCutawayKey(double width, double height, bool onTheLeft)
+    {
+        const string text = "Neutron drip: 4.3 × 10¹¹ g/cm³";
+        double cx = width / 2, cy = height / 2, edge = 50;
+        var drip = CloseUpSceneController.DripLabelPlacement(text, new Point(cx + edge, cy), new Point(cx - edge, cy), width)!;
+        double right = drip.XDip + 6 + 8 + CloseUpSceneController.LabelCharDip * drip.Text.Length;
+        if (onTheLeft)
+        {
+            Assert.Equal(text + " ►", drip.Text);
+            Assert.True(right < cx - edge, $"the label ends at {right:0} DIP, the star's edge is at {cx - edge:0}");
+            Assert.True(drip.XDip >= 0);
+        }
+        else
+        {
+            Assert.Equal("◄ " + text, drip.Text);
+            Assert.True(drip.XDip > cx);
+            Assert.False(CloseUpSceneController.DripLabelUnderKey(new Point(drip.XDip, drip.YDip), drip.Text, width));
+        }
+        // Either way the label's box keeps out of the key's top-right box.
+        Assert.True(right <= width - CloseUpSceneController.CutawayKeyWidthDip || drip.YDip - 10 >= CloseUpSceneController.CutawayKeyBottomDip);
+        // With no room on the left either, nothing is drawn rather than a label under the key.
+        Assert.Equal(onTheLeft, CloseUpSceneController.DripLabelPlacement(text, new Point(cx + edge, cy), null, width) is null);
+    }
 }

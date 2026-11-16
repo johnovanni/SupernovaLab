@@ -132,6 +132,13 @@ public abstract partial class InstrumentPanelViewModel : ObservableObject
         Resample(main: false);
     }
 
+    /// <summary>Task 14: the --snapshot diagnostic's sub-tab with a chosen instrument (the gamma panel's burst tab with Fermi GBM).</summary>
+    internal void ShowSubTabForSnapshot(string subTab, Detector instrument)
+    {
+        Preselect(subTab, instrument);
+        Resample(main: false);
+    }
+
     /// <summary>Sets the sub-tab and instrument without counting as the user's choice (no resample: the caller resamples).</summary>
     protected void Preselect(string subTab, Detector instrument)
     {

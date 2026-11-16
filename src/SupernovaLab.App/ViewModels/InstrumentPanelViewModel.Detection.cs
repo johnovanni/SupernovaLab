@@ -47,12 +47,27 @@ public abstract partial class InstrumentPanelViewModel
 
     /// <summary>The panel badge's tooltip: the instrument, the verdict and its reason.</summary>
     public string DetectionToolTip => $"{SelectedInstrument.Name}: {DetectionText}.{Environment.NewLine}{Environment.NewLine}" +
-                                      (ErrorText ?? CurrentDetection.Reason);
+                                      (ErrorText ?? CurrentDetection.Reason) + ExpectedParagraph(_badge, _badgeModel);
 
     /// <summary>The tile's tooltip: the panel, the instrument, the verdict and its reason.</summary>
     public string StripToolTip =>
         $"{Title}: {(ErrorText is not null ? ModelErrorText : _stripBadge.Full)} ({SelectedInstrument.Name}).{Environment.NewLine}" +
-        $"{Environment.NewLine}{ErrorText ?? StripDetection.Reason}{Environment.NewLine}{Environment.NewLine}Click to open the panel.";
+        $"{Environment.NewLine}{ErrorText ?? StripDetection.Reason}{ExpectedParagraph(_stripBadge, _stripBadgeModel)}" +
+        $"{Environment.NewLine}{Environment.NewLine}Click to open the panel.";
+
+    /// <summary>
+    /// Task 14 (Task 2's carried minor; compact §C10 App: "Sources for the tooltip: the table's reason column"): an "Expected" badge's
+    /// tooltip ends with why the signal has never been observed. Empty for any other badge, or with a model error.
+    /// </summary>
+    private string ExpectedParagraph((string Full, string Short) badge, ISignalModel? model)
+    {
+        if (ErrorText is not null || model is null || !badge.Full.Contains("xpected", StringComparison.Ordinal)) return "";
+        string? channel = model.Id == "neutrino" ? ChannelId.Compose("rate", SelectedInstrument.Id) : null;
+        return NeverObserved.ToolTip(model.Id, channel, Outcome) is { } tip ? Environment.NewLine + Environment.NewLine + tip : "";
+    }
+
+    /// <summary>The model behind the panel's badge (null when the instrument does not observe the sub-tab's signal).</summary>
+    private ISignalModel? _badgeModel;
 
     private void SetBadges((string Full, string Short) panel, (string Full, string Short) strip)
     {
@@ -114,6 +129,11 @@ public abstract partial class InstrumentPanelViewModel
         {
             CurrentDetection = own.Verdict;
             panelBadge = Badge(own.Model, own.Verdict);
+        }
+        if (!ReferenceEquals(_badgeModel, own.Model))
+        {
+            _badgeModel = own.Model;
+            OnPropertyChanged(nameof(DetectionToolTip));
         }
         SetBadges(panelBadge, _stripBadgeModel is { } m ? Badge(m, StripDetection) : ("Not modeled here", "Not modeled"));
     }

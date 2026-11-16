@@ -63,7 +63,8 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false,
     IReadOnlyList<int>? TourStopList = null, bool BenchTour = false, LayoutSettings? Layout = null, bool OpenCloseUp = false,
     double? BenchSpin = null, bool BenchBaseline = false, IReadOnlyList<LensingDetail>? BenchDetails = null,
-    IReadOnlyList<CloseUpBenchCamera>? BenchCameras = null, double? LabMass = null)
+    IReadOnlyList<CloseUpBenchCamera>? BenchCameras = null, double? LabMass = null,
+    IReadOnlyList<SnapshotSize>? CloseUpSizeList = null, IReadOnlyList<string>? BenchPresetList = null)
 {
     /// <summary>The orbiting camera's rate in a bench run (degrees of yaw per second): one turn in 12 s.</summary>
     public const double BenchOrbitDegPerS = 30;
@@ -133,6 +134,12 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     /// <summary>The most steps per preset that <c>--sweep</c> accepts.</summary>
     public const int MaxSweepSteps = 2000;
 
+    /// <summary>Task 14: the Close-up window's sizes for its captures (<c>--closeup-size</c>); empty: its default size only.</summary>
+    public IReadOnlyList<SnapshotSize> CloseUpSizes => CloseUpSizeList ?? Array.Empty<SnapshotSize>();
+
+    /// <summary>Task 14: the presets the bench runs for (<c>--bench-preset</c>), each in turn; empty: the lab as the captures left it.</summary>
+    public IReadOnlyList<string> BenchPresets => BenchPresetList ?? Array.Empty<string>();
+
     /// <summary>The first preset, or null for the lab's defaults.</summary>
     public string? PresetId => PresetIds.Count > 0 ? PresetIds[0] : null;
 
@@ -160,6 +167,8 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         List<LensingDetail>? benchDetails = null;
         List<CloseUpBenchCamera>? benchCameras = null;
         double? benchSpin = null, labMass = null;
+        var closeUpSizes = new List<SnapshotSize>();
+        var benchPresets = new List<string>();
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -190,6 +199,18 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                     break;
                 case "--size":
                     sizes.AddRange(value.Split(',').Select(ParseSize));
+                    break;
+                case "--closeup-size":   // Task 14: the Close-up window's sizes for its captures (its default is 900x640)
+                    closeUpSizes.AddRange(value.Split(',').Select(ParseSize));
+                    openCloseUp = true;
+                    break;
+                case "--bench-preset":   // Task 14: the presets the bench plays the timeline for, in turn ("default" is the lab as launched)
+                    foreach (string id in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        if (!string.Equals(id, DefaultEntry, StringComparison.OrdinalIgnoreCase) && PresetCatalog.LoadEmbedded().All(p => p.Id != id))
+                            throw new ArgumentException($"--bench-preset: no preset '{id}'.");
+                        benchPresets.Add(id);
+                    }
                     break;
                 case "--window":
                     windows.AddRange(value.Split(',').Select(ParseWindow));
@@ -257,7 +278,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
         if (windows.Contains(SnapshotWindow.CloseUp)) openCloseUp = true;
         return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour, layout,
-            openCloseUp, benchSpin, benchBaseline, benchDetails, benchCameras, labMass);
+            openCloseUp, benchSpin, benchBaseline, benchDetails, benchCameras, labMass, closeUpSizes, benchPresets);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -568,7 +589,29 @@ public static class SnapshotRenderer
             }
             if (kind == SnapshotWindow.CloseUp)
             {
-                await CaptureCloseUp(request, windows, suffix, log);
+                if (request.CloseUpSizes.Count == 0)
+                {
+                    await CaptureCloseUp(request, windows, suffix, log);
+                    continue;
+                }
+                // Task 14: the Close-up at each requested size ("closeup-sn1054-t1000000-900x640.png"), then back to its default size.
+                if (windows.CloseUpWindow is null)
+                {
+                    windows.ShowCloseUp();
+                    if (windows.CloseUpWindow is { } opened) PlaceOffScreen(opened);
+                }
+                if (windows.CloseUpWindow is not { } cw) { log.Add("closeup: no window opened"); continue; }
+                double w0 = cw.Width, h0 = cw.Height;
+                foreach (var size in request.CloseUpSizes)
+                {
+                    cw.Width = size.Width;
+                    cw.Height = size.Height;
+                    await NextFrame(cw);
+                    await CaptureCloseUp(request, windows, $"{suffix}-{size}", log);
+                }
+                cw.Width = w0;
+                cw.Height = h0;
+                await NextFrame(cw);
                 continue;
             }
 
@@ -582,6 +625,7 @@ public static class SnapshotRenderer
                 {
                     await RedrawPanels(instruments);
                     log.Add(Save(instruments, Path.Combine(request.OutDirectory, $"instruments{suffix}.png")));
+                    await CaptureBurstTab(instruments, request, suffix, log);
                 }
                 continue;
             }
@@ -670,6 +714,24 @@ public static class SnapshotRenderer
         await NextFrame(window);
     }
 
+    /// <summary>
+    /// Task 14 (Task 12's check): a magnetar's giant flares are drawn on the gamma panel's burst tab (its first, which the sub-tab loop
+    /// skips), judged by Fermi GBM: one more capture with that tab shown, then the panel's own choice back. Nothing for other outcomes.
+    /// </summary>
+    private static async Task CaptureBurstTab(InstrumentsWindow window, SnapshotRequest request, string suffix, List<string> log)
+    {
+        if (window.DataContext is not MainViewModel vm || vm.Panels.OfType<GammaPanelViewModel>().FirstOrDefault() is not { HasGiantFlares: true } gamma)
+            return;
+        string tab = gamma.SelectedSubTab;
+        var instrument = gamma.SelectedInstrument;
+        gamma.ShowSubTabForSnapshot(GammaPanelViewModel.GrbTab, Core.Signals.Detectors.Get("gbm"));
+        await RedrawPanels(window);
+        log.Add($"instruments-burst{suffix}: gamma panel on {gamma.SelectedSubTab} ({gamma.SelectedInstrument.Name}): {gamma.DetectionText}");
+        log.Add(Save(window, Path.Combine(request.OutDirectory, $"instruments-burst{suffix}.png")));
+        gamma.ShowSubTabForSnapshot(tab, instrument);
+        await RedrawPanels(window);
+    }
+
     /// <summary>The grid with every panel on its k-th sub-tab (k = 1, 2, 3; a panel with fewer stays on its last).</summary>
     private static async Task CaptureTabs(InstrumentsWindow window, SnapshotRequest request, string suffix, List<string> log)
     {
@@ -683,6 +745,7 @@ public static class SnapshotRenderer
             log.Add(Save(window, Path.Combine(request.OutDirectory, $"instruments-tab{k}{suffix}.png")));
         }
         for (int i = 0; i < vm.Panels.Count; i++) vm.Panels[i].ShowSubTabForSnapshot(original[i]);
+
 
         // One panel enlarged within the window (spec §5.0: double-click maximizes; Esc restores).
         window.Maximize(vm.Panels.First(p => p.Messenger == Core.Signals.Messenger.VisibleLight));
@@ -724,17 +787,28 @@ public static class SnapshotRenderer
         Application.Current.DispatcherUnhandledException += OnUnhandled;
         var scene = (main as MainWindow)?.Scene;
         double logMin = Math.Log(TimeAxis.MinS), logMax = Math.Log(TimeAxis.MaxS);
+        // Task 14 (Project 3 criterion 1): with the Close-up open, its own model errors and a failed Close-up view count too, and the lab's
+        // own outcome types (no preset) are swept after the presets, so every outcome type plays its whole timeline in both windows.
+        var closeUpVm = windows.CloseUpWindow?.DataContext as CloseUpViewModel;
+        var closeUpScene = windows.CloseUpWindow?.Scene;
+        if (closeUpVm is not null) lines[1] += "; the Close-up window open (its model errors and a failed Close-up view count)";
+        var cases = PresetCatalog.LoadEmbedded().Select(p => (Id: p.Id, Apply: (Action)(() => vm.Lab.SelectedPreset = p))).ToList();
+        if (closeUpVm is not null)
+            foreach (var (name, set) in LabSweepCases)
+                cases.Add(($"lab:{name}", () => { vm.Lab.SelectedPreset = null; ApplyLabDefaults(vm.Lab); set(vm.Lab); }));
         try
         {
-            foreach (var preset in PresetCatalog.LoadEmbedded())
+            foreach (var (caseId, apply) in cases)
             {
                 int before = problems;
                 var seen = new SortedSet<string>();
                 // Errors the 3D scene and the timeline markers catch themselves (Project 1's parked minor): counted, not just hidden.
                 int sceneErrors0 = scene?.ModelErrorCount ?? 0, markerErrors0 = EventMarkers.Failures;
+                int closeUpErrors0 = closeUpVm?.ModelErrorCount ?? 0;
+                var eras = new SortedSet<string>();
                 try
                 {
-                    vm.Lab.SelectedPreset = preset;
+                    apply();
                     for (int k = 0; k < steps; k++)
                     {
                         double t = k == steps - 1 ? TimeAxis.MaxS : Math.Exp(logMin + (logMax - logMin) * k / (steps - 1));
@@ -744,38 +818,59 @@ public static class SnapshotRenderer
                             if (p.ErrorText is { } err && seen.Add($"{p.Title}: {err}"))
                             {
                                 problems++;
-                                lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: panel error: {p.Title}: {err}");
+                                lines.Add($"  {caseId} at {t.ToString("0.###E+0", inv)} s: panel error: {p.Title}: {err}");
                             }
+                        if (closeUpVm is not null)
+                        {
+                            eras.Add(closeUpVm.State.Era.ToString());
+                            if (closeUpVm.ModelErrorCount > closeUpErrors0 && seen.Add("close-up model error"))
+                            {
+                                problems++;
+                                lines.Add($"  {caseId} at {t.ToString("0.###E+0", inv)} s: Close-up model error caught ({closeUpVm.ModelErrorCount - closeUpErrors0} so far): {closeUpVm.Notes.FirstOrDefault()}");
+                            }
+                            if (!closeUpVm.HasRemnant && string.IsNullOrEmpty(closeUpVm.NoRemnantMessage) && seen.Add("close-up silent"))
+                            {
+                                problems++;
+                                lines.Add($"  {caseId} at {t.ToString("0.###E+0", inv)} s: Close-up shows no remnant and does not say why");
+                            }
+                            if (closeUpScene is { IsFailed: true } && seen.Add("close-up failed"))
+                            {
+                                problems++;
+                                lines.Add($"  {caseId} at {t.ToString("0.###E+0", inv)} s: Close-up view failed: {closeUpScene.FailureMessage}");
+                            }
+                        }
                         if (scene is not null && scene.ModelErrorCount > sceneErrors0 && seen.Add("scene model error"))
                         {
                             problems++;
-                            lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: 3D scene model error caught ({scene.ModelErrorCount - sceneErrors0} so far)");
+                            lines.Add($"  {caseId} at {t.ToString("0.###E+0", inv)} s: 3D scene model error caught ({scene.ModelErrorCount - sceneErrors0} so far)");
                         }
                         if (EventMarkers.Failures > markerErrors0 && seen.Add("marker error"))
                         {
                             problems++;
-                            lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: timeline-marker model error caught ({EventMarkers.Failures - markerErrors0} so far)");
+                            lines.Add($"  {caseId} at {t.ToString("0.###E+0", inv)} s: timeline-marker model error caught ({EventMarkers.Failures - markerErrors0} so far)");
                         }
                         if (scene is { IsFailed: true } && seen.Add("scene"))
                         {
                             problems++;
-                            lines.Add($"  {preset.Id} at {t.ToString("0.###E+0", inv)} s: 3D view failed: {scene.FailureMessage}");
+                            lines.Add($"  {caseId} at {t.ToString("0.###E+0", inv)} s: 3D view failed: {scene.FailureMessage}");
                         }
                     }
                 }
                 catch (Exception e)
                 {
                     problems++;
-                    lines.Add($"  {preset.Id}: exception: {e}");
+                    lines.Add($"  {caseId}: exception: {e}");
                 }
                 foreach (string u in unhandled)
                 {
                     problems++;
-                    lines.Add($"  {preset.Id}: unhandled dispatcher exception: {u}");
+                    lines.Add($"  {caseId}: unhandled dispatcher exception: {u}");
                 }
                 unhandled.Clear();
-                lines.Add($"{preset.Id}: {(problems == before ? "ok" : "PROBLEMS")}; outcome {vm.CurrentOutcome.Type}, fate {vm.CurrentOutcome.Fate}; " +
-                          $"ended at {UnitFormat.Time(vm.Timeline.ObserverTimeS)}");
+                lines.Add($"{caseId}: {(problems == before ? "ok" : "PROBLEMS")}; outcome {vm.CurrentOutcome.Type}, fate {vm.CurrentOutcome.Fate}, " +
+                          $"remnant {vm.CurrentOutcome.Remnant.Kind}; ended at {UnitFormat.Time(vm.Timeline.ObserverTimeS)}" +
+                          (closeUpVm is null ? "" : $"; Close-up eras {string.Join(", ", eras)}" +
+                              (closeUpVm.NoRemnantMessage is { } why ? $"; says: {why}" : $"; last title {closeUpVm.Title}")));
             }
         }
         finally
@@ -811,7 +906,8 @@ public static class SnapshotRenderer
         if (request.BenchTour) new TourClock(vm.Tour.Director).Start();   // the app's own clock is not started in a snapshot run
         var all = new List<string>();
         var scene = (main as MainWindow)?.Scene;
-        var entries = request.BenchTour && request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
+        var entries = request.BenchPresets.Count > 0 ? request.BenchPresets.Cast<string?>().ToList()   // Task 14: --bench-preset
+            : request.BenchTour && request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
         foreach (string? entry in entries)
         {
             if (entry is not null)
@@ -869,6 +965,30 @@ public static class SnapshotRenderer
             }
         }
     }
+
+    /// <summary>
+    /// Task 14 (Project 3 criterion 1): the lab's own outcomes the sweep plays after the presets when the Close-up is open, each set from
+    /// <see cref="LabInputs.Default"/>: a supernova with a neutron star, a white dwarf, a star not yet dead, a Type Ia, a failed supernova,
+    /// a fallback black hole, a collapsar, a magnetar, an electron-capture star, and the pair-instability outcomes. The log names the
+    /// outcome each one gives.
+    /// </summary>
+    private static readonly (string Name, Action<LabViewModel> Set)[] LabSweepCases =
+    {
+        ("default", _ => { }),
+        ("5 Msun (white dwarf)", l => l.InitialMass = 5),
+        ("0.5 Msun (not dead yet)", l => l.InitialMass = 0.5),
+        ("Type Ia", l => l.Kind = StarKind.WhiteDwarf),
+        ("9 Msun (electron capture)", l => l.InitialMass = 9),
+        ("25 Msun", l => l.InitialMass = 25),
+        ("27.4 Msun (fallback)", l => l.InitialMass = 27.4),
+        ("40 Msun", l => l.InitialMass = 40),
+        ("collapsar", l => { l.InitialMass = 40; l.Metallicity = 0.1; l.Stripping = Stripping.Full; l.Rotation = SupernovaLab.Core.Progenitors.Rotation.Extreme; }),
+        ("magnetar", l => { l.Field = CoreField.Strong; l.Rotation = SupernovaLab.Core.Progenitors.Rotation.Fast; }),
+        ("magnetar slow", l => { l.Field = CoreField.Strong; l.Rotation = SupernovaLab.Core.Progenitors.Rotation.Slow; }),
+        ("magnetar stripped extreme", l => { l.InitialMass = 30; l.Stripping = Stripping.HydrogenAndHelium; l.Field = CoreField.Strong; l.Rotation = SupernovaLab.Core.Progenitors.Rotation.Extreme; }),
+        ("100 Msun Z 0.1 (pulsational pair instability)", l => { l.InitialMass = 100; l.Metallicity = 0.1; }),
+        ("200 Msun Z 0.1 (pair instability)", l => { l.InitialMass = 200; l.Metallicity = 0.1; }),
+    };
 
     /// <summary>Sets every input of the lab back to <see cref="LabInputs.Default"/> (the bench's "default" entry after a preset was loaded).</summary>
     private static void ApplyLabDefaults(LabViewModel lab)
@@ -1074,8 +1194,10 @@ public static class SnapshotRenderer
             PlaceOffScreen(opened);
             w = opened;
         }
-        // Plan Task 7: --cutaway also turns on the Close-up's cutaway (a neutron star's layers, spec §4.2).
-        if (request.Cutaway && w.DataContext is CloseUpViewModel cutVm && !cutVm.IsCutaway) cutVm.IsCutaway = true;
+        // Plan Task 7: --cutaway also turns on the Close-up's cutaway (a neutron star's layers, spec §4.2); Task 14: so does an entry's own
+        // "+cutaway" (its suffix says so), and an entry without it turns the cutaway off again.
+        bool wantCut = request.Cutaway || suffix.Contains("-cutaway", StringComparison.Ordinal);
+        if (w.DataContext is CloseUpViewModel cutVm && cutVm.IsCutaway != wantCut) cutVm.IsCutaway = wantCut;
         await NextFrame(w);
         await NextFrame(w);
         // Plan Task 9: a new time can step the director's rings (the first second's shock grows from 15 to 3,000 km); wait out the ease.
@@ -1083,6 +1205,9 @@ public static class SnapshotRenderer
         if (w.DataContext is CloseUpViewModel vm)
             log.Add($"closeup{suffix}: {vm.WindowTitle}; {(vm.NoRemnantMessage ?? string.Join(" | ", vm.Readouts.Select(r => $"{r.Label} {r.ValueText}")))}" +
                     (w.Scene is { } c ? $"; lensing {LensingLevels.Text(c.Level)}, environment refreshes {c.EnvironmentCaptures}" : ""));
+        if (w.DataContext is CloseUpViewModel notesVm)   // Task 14: the notes column scrolls, so the log carries every note and the speed label
+            log.Add($"closeup{suffix} notes: speed label {notesVm.SpeedLabel ?? "none"}; tour outline {notesVm.Main.Tour.HighlightCloseUp}; " +
+                    $"cutaway {notesVm.IsCutaway}; pulse trace {notesVm.ShowPulseTrace} ({notesVm.TraceText}); " + string.Join(" || ", notesVm.Notes));
         if (w.Scene is { } scene && w.DataContext is CloseUpViewModel cvm && cvm.State.IsLensed)
         {
             // Task 4b: the ray cache's two paths, each read back. A moving camera at 1/4 (one whole map traced), then the same view
