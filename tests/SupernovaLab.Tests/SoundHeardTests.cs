@@ -94,10 +94,48 @@ public class SoundHeardTests
         audio.PlayTestTone();
         Assert.Equal(1, audio.DevicesOpened);
         Assert.Equal(1, audio.TestTonesPlayed);
-        Assert.True(player.Pull(Rate / 10).Max(Math.Abs) > 0.3f);   // the device gets sound
+        Assert.True(player.Pull((int)(NAudioPulseAudio.LeadInS * Rate) + Rate / 10).Max(Math.Abs) > 0.3f);   // the device gets sound
         Assert.Contains("test tones 1", audio.DiagnosticText);
         audio.Dispose();
     }
+
+    // ---- Task 16b (the owner: a Bluetooth speaker takes a fraction of a second to connect, and swallows what comes first) ----
+
+    [Fact]
+    public void HoldSilence_DelaysEverything_WithoutLosingIt()
+    {
+        var t = new ClickTrain(Rate) { Volume = 1 };
+        t.SetPeriod(0.5);
+        t.StartTestTone();
+        t.HoldSilence(0.25);
+        int hold = (int)Math.Round(0.25 * Rate);
+        var x = Render(t, 0.25 + ClickTrain.TestToneS + 0.05);
+        Assert.All(x.Take(hold), v => Assert.Equal(0, v));                       // a quarter second of silence first...
+        Assert.True(x.Skip(hold).Take(Rate / 20).Max(Math.Abs) > 0.3f);          // ...then the tone and the first click, whole
+        Assert.Equal(1, t.ClicksWritten);
+    }
+
+    [Fact]
+    public void OpeningTheDevice_StartsWithAQuarterSecondOfSilence()
+    {
+        Assert.Equal(0.25, NAudioPulseAudio.LeadInS);
+        var player = new PullingPlayer();
+        var audio = new NAudioPulseAudio(() => player);
+        audio.Enabled = true;
+        audio.PlayTestTone();
+        int hold = (int)Math.Round(NAudioPulseAudio.LeadInS * Rate);
+        var first = player.Pull(hold);
+        Assert.All(first, v => Assert.Equal(0, v));
+        Assert.True(player.Pull(Rate / 10).Max(Math.Abs) > 0.3f);
+        // Once open, the device stays open (playing silence) while the sound is on, so a later tone or click is not held back again.
+        audio.SetPulsePeriod(0.5);
+        Assert.Equal(1, audio.DevicesOpened);
+        audio.Dispose();
+    }
+
+    [Fact]
+    public void TheSoundPanel_SaysTheClicksPlayOnlyWhenDetectedFromEarth()
+        => Assert.Contains("detected from Earth", SupernovaLab.Core.Text.Glossary.CloseUpSoundRule);
 
     private static (CloseUpViewModel Cu, FakePulseAudio Audio, MainViewModel Main) CloseUp(string preset)
     {

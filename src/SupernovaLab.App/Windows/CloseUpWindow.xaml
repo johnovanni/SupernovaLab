@@ -84,8 +84,13 @@
                 <Slider DockPanel.Dock="Right" Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Width="140" Margin="12,0,0,0"
                         VerticalAlignment="Center" SmallChange="0.05" LargeChange="0.1" ToolTip="{x:Static text:Glossary.CloseUpVolume}"
                         AutomationProperties.Name="Sound volume (top)"/>
-                <TextBlock Text="{Binding SpeakerState}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"
-                           ToolTip="{Binding SpeakerStateToolTip}" AutomationProperties.Name="Sound state"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding SpeakerState}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"
+                               ToolTip="{Binding SpeakerStateToolTip}" AutomationProperties.Name="Sound state"/>
+                    <!-- Task 16b (the owner): the rule, always in view while the sound is on. -->
+                    <TextBlock Text="{x:Static text:Glossary.CloseUpSoundRule}" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
+                               AutomationProperties.Name="When the sound plays"/>
+                </StackPanel>
             </DockPanel>
         </Border>
 

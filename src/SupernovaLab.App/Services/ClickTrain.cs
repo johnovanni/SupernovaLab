@@ -42,6 +42,7 @@ public sealed class ClickTrain
     private double _pos = double.MaxValue;   // samples since the current click started (huge: none in flight)
     private double _tonePhase;
     private long _testPos = long.MaxValue;   // samples since the test tone started (huge: none playing)
+    private long _holdSamples;               // Task 16b: silent samples still to write before anything sounds
 
     public ClickTrain(int sampleRate = 44100) => _rate = sampleRate > 0 ? sampleRate : throw new ArgumentOutOfRangeException(nameof(sampleRate));
 
@@ -85,6 +86,15 @@ public sealed class ClickTrain
         }
     }
 
+    /// <summary>
+    /// Task 16b (the owner: a Bluetooth speaker takes a fraction of a second to connect, and swallows the first sound): the next
+    /// <paramref name="seconds"/> are silence, and every click and tone waits for it to end, delayed rather than cut.
+    /// </summary>
+    public void HoldSilence(double seconds)
+    {
+        lock (_lock) _holdSamples = seconds > 0 && double.IsFinite(seconds) ? (long)Math.Round(seconds * _rate) : 0;
+    }
+
     /// <summary>Stops the test tone at once.</summary>
     public void StopTestTone()
     {
@@ -101,6 +111,12 @@ public sealed class ClickTrain
             double clickSamples = Math.Min(ClickS, period > 0 ? period : ClickS) * _rate;
             for (int i = 0; i < count; i++)
             {
+                if (_holdSamples > 0)
+                {
+                    _holdSamples--;
+                    buffer[offset + i] = 0;
+                    continue;
+                }
                 float v = 0;
                 if (tone)
                 {

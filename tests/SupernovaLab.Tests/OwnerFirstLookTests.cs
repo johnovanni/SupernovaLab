@@ -400,9 +400,9 @@ public class OwnerFirstLookTests
         audio.Enabled = true;
         audio.SetPulsePeriod(0.0334);
         Assert.Equal(1, audio.DevicesOpened);
-        player.Pull(44100);   // one second, as the device would pull it
+        player.Pull(44100 + 11025);   // the quarter second's lead-in (Task 16b), then one second, as the device would pull it
         Assert.InRange(audio.ClicksQueued, 29, 31);
-        Assert.Equal(44100, audio.SamplesQueued);
+        Assert.Equal(44100 + 11025, audio.SamplesQueued);
         Assert.Contains("audio device opened", audio.DiagnosticText);
         Assert.Contains("clicks queued", audio.DiagnosticText);
         audio.Dispose();

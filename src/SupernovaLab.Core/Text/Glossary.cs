@@ -397,6 +397,7 @@ public static class Glossary
     public const string CloseUpLabels = "Shows or hides the labels on the view, such as the measuring rings' distances.";
     public const string CloseUpSound =
         "Plays the pulsar's pulses as clicks, one per pulse at the real rate, as radio astronomers hear pulsars. The click itself is schematic: a 6-millisecond click, three cycles of a low 500 Hz tone, made in code. Off until you switch it on. It sounds whenever pulses would reach Earth, with the timeline paused or playing; while it is on, the top of the window says what it is playing, or why it is silent. Switching it on, or moving the volume, plays a short low test tone, so you can tell the speaker works even when no pulses arrive. Nothing here depends on hearing it.";
+    public const string CloseUpSoundRule = "The clicks play only while the pulsar's pulses are detected from Earth.";
     public const string CloseUpVolume = "Sound volume. Moving it plays a short test tone at the new volume.";
     public const string CloseUpPulseTrace =
         "A radio telescope's trace: a mark each time a drawn beam sweeps across Earth, over the last 10 seconds. The picture is slowed to one turn in 2 s at the fastest, so the two beams give at most about one mark a second (far below the 3-a-second flash limit); the sound, if on, plays at the real rate.";

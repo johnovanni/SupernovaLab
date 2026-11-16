@@ -14,6 +14,12 @@ public sealed class NAudioPulseAudio : IPulseAudio
 {
     private const int LatencyMs = 100;
 
+    /// <summary>
+    /// Task 16b: the silence written first each time the device opens, s. A Bluetooth speaker takes a fraction of a second to connect and
+    /// drops what comes first (the owner's experience with other apps); the device then stays open, playing silence, while the sound is on.
+    /// </summary>
+    public const double LeadInS = 0.25;
+
     private readonly ClickTrain _train = new(44100);
     private readonly Func<IWavePlayer> _deviceFactory;
     private IWavePlayer? _out;
@@ -116,6 +122,7 @@ public sealed class NAudioPulseAudio : IPulseAudio
             _train.Volume = _volume;
             device = _deviceFactory();
             device.PlaybackStopped += OnPlaybackStopped;
+            _train.HoldSilence(LeadInS);
             device.Init(new ClickTrainProvider(_train).ToWaveProvider());
             device.Play();
             _out = device;
