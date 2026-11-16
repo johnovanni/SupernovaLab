@@ -1,4 +1,5 @@
 using SupernovaLab.App.Services;
+using SupernovaLab.Rendering;
 
 namespace SupernovaLab.Tests;
 
@@ -273,17 +274,54 @@ public class SnapshotRequestTests
     public void BadBenchSpin_Throws(string spin)
         => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench-spin", spin }));
 
-    /// <summary>Review fix 1: <c>--bench-baseline</c> runs the Close-up hidden, with its lensing off, and at 1/4 (one launch).</summary>
+    /// <summary>Review fix 1 and Task 4b: <c>--bench-baseline</c> runs the main view alone (the Close-up and the Instruments hidden), the Close-up
+    /// hidden, with its lensing off, and at 1/4 (one launch).</summary>
     [Fact]
     public void BenchBaseline_IsAFlag_ThatOpensTheCloseUp_AndRunsTheBaseline()
     {
         var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20", "--bench-baseline" })!;
         Assert.True(r.BenchBaseline);
         Assert.True(r.OpenCloseUp);
-        Assert.Equal(new[] { CloseUpBenchRun.Hidden, CloseUpBenchRun.LensingOff, CloseUpBenchRun.Quarter }, r.CloseUpBenchRuns);
+        Assert.Equal(new[] { CloseUpBenchRun.MainOnly, CloseUpBenchRun.Hidden, CloseUpBenchRun.LensingOff, CloseUpBenchRun.Quarter },
+            r.CloseUpBenchRuns);
         var plain = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20", "--closeup" })!;
         Assert.False(plain.BenchBaseline);
         Assert.Equal(new[] { CloseUpBenchRun.Governed, CloseUpBenchRun.Full, CloseUpBenchRun.Half, CloseUpBenchRun.Quarter },
             plain.CloseUpBenchRuns);
     }
+
+    /// <summary>
+    /// Task 4b: <c>--bench-detail</c> and <c>--bench-camera</c> run the Close-up at each light-bending detail with each camera (still
+    /// and drawn on demand as the app does, still but drawn every frame as Task 6's beams will make it, or orbiting), between two
+    /// hidden-Close-up markers (a drift check over the launch).
+    /// </summary>
+    [Fact]
+    public void BenchDetailAndCamera_GiveTheMatrix_BetweenTwoMarkers()
+    {
+        var r = SnapshotRequest.Parse(new[]
+        {
+            "--snapshot", "out", "--bench", "20", "--bench-detail", "auto,full", "--bench-camera", "still,orbit,still-forced",
+        })!;
+        Assert.True(r.OpenCloseUp);
+        Assert.Equal(new[] { LensingDetail.Auto, LensingDetail.Full }, r.BenchDetails);
+        Assert.Equal(new[] { CloseUpBenchCamera.Still, CloseUpBenchCamera.Orbit, CloseUpBenchCamera.StillForced }, r.BenchCameras);
+        var cases = r.CloseUpBenchCases;
+        Assert.Equal(2 + 2 * 3, cases.Count);
+        Assert.Equal(CloseUpBenchRun.Hidden, cases[0].Run);
+        Assert.Equal(CloseUpBenchRun.Hidden, cases[^1].Run);
+        Assert.Equal(new CloseUpBenchCase(CloseUpBenchRun.Detail, LensingDetail.Auto, CloseUpBenchCamera.Still), cases[1]);
+        Assert.Equal(new CloseUpBenchCase(CloseUpBenchRun.Detail, LensingDetail.Full, CloseUpBenchCamera.StillForced), cases[6]);
+
+        // Without them, the cases are the old runs, drawn every frame with a still camera.
+        var old = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--bench", "20", "--closeup" })!;
+        Assert.Equal(old.CloseUpBenchRuns, old.CloseUpBenchCases.Select(c => c.Run));
+        Assert.All(old.CloseUpBenchCases, c => Assert.Equal(CloseUpBenchCamera.StillForced, c.Camera));
+        Assert.Equal(LensingDetail.Half, old.CloseUpBenchCases[2].Detail);
+    }
+
+    [Theory]
+    [InlineData("--bench-detail", "ultra")]
+    [InlineData("--bench-camera", "spin")]
+    public void BadBenchDetailOrCamera_Throws(string option, string value)
+        => Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", option, value }));
 }

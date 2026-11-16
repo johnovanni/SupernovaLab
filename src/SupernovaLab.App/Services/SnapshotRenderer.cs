@@ -30,9 +30,20 @@ public enum SnapshotWindow { Main, Instruments, Details, PresetInfo, InstrumentT
 
 /// <summary>
 /// What the Close-up does during one bench run (Project 3, Task 4): its lensing governed from 1/1, or held at 1/1, 1/2 or 1/4; or, for
-/// <c>--bench-baseline</c>, the window hidden (not drawn, not composed) or shown with the lensing pass and environment capture off.
+/// <c>--bench-baseline</c>, the window hidden (not drawn, not composed) or shown with the lensing pass and environment capture off;
+/// or (Task 4b) <see cref="MainOnly"/>: the Close-up and the Instruments window both hidden, the main view alone.
 /// </summary>
-public enum CloseUpBenchRun { Governed, Full, Half, Quarter, Hidden, LensingOff }
+public enum CloseUpBenchRun { Governed, Full, Half, Quarter, Hidden, LensingOff, MainOnly, Detail }
+
+/// <summary>
+/// The Close-up's camera in a bench run (Task 4b): <see cref="Still"/> and drawn on demand, as the app draws it now;
+/// <see cref="StillForced"/>, still but drawn every frame (as a pulsar's beams will make it, Task 6; every run before Task 4b was this);
+/// <see cref="Orbit"/>, orbiting at <see cref="SnapshotRequest.BenchOrbitDegPerS"/> (drawn every frame, the ray map retraced each frame).
+/// </summary>
+public enum CloseUpBenchCamera { Still, StillForced, Orbit }
+
+/// <summary>One Close-up bench run: what it does (<see cref="CloseUpBenchRun.Detail"/>: the user's setting), the detail and the camera.</summary>
+public readonly record struct CloseUpBenchCase(CloseUpBenchRun Run, LensingDetail Detail, CloseUpBenchCamera Camera);
 
 /// <summary>
 /// Ruling R19's diagnostic: <c>--snapshot &lt;out-dir&gt; [--preset &lt;id&gt;] [--time &lt;s&gt;] [--size &lt;WxH&gt;]
@@ -51,15 +62,48 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     IReadOnlyList<SnapshotSize> Sizes, IReadOnlyList<SnapshotWindow> Windows, double? BenchSeconds = null,
     int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false,
     IReadOnlyList<int>? TourStopList = null, bool BenchTour = false, LayoutSettings? Layout = null, bool OpenCloseUp = false,
-    double? BenchSpin = null, bool BenchBaseline = false)
+    double? BenchSpin = null, bool BenchBaseline = false, IReadOnlyList<LensingDetail>? BenchDetails = null,
+    IReadOnlyList<CloseUpBenchCamera>? BenchCameras = null)
 {
+    /// <summary>The orbiting camera's rate in a bench run (degrees of yaw per second): one turn in 12 s.</summary>
+    public const double BenchOrbitDegPerS = 30;
+
+    /// <summary>
+    /// The Close-up's bench runs for each size. With <c>--bench-detail auto,full,half,quarter</c> and/or <c>--bench-camera
+    /// still,still-forced,orbit</c> (either implies <c>--closeup</c>; a missing one defaults to every detail, or to still): the Close-up
+    /// hidden (a marker), then every detail with every camera, then hidden again (a drift check over the launch). Otherwise
+    /// <see cref="CloseUpBenchRuns"/>, each with a still camera drawn every frame.
+    /// </summary>
+    public IReadOnlyList<CloseUpBenchCase> CloseUpBenchCases
+    {
+        get
+        {
+            if (BenchDetails is null && BenchCameras is null)
+                return CloseUpBenchRuns.Select(r => new CloseUpBenchCase(r, r switch
+                {
+                    CloseUpBenchRun.Full => LensingDetail.Full,
+                    CloseUpBenchRun.Half => LensingDetail.Half,
+                    CloseUpBenchRun.Quarter => LensingDetail.Quarter,
+                    _ => LensingDetail.Auto,
+                }, CloseUpBenchCamera.StillForced)).ToList();
+            var marker = new CloseUpBenchCase(CloseUpBenchRun.Hidden, LensingDetail.Auto, CloseUpBenchCamera.StillForced);
+            var cases = new List<CloseUpBenchCase> { marker };
+            foreach (var d in BenchDetails ?? Enum.GetValues<LensingDetail>())
+                foreach (var c in BenchCameras ?? new[] { CloseUpBenchCamera.Still })
+                    cases.Add(new CloseUpBenchCase(CloseUpBenchRun.Detail, d, c));
+            cases.Add(marker);
+            return cases;
+        }
+    }
+
     /// <summary>
     /// The Close-up's bench runs for each size: by default the governed run then 1/1, 1/2 and 1/4 held; with <c>--bench-baseline</c>
-    /// (a flag; it implies <c>--closeup</c>) the baseline that separates the fixed per-frame cost: the Close-up hidden, shown with the
-    /// lensing off, and at 1/4.
+    /// (a flag; it implies <c>--closeup</c>) the baseline that separates the fixed per-frame cost: the main view alone (the Close-up and
+    /// the Instruments hidden), the Close-up hidden, shown with the lensing off, and at 1/4. The baseline then repeats the first size's
+    /// first two runs at the end (a drift check: the first launch of a new build can be slowed by the antivirus).
     /// </summary>
     public IReadOnlyList<CloseUpBenchRun> CloseUpBenchRuns => BenchBaseline
-        ? new[] { CloseUpBenchRun.Hidden, CloseUpBenchRun.LensingOff, CloseUpBenchRun.Quarter }
+        ? new[] { CloseUpBenchRun.MainOnly, CloseUpBenchRun.Hidden, CloseUpBenchRun.LensingOff, CloseUpBenchRun.Quarter }
         : new[] { CloseUpBenchRun.Governed, CloseUpBenchRun.Full, CloseUpBenchRun.Half, CloseUpBenchRun.Quarter };
 
     // Project 3 (Task 4): <c>--closeup</c> (a flag) opens the Close-up window before the captures, so <c>--bench</c> measures both 3D views
@@ -113,6 +157,8 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         bool benchTour = false;
         LayoutSettings? layout = null;
         bool openCloseUp = false, benchBaseline = false;
+        List<LensingDetail>? benchDetails = null;
+        List<CloseUpBenchCamera>? benchCameras = null;
         double? benchSpin = null;
         for (int i = 0; i < args.Count; i++)
         {
@@ -169,6 +215,25 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                 case "--layout":
                     layout = ParseLayout(value, layout ?? new LayoutSettings());
                     break;
+                case "--bench-detail":
+                    benchDetails ??= new List<LensingDetail>();
+                    foreach (string d in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        benchDetails.Add(Enum.TryParse(d, ignoreCase: true, out LensingDetail detail) && !d.Any(char.IsDigit) && Enum.IsDefined(detail)
+                            ? detail : throw new ArgumentException($"--bench-detail needs auto, full, half or quarter, not '{d}'."));
+                    openCloseUp = true;
+                    break;
+                case "--bench-camera":
+                    benchCameras ??= new List<CloseUpBenchCamera>();
+                    foreach (string c in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        benchCameras.Add(c.ToLowerInvariant() switch
+                        {
+                            "still" => CloseUpBenchCamera.Still,
+                            "still-forced" => CloseUpBenchCamera.StillForced,
+                            "orbit" => CloseUpBenchCamera.Orbit,
+                            _ => throw new ArgumentException($"--bench-camera needs still, still-forced or orbit, not '{c}'."),
+                        });
+                    openCloseUp = true;
+                    break;
                 case "--bench-spin":
                     if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double spin) || !(spin >= 0) || spin > 0.998)
                         throw new ArgumentException($"--bench-spin needs a spin from 0 to 0.998, not '{value}'.");
@@ -186,7 +251,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
         if (windows.Contains(SnapshotWindow.CloseUp)) openCloseUp = true;
         return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour, layout,
-            openCloseUp, benchSpin, benchBaseline);
+            openCloseUp, benchSpin, benchBaseline, benchDetails, benchCameras);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -731,39 +796,51 @@ public static class SnapshotRenderer
             }
             foreach (var size in request.Sizes)
                 foreach (var quality in request.Qualities)
-                    foreach (CloseUpBenchRun? run in windows.CloseUpWindow?.Scene is null
-                                 ? new CloseUpBenchRun?[] { null } : request.CloseUpBenchRuns.Cast<CloseUpBenchRun?>())
-                    {
-                        if (scene is not null) scene.Quality = quality;
-                        var window = windows.CloseUpWindow;
-                        var closeUp = window?.Scene;
-                        if (closeUp is not null && run is { } r)
-                        {
-                            // Project 3: the Close-up draws every frame (its worst case), with the lensing as this run asks.
-                            closeUp.ForceAnimating = true;
-                            closeUp.AutoLevel = r == CloseUpBenchRun.Governed;
-                            closeUp.SetLevel(r switch
-                            {
-                                CloseUpBenchRun.Half => LensingLevel.Half,
-                                CloseUpBenchRun.Quarter => LensingLevel.Quarter,
-                                _ => LensingLevel.Full,
-                            });
-                            closeUp.LensingEnabled = r != CloseUpBenchRun.LensingOff;
-                            if (r == CloseUpBenchRun.Hidden) window!.Hide();
-                        }
-                        var lines = await RunBenchOnce(main, vm, size, quality, seconds, scene, request.BenchTour, closeUp, run);
-                        all.AddRange(lines);
-                        all.Add("");
-                        if (closeUp is not null)
-                        {
-                            closeUp.ForceAnimating = false;
-                            closeUp.LensingEnabled = true;
-                            if (run == CloseUpBenchRun.Hidden) window!.Show();
-                        }
-                    }
+                    foreach (CloseUpBenchCase? run in windows.CloseUpWindow?.Scene is null
+                                 ? new CloseUpBenchCase?[] { null } : request.CloseUpBenchCases.Cast<CloseUpBenchCase?>())
+                        await RunOne(size, quality, run, "");
         }
+        // Task 4b: the baseline ends by repeating the first size's first two runs (a drift check on a first launch).
+        if (request.BenchBaseline && windows.CloseUpWindow?.Scene is not null && request.Sizes.Count > 0)
+            foreach (var run in request.CloseUpBenchCases.Take(2))
+                await RunOne(request.Sizes[0], request.Qualities[0], run, " (repeat)");
         File.WriteAllLines(Path.Combine(request.OutDirectory, "bench.log"), all);
         log.AddRange(all);
+
+        async Task RunOne(SnapshotSize size, QualityLevel quality, CloseUpBenchCase? benchCase, string label)
+        {
+            if (scene is not null) scene.Quality = quality;
+            var window = windows.CloseUpWindow;
+            var closeUp = window?.Scene;
+            var run = benchCase?.Run;
+            bool hideInstruments = run == CloseUpBenchRun.MainOnly;
+            bool hideCloseUp = run is CloseUpBenchRun.Hidden or CloseUpBenchRun.MainOnly;
+            if (closeUp is not null && benchCase is { } c)
+            {
+                // Project 3: the Close-up draws every frame (its worst case) unless the run's camera is Still (drawn on demand, Task 4b),
+                // with the lensing as this run asks: the user's detail (Task 4b), and for the governed run the governor from 1/1.
+                if (window!.DataContext is CloseUpViewModel cvm) cvm.LensingDetail = c.Detail;
+                closeUp.ForceAnimating = c.Camera != CloseUpBenchCamera.Still;
+                closeUp.AutoLevel = c.Run is CloseUpBenchRun.Governed or CloseUpBenchRun.Detail;
+                closeUp.SetLevel(LensingLevel.Full);
+                closeUp.Home();   // the same view for every run
+                closeUp.LensingEnabled = c.Run != CloseUpBenchRun.LensingOff;
+                if (hideCloseUp) window.Hide();
+                if (hideInstruments) windows.Instruments?.Hide();
+            }
+            double orbit = benchCase?.Camera == CloseUpBenchCamera.Orbit ? SnapshotRequest.BenchOrbitDegPerS : 0;
+            var lines = await RunBenchOnce(main, vm, size, quality, seconds, scene, request.BenchTour, closeUp, benchCase, window, orbit);
+            if (label.Length > 0) lines[0] += label;
+            all.AddRange(lines);
+            all.Add("");
+            if (closeUp is not null)
+            {
+                closeUp.ForceAnimating = false;
+                closeUp.LensingEnabled = true;
+                if (hideCloseUp) window!.Show();
+                if (hideInstruments) windows.Instruments?.Show();
+            }
+        }
     }
 
     /// <summary>Sets every input of the lab back to <see cref="LabInputs.Default"/> (the bench's "default" entry after a preset was loaded).</summary>
@@ -777,7 +854,8 @@ public static class SnapshotRenderer
 
     private static async Task<List<string>> RunBenchOnce(Window main, MainViewModel vm, SnapshotSize size, QualityLevel quality,
         double seconds, SupernovaLab.App.Controllers.SceneController? scene, bool tour = false,
-        SupernovaLab.App.Controllers.CloseUpSceneController? closeUp = null, CloseUpBenchRun? run = null)
+        SupernovaLab.App.Controllers.CloseUpSceneController? closeUp = null, CloseUpBenchCase? run = null, CloseUpWindow? closeUpWindow = null,
+        double orbitDegPerS = 0)
     {
         main.Width = size.Width;
         main.Height = size.Height;
@@ -795,6 +873,7 @@ public static class SnapshotRenderer
         {
             double now = watch.Elapsed.TotalSeconds;
             if (frames > 0) intervals.Add(now - last);
+            if (orbitDegPerS > 0 && frames > 0) closeUp?.Orbit(orbitDegPerS * Math.Min(now - last, 0.1));   // Task 4b: the orbiting camera
             last = now;
             frames++;
         }
@@ -803,6 +882,16 @@ public static class SnapshotRenderer
         long closeUpFrames0 = closeUp?.FramesDrawn ?? 0;
         int captures0 = closeUp?.EnvironmentCaptures ?? 0;
         closeUp?.ResetGpuStats();
+        // Task 4b: the UI thread's time and each GL control's frame time (attributing the per-frame cost the GPU timers miss).
+        var mainHost = (main as MainWindow)?.GlHost;
+        var closeUpHost = closeUpWindow?.GlHost;
+        foreach (var h in new[] { mainHost, closeUpHost })
+        {
+            h?.DrawTime.Reset();
+            h?.ControlRenderTime?.Reset();
+        }
+        var meter = new UiThreadMeter(main.Dispatcher);
+        meter.Start();
         // The tour's travel and dwell are timed apart: a dwell on a still scene redraws only when something moves.
         var director = vm.Tour.Director;
         double travelS = 0, dwellS = 0;
@@ -833,9 +922,15 @@ public static class SnapshotRenderer
             while (vm.Timeline.IsPlaying && watch.Elapsed.TotalSeconds < seconds * 1.5 + 5)
                 await Task.Delay(100);
         }
+        meter.Stop();
         CompositionTarget.Rendering -= OnRendering;
         double elapsed = watch.Elapsed.TotalSeconds;
         long sceneFrames = (scene?.FramesDrawn ?? 0) - sceneFrames0;
+        // Task 4b: the rate over the run's second half too (after a governor has had time to settle).
+        double sum = intervals.Sum(), acc = 0;
+        int lateFrames = 0;
+        foreach (double dt in intervals) { acc += dt; if (acc > sum / 2) lateFrames++; }
+        double lateFps = sum > 0 ? lateFrames / (sum / 2) : double.NaN;
         intervals.Sort();
         double p95 = intervals.Count > 0 ? intervals[(int)(0.95 * (intervals.Count - 1))] * 1000 : double.NaN;
         double worst = intervals.Count > 0 ? intervals[^1] * 1000 : double.NaN;
@@ -850,7 +945,7 @@ public static class SnapshotRenderer
             (tour ? $"playing {tourText}travelling at {TimelineViewModel.DefaultDecadesPerSecond.ToString("0.###", inv)} decades/s (slowed near each stop)"
                  : $"playing the whole timeline ({decades.ToString("0.0", inv)} decades) at {vm.Timeline.DecadesPerSecond.ToString("0.###", inv)} decades/s"),
             $"frames {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps",
-            $"frame interval p95 {p95.ToString("0.0", inv)} ms, worst {worst.ToString("0.0", inv)} ms",
+            $"frame interval p95 {p95.ToString("0.0", inv)} ms, worst {worst.ToString("0.0", inv)} ms; second half of the run {lateFps.ToString("0.0", inv)} fps",
             scene is null ? "3D view GPU: none" : $"3D view GPU: {(scene.GlInfo.Length > 0 ? scene.GlInfo : "not reported")}",
             scene is null ? "3D view: none" : scene.IsFailed ? $"3D view: failed ({scene.FailureMessage})" :
                 $"3D view frames drawn {sceneFrames} in {elapsed.ToString("0.00", inv)} s: " +
@@ -868,27 +963,62 @@ public static class SnapshotRenderer
                   $"max {(scene.MaxGpuRenderTimeS * 1000).ToString("0.00", inv)} ms over {scene.GpuSamples} drawn frames " +
                   $"(the governor steps down above {(1000 / QualityGovernor.MinFps).ToString("0", inv)} ms)");
         if (closeUp is not null) lines.AddRange(CloseUpBenchLines(closeUp, closeUpFrames0, captures0, elapsed, run));
+        lines.AddRange(TimingLines(meter, frames, mainHost, closeUpHost));
         return lines;
     }
 
-    /// <summary>The Close-up's lines of a bench run: its frames, GPU time, lensing level and environment refreshes.</summary>
+    /// <summary>
+    /// Task 4b's attribution lines: the UI thread's busy time per composition frame (the render pass, and everything else), the
+    /// process's CPU time (all threads, in cores), and per GL control its whole WPF render (with the D3D interop) and the app's own
+    /// drawing inside it, all as UI-thread wall time per frame.
+    /// </summary>
+    private static IEnumerable<string> TimingLines(UiThreadMeter meter, int frames, GlHost? mainHost, GlHost? closeUpHost)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        double perFrame = frames > 0 ? 1000.0 / frames : double.NaN;
+        string Ms(double s) => (s * 1000).ToString("0.00", inv);
+        double busy = meter.Render.TotalS + meter.Other.TotalS;
+        yield return $"UI thread busy {(100 * busy / meter.ElapsedS).ToString("0", inv)}% of the run: per composition frame " +
+                     $"{(meter.Render.TotalS * perFrame).ToString("0.00", inv)} ms in the render pass ({meter.Render.Count} passes, mean {Ms(meter.Render.MeanS)} ms, max {Ms(meter.Render.MaxS)} ms), " +
+                     $"{(meter.Other.TotalS * perFrame).ToString("0.00", inv)} ms in other dispatcher work ({meter.Other.Count} operations); " +
+                     $"process CPU {(meter.ProcessCpuS / meter.ElapsedS).ToString("0.00", inv)} cores";
+        foreach (var (name, host) in new[] { ("main", mainHost), ("Close-up", closeUpHost) })
+        {
+            if (host is null) continue;
+            var c = host.ControlRenderTime;
+            yield return $"{name} GL control: whole OnRender (with the D3D interop) " +
+                         (c is null || c.Count == 0 ? "not timed" : $"mean {Ms(c.MeanS)} ms, max {Ms(c.MaxS)} ms over {c.Count} renders") +
+                         $"; the app's drawing inside it mean {Ms(host.DrawTime.MeanS)} ms, max {Ms(host.DrawTime.MaxS)} ms over {host.DrawTime.Count}";
+        }
+    }
+
+    /// <summary>The Close-up's lines of a bench run: its frames, GPU time, lensing level, ray-map traces and environment refreshes.</summary>
     private static IEnumerable<string> CloseUpBenchLines(SupernovaLab.App.Controllers.CloseUpSceneController c, long frames0, int captures0,
-        double elapsed, CloseUpBenchRun? run)
+        double elapsed, CloseUpBenchCase? benchCase)
     {
         var inv = CultureInfo.InvariantCulture;
         long frames = c.FramesDrawn - frames0;
-        string what = run switch
+        string what = benchCase?.Run switch
         {
             CloseUpBenchRun.Governed or null => "lensing level governed (from 1/1; steps down above 12 ms)",
             CloseUpBenchRun.Hidden => "window hidden (baseline: not drawn, not composed)",
+            CloseUpBenchRun.MainOnly => "window hidden and the Instruments window hidden too (baseline: the main view alone)",
             CloseUpBenchRun.LensingOff => "window shown, lensing pass and environment capture off (baseline)",
+            CloseUpBenchRun.Detail => $"light-bending detail {benchCase.Value.Detail}",
             _ => $"lensing level held at {LensingLevels.Text(c.Level)}",
         };
-        yield return $"Close-up: {what}; " +
-                     $"level at the end {LensingLevels.Text(c.Level)}; HDR {(c.HdrEnabled ? "on" : "off")}; GPU {(c.GlInfo.Length > 0 ? c.GlInfo : "not reported")}";
+        string camera = benchCase?.Camera switch
+        {
+            CloseUpBenchCamera.Still => "camera still, drawn on demand (as the app)",
+            CloseUpBenchCamera.Orbit => $"camera orbiting at {SnapshotRequest.BenchOrbitDegPerS.ToString("0", inv)} deg/s",
+            _ => "camera still, drawing every frame",
+        };
+        string shown = c.ShownLevel is { } s ? LensingLevels.Text(s) : "none";
+        yield return $"Close-up: {what}; {camera}; moving level at the end {LensingLevels.Text(c.MovingLevel)}, shown {shown}; " +
+                     $"HDR {(c.HdrEnabled ? "on" : "off")}; GPU {(c.GlInfo.Length > 0 ? c.GlInfo : "not reported")}";
         yield return c.IsFailed ? $"Close-up: failed ({c.FailureMessage})"
-            : $"Close-up frames drawn {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps " +
-              $"(drawing every frame); environment refreshes {c.EnvironmentCaptures - captures0}";
+            : $"Close-up frames drawn {frames} in {elapsed.ToString("0.00", inv)} s: {(frames / elapsed).ToString("0.0", inv)} fps; " +
+              $"whole ray maps traced {c.MapTraces}, refinement bands {c.RefineBands}; environment refreshes {c.EnvironmentCaptures - captures0}";
         yield return !c.GpuTimingAvailable || c.GpuSamples == 0
             ? "Close-up GPU time: not available"
             : $"Close-up GPU time (GL timer query): mean {(c.MeanGpuRenderTimeS * 1000).ToString("0.00", inv)} ms, " +
@@ -922,11 +1052,32 @@ public static class SnapshotRenderer
         if (w.DataContext is CloseUpViewModel vm)
             log.Add($"closeup{suffix}: {vm.WindowTitle}; {(vm.NoRemnantMessage ?? string.Join(" | ", vm.Readouts.Select(r => $"{r.Label} {r.ValueText}")))}" +
                     (w.Scene is { } c ? $"; lensing {LensingLevels.Text(c.Level)}, environment refreshes {c.EnvironmentCaptures}" : ""));
+        if (w.Scene is { } scene && w.DataContext is CloseUpViewModel cvm && cvm.State.IsLensed)
+        {
+            // Task 4b: the ray cache's two paths, each read back. A moving camera at 1/4 (one whole map traced), then the same view
+            // refined to full resolution in bands behind it (R-P3-10); the second is the window's capture below.
+            var detail = cvm.LensingDetail;
+            cvm.LensingDetail = LensingDetail.Auto;
+            scene.ResetGpuStats();
+            scene.SetLevel(LensingLevel.Quarter);
+            scene.Orbit(0.25);
+            log.Add(await w.ShowFrameForSnapshotAsync() + $" (moving: shown {Shown(scene)})");
+            await NextFrame(w);
+            log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}-moving.png")));
+            w.HideFrameForSnapshot();
+            int k0 = 0;
+            for (; k0 < 120 && scene.ShownLevel != LensingLevel.Full; k0++) await NextFrame(w);
+            log.Add($"closeup{suffix}: after {k0} frames shown {Shown(scene)}: {scene.MapTraces} whole maps traced, {scene.RefineBands} refinement bands; {cvm.LightBendingNote}");
+            scene.SetLevel(LensingLevel.Full);
+            cvm.LensingDetail = detail;
+        }
         log.Add(await w.ShowFrameForSnapshotAsync());
         await NextFrame(w);
         log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}.png")));
         w.HideFrameForSnapshot();
     }
+
+    private static string Shown(SupernovaLab.App.Controllers.CloseUpSceneController c) => c.ShownLevel is { } s ? LensingLevels.Text(s) : "none";
 
     /// <summary>Closes the Close-up (as a user would) and logs whether its view released its GL objects with the context current.</summary>
     private static void LogCloseUpRelease(WindowService windows, List<string> log)

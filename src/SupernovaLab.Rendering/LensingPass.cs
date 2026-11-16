@@ -15,46 +15,152 @@ public readonly record struct LensingUniforms(float Spin, Vector3 CameraPosition
     Vector2 TanHalf, float EscapeRadius, float SurfaceRadius = 0, Vector3 SurfaceColor = default, bool Grid = false);
 
 /// <summary>
-/// The Close-up's light bending (spec §6.6, plan rulings P3-7 and P3-9). <c>lensing.frag</c>, the GLSL mirror of
-/// <see cref="Core.Compact.BlackHoleOptics.TraceRay"/>, traces one ray per pixel of an offscreen target at the requested
-/// <see cref="LensingLevel"/> (RGBA16F with the HDR path, RGBA8 without), sampling the environment cube map
-/// (<see cref="EnvironmentCapture"/>) where rays escape; <c>upsample.frag</c> then stretches it bilinearly over whatever framebuffer
-/// and viewport were current when <see cref="Render"/> was called (the HDR target, or the GL control's own). OpenGL 4.1 has no
-/// compute shaders, so this is a fragment-shader pass. Create and use with the GL context current.
+/// The Close-up's light bending (spec §6.6, plan rulings P3-7 and P3-9, ruling R-P3-10). <c>lensing.frag</c>, the GLSL mirror of
+/// <see cref="Core.Compact.BlackHoleOptics.TraceRay"/>, traces one ray per pixel of an offscreen target at a
+/// <see cref="LensingLevel"/>; <c>upsample.frag</c> then stretches the image bilinearly over whatever framebuffer and viewport were
+/// current when the pass was called (the HDR target, or the GL control's own). OpenGL 4.1 has no compute shaders, so the passes are
+/// fragment-shader passes. Create and use with the GL context current.
+/// <para><b>The ray cache (R-P3-10).</b> When an RGBA32F target can be made (<see cref="CachesRays"/>), the tracer writes each
+/// ray's fate and exit direction (or surface hit point) into a kept <i>ray map</i>, only on the frames a
+/// <see cref="RayMapPlanner"/> asks for (<see cref="Render(Size, RayMapStep, in LensingUniforms, int)"/>): the whole map, or one
+/// band of rows of a finer map built behind the shown one (with the scissor test, so only that band is traced). Every frame then
+/// colours the shown map from the environment as it is now (<c>lensing_shade.frag</c>, into an RGBA16F target with the HDR path,
+/// RGBA8 without) and upsamples it. Without RGBA32F the pass traces colour directly every frame, as before
+/// (<see cref="RenderDirect"/>).</para>
 /// </summary>
 public sealed class LensingPass : IDisposable
 {
     private readonly ShaderProgram _trace = ShaderProgram.FromResources("fullscreen.vert", "lensing.frag");
+    private readonly ShaderProgram _shade = ShaderProgram.FromResources("fullscreen.vert", "lensing_shade.frag");
     private readonly ShaderProgram _upsample = ShaderProgram.FromResources("fullscreen.vert", "upsample.frag");
     private readonly int _vao = GL.GenVertexArray();
     private readonly bool _hdr;
-    private int _fbo, _tex, _width, _height;
+    private Target _color, _shown, _back;
     private readonly int[] _viewport = new int[4];
 
-    /// <param name="hdr">True for an RGBA16F target (the HDR path), false for RGBA8 (the no-HDR path).</param>
-    public LensingPass(bool hdr) => _hdr = hdr;
+    /// <summary>An offscreen colour target: its framebuffer, texture and size.</summary>
+    private struct Target
+    {
+        public int Fbo, Tex, Width, Height;
+    }
 
-    /// <summary>The traced image's size at the last <see cref="Render"/> (pixels).</summary>
-    public (int Width, int Height) TargetSize => (_width, _height);
+    /// <param name="hdr">True for an RGBA16F colour target (the HDR path), false for RGBA8 (the no-HDR path).</param>
+    public LensingPass(bool hdr)
+    {
+        _hdr = hdr;
+        // Probe: the ray map needs a renderable RGBA32F target (core since OpenGL 3.0; checked, not assumed).
+        var probe = new Target();
+        CachesRays = Create(ref probe, 4, 4, PixelInternalFormat.Rgba32f);
+        Release(ref probe);
+    }
 
-    /// <summary>Traces the view at this level into the offscreen target and upsamples it into the current framebuffer.</summary>
-    public void Render(Size viewportPx, LensingLevel level, in LensingUniforms u, int environmentCubeMap)
+    /// <summary>Whether the ray map can be cached (an RGBA32F target works); false: <see cref="RenderDirect"/> every frame.</summary>
+    public bool CachesRays { get; }
+
+    /// <summary>The traced image's size at the last frame (pixels): the shown ray map, or the direct path's target.</summary>
+    public (int Width, int Height) TargetSize => (_color.Width, _color.Height);
+
+    /// <summary>
+    /// Ruling R-P3-10: does this frame's tracing (<paramref name="step"/>, from the <see cref="RayMapPlanner"/>), then colours the shown
+    /// ray map from the environment and upsamples it into the current framebuffer. False when a target could not be made (nothing
+    /// is drawn; the caller should forget the map).
+    /// </summary>
+    public bool Render(Size viewportPx, RayMapStep step, in LensingUniforms u, int environmentCubeMap)
+    {
+        if (!CachesRays || viewportPx.Width <= 0 || viewportPx.Height <= 0) return false;
+        GL.GetInteger(GetPName.FramebufferBinding, out int previousFbo);
+        GL.GetInteger(GetPName.Viewport, _viewport);
+        GL.Disable(EnableCap.Blend);
+        GL.ColorMask(true, true, true, true);   // the ray map keeps each ray's fate in alpha
+        GL.BindVertexArray(_vao);
+        bool ok = true;
+        if (step.Work == RayMapWork.Trace)
+            ok = Trace(ref _shown, step, u, environmentCubeMap);
+        else if (step.Work == RayMapWork.RefineStrip)
+        {
+            ok = Trace(ref _back, step, u, environmentCubeMap);
+            if (ok && step.Completes) (_shown, _back) = (_back, _shown);
+        }
+        ok = ok && _shown.Tex != 0 && Ensure(ref _color, _shown.Width, _shown.Height, ColorFormat);
+        if (ok)
+        {
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, _color.Fbo);
+            GL.Viewport(0, 0, _color.Width, _color.Height);
+            _shade.Use();
+            GL.ActiveTexture(TextureUnit.Texture0);
+            GL.BindTexture(TextureTarget.Texture2D, _shown.Tex);
+            _shade.Set("u_rays", 0);
+            GL.ActiveTexture(TextureUnit.Texture1);
+            GL.BindTexture(TextureTarget.TextureCubeMap, environmentCubeMap);
+            _shade.Set("u_env", 1);
+            _shade.Set("u_surfaceColor", u.SurfaceColor);
+            GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
+            GL.BindTexture(TextureTarget.TextureCubeMap, 0);
+            GL.ActiveTexture(TextureUnit.Texture0);
+        }
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, previousFbo);
+        GL.Viewport(_viewport[0], _viewport[1], _viewport[2], _viewport[3]);
+        if (ok) Upsample();
+        GL.BindVertexArray(0);
+        GL.BindTexture(TextureTarget.Texture2D, 0);
+        return ok;
+    }
+
+    /// <summary>The fallback without a ray cache: traces the view's colour at this level, then upsamples it (Task 4's pass).</summary>
+    public void RenderDirect(Size viewportPx, LensingLevel level, in LensingUniforms u, int environmentCubeMap)
     {
         int vw = (int)viewportPx.Width, vh = (int)viewportPx.Height;
         if (vw <= 0 || vh <= 0) return;
         var (w, h) = LensingLevels.TargetSize(vw, vh, level);
         GL.GetInteger(GetPName.FramebufferBinding, out int previousFbo);
         GL.GetInteger(GetPName.Viewport, _viewport);
-        if ((w != _width || h != _height) && !CreateTarget(w, h))
+        bool ok = Ensure(ref _color, w, h, ColorFormat);
+        if (ok)
         {
-            GL.BindFramebuffer(FramebufferTarget.Framebuffer, previousFbo);
-            return;
+            GL.Disable(EnableCap.Blend);
+            GL.BindFramebuffer(FramebufferTarget.Framebuffer, _color.Fbo);
+            GL.Viewport(0, 0, w, h);
+            GL.BindVertexArray(_vao);
+            SetTraceUniforms(u, environmentCubeMap, output: 0);
+            GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         }
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, previousFbo);
+        GL.Viewport(_viewport[0], _viewport[1], _viewport[2], _viewport[3]);
+        if (ok)
+        {
+            GL.BindVertexArray(_vao);
+            Upsample();
+        }
+        GL.BindVertexArray(0);
+        GL.BindTexture(TextureTarget.Texture2D, 0);
+        GL.BindTexture(TextureTarget.TextureCubeMap, 0);
+    }
 
-        GL.Disable(EnableCap.Blend);
-        GL.BindFramebuffer(FramebufferTarget.Framebuffer, _fbo);
-        GL.Viewport(0, 0, w, h);
+    private PixelInternalFormat ColorFormat => _hdr ? PixelInternalFormat.Rgba16f : PixelInternalFormat.Rgba8;
+
+    /// <summary>Traces the step's rows of a ray map of the step's size into <paramref name="map"/> (made or resized as needed).</summary>
+    private bool Trace(ref Target map, RayMapStep step, in LensingUniforms u, int environmentCubeMap)
+    {
+        if (!Ensure(ref map, step.Width, step.Height, PixelInternalFormat.Rgba32f)) return false;
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, map.Fbo);
+        GL.Viewport(0, 0, step.Width, step.Height);
+        bool band = step.FirstRow > 0 || step.Rows < step.Height;
+        if (band)
+        {
+            GL.Enable(EnableCap.ScissorTest);
+            GL.Scissor(0, step.FirstRow, step.Width, step.Rows);
+        }
+        SetTraceUniforms(u, environmentCubeMap, output: 1);
+        GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
+        if (band) GL.Disable(EnableCap.ScissorTest);
+        GL.BindTexture(TextureTarget.TextureCubeMap, 0);
+        return true;
+    }
+
+    private void SetTraceUniforms(in LensingUniforms u, int environmentCubeMap, int output)
+    {
         _trace.Use();
+        _trace.Set("u_output", output);
         _trace.Set("u_spin", u.Spin);
         _trace.Set("u_camPos", u.CameraPosition);
         _trace.Set("u_camForward", u.Forward);
@@ -68,60 +174,73 @@ public sealed class LensingPass : IDisposable
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.TextureCubeMap, environmentCubeMap);
         _trace.Set("u_env", 0);
-        GL.BindVertexArray(_vao);
-        GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
+    }
 
-        GL.BindFramebuffer(FramebufferTarget.Framebuffer, previousFbo);
-        GL.Viewport(_viewport[0], _viewport[1], _viewport[2], _viewport[3]);
+    /// <summary>Stretches the colour target over the current framebuffer and viewport (alpha masked off, as before).</summary>
+    private void Upsample()
+    {
         _upsample.Use();
-        GL.BindTexture(TextureTarget.Texture2D, _tex);
+        GL.ActiveTexture(TextureUnit.Texture0);
+        GL.BindTexture(TextureTarget.Texture2D, _color.Tex);
         _upsample.Set("u_src", 0);
         GL.ColorMask(true, true, true, false);
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         GL.ColorMask(true, true, true, true);
-        GL.BindVertexArray(0);
-        GL.BindTexture(TextureTarget.Texture2D, 0);
-        GL.BindTexture(TextureTarget.TextureCubeMap, 0);
     }
 
-    private bool CreateTarget(int w, int h)
+    private static bool Ensure(ref Target t, int w, int h, PixelInternalFormat format)
+        => (t.Tex != 0 && t.Width == w && t.Height == h) || Create(ref t, w, h, format);
+
+    private static bool Create(ref Target t, int w, int h, PixelInternalFormat format)
     {
-        ReleaseTarget();
-        _tex = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2D, _tex);
-        if (_hdr)
-            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba16f, w, h, 0, PixelFormat.Rgba, PixelType.HalfFloat, IntPtr.Zero);
-        else
-            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba8, w, h, 0, PixelFormat.Rgba, PixelType.UnsignedByte, IntPtr.Zero);
-        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
-        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+        Release(ref t);
+        GL.GetInteger(GetPName.FramebufferBinding, out int previousFbo);
+        t.Tex = GL.GenTexture();
+        GL.BindTexture(TextureTarget.Texture2D, t.Tex);
+        var (pixelFormat, type) = format switch
+        {
+            PixelInternalFormat.Rgba32f => (PixelFormat.Rgba, PixelType.Float),
+            PixelInternalFormat.Rgba16f => (PixelFormat.Rgba, PixelType.HalfFloat),
+            _ => (PixelFormat.Rgba, PixelType.UnsignedByte),
+        };
+        GL.TexImage2D(TextureTarget.Texture2D, 0, format, w, h, 0, pixelFormat, type, IntPtr.Zero);
+        // The colour target is stretched bilinearly; the ray map is read with texelFetch (its filter is never used).
+        var filter = format == PixelInternalFormat.Rgba32f ? (int)TextureMinFilter.Nearest : (int)TextureMinFilter.Linear;
+        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, filter);
+        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, filter);
         GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
         GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
         GL.BindTexture(TextureTarget.Texture2D, 0);
-        _fbo = GL.GenFramebuffer();
-        GL.BindFramebuffer(FramebufferTarget.Framebuffer, _fbo);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _tex, 0);
-        if (GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer) != FramebufferErrorCode.FramebufferComplete)
+        t.Fbo = GL.GenFramebuffer();
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, t.Fbo);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, t.Tex, 0);
+        bool complete = GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer) == FramebufferErrorCode.FramebufferComplete;
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, previousFbo);
+        if (!complete)
         {
-            ReleaseTarget();
+            Release(ref t);
+            GL.GetError();   // a probe's failure is an answer, not a frame error
             return false;
         }
-        (_width, _height) = (w, h);
+        (t.Width, t.Height) = (w, h);
         return true;
     }
 
-    private void ReleaseTarget()
+    private static void Release(ref Target t)
     {
-        if (_fbo != 0) GL.DeleteFramebuffer(_fbo);
-        if (_tex != 0) GL.DeleteTexture(_tex);
-        _fbo = _tex = _width = _height = 0;
+        if (t.Fbo != 0) GL.DeleteFramebuffer(t.Fbo);
+        if (t.Tex != 0) GL.DeleteTexture(t.Tex);
+        t = default;
     }
 
     public void Dispose()
     {
-        ReleaseTarget();
+        Release(ref _color);
+        Release(ref _shown);
+        Release(ref _back);
         GL.DeleteVertexArray(_vao);
         _trace.Dispose();
+        _shade.Dispose();
         _upsample.Dispose();
     }
 }

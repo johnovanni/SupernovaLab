@@ -38,6 +38,12 @@ public sealed class GlHost : IRenderHost
     /// <summary>Raised once when a frame throws (shader compile error, GL error, ...); drawing then stops.</summary>
     public event Action<Exception>? FrameFailed;
 
+    /// <summary>The UI-thread time of each frame's drawing (the clear, <see cref="Draw"/> and the error check): the bench's measurement.</summary>
+    public CpuTimeStats DrawTime { get; } = new();
+
+    /// <summary>The control's whole WPF render (including the D3D interop) when it is a <see cref="TimedGLWpfControl"/>; else null.</summary>
+    public CpuTimeStats? ControlRenderTime => (_control as TimedGLWpfControl)?.RenderTime;
+
     private Exception? _failure;
 
     /// <summary>
@@ -99,6 +105,7 @@ public sealed class GlHost : IRenderHost
     private void OnRender(TimeSpan delta)
     {
         if (_failure != null) return;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
             if (!_contextReady)
@@ -122,6 +129,7 @@ public sealed class GlHost : IRenderHost
             _failure = ex;
             FrameFailed?.Invoke(ex);
         }
+        DrawTime.Add(CpuTimeStats.Since(t0));
         if (_framesOwed > 0) _framesOwed--;
         UpdateContinuous();
     }

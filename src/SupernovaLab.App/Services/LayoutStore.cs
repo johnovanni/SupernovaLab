@@ -1,5 +1,7 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using SupernovaLab.Rendering;
 
 namespace SupernovaLab.App.Services;
 
@@ -15,6 +17,29 @@ public sealed record LayoutSettings
     public bool KeyFolded { get; init; }
     public bool NotesExpanded { get; init; }
     public bool CaptionCollapsed { get; init; }
+
+    /// <summary>
+    /// The Close-up's light-bending detail (Task 4b, ruling R-P3-9), stored by name ("Auto", "Full", "Half", "Quarter"); any other
+    /// stored value reads as Auto without disturbing the rest of the layout.
+    /// </summary>
+    [JsonConverter(typeof(LensingDetailJsonConverter))]
+    public LensingDetail CloseUpLensingDetail { get; init; }
+}
+
+/// <summary>Writes a <see cref="LensingDetail"/> by name and reads any JSON value, falling back to Auto (<see cref="LensingDetails.Parse"/>).</summary>
+public sealed class LensingDetailJsonConverter : JsonConverter<LensingDetail>
+{
+    public override bool HandleNull => true;
+
+    public override LensingDetail Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String) return LensingDetails.Parse(reader.GetString());
+        reader.Skip();   // a number, an object, an array, true, false or null: not a name
+        return LensingDetail.Auto;
+    }
+
+    public override void Write(Utf8JsonWriter writer, LensingDetail value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.ToString());
 }
 
 /// <summary>

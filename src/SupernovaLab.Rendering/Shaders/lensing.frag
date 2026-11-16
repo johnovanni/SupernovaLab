@@ -21,8 +21,16 @@
 //   8. Exit direction = normalize(dx/dl) at the stop.
 // Step-limited rays orbit near the photon sphere, so they take the surroundings along their final momentum and read as the
 // photon ring (ruling R-P3-7). All lengths in GM/c^2.
+//
+// Ruling R-P3-10 (Task 4b): with u_output = 1 the pass writes the ray map instead of a colour, into an RGBA32F target that
+// LensingPass keeps until the camera, spin, surface, viewport or level change: rgb = the exit direction (FATE_ESCAPED or
+// FATE_STEP_LIMIT, a = 1), the hit point (FATE_HIT_SURFACE, a = 2), or 0 (FATE_CAPTURED, a = 0). lensing_shade.frag then
+// colours it every frame from the time-varying surroundings, exactly as the u_output = 0 branch below does. The u_output = 0
+// path (colour straight out) is the fallback when no float target can be made.
 
 in vec2 v_uv;
+
+uniform int u_output;          // 0: the colour (no cache); 1: the ray map (R-P3-10)
 
 uniform float u_spin;          // a = J c / (G M^2), 0 to 1, about +z
 uniform vec3 u_camPos;         // the camera, GM/c^2
@@ -206,6 +214,13 @@ void main()
         dir = normalize(dir);
     }
 
+    if (u_output == 1)
+    {
+        if (fate == FATE_HIT_SURFACE) o_color = vec4(x, 2.0);
+        else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) o_color = vec4(dir, 1.0);
+        else o_color = vec4(0.0);
+        return;
+    }
     vec3 color = vec3(0.0);
     if (fate == FATE_HIT_SURFACE) color = u_surfaceColor;
     else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) color = texture(u_env, dir).rgb;

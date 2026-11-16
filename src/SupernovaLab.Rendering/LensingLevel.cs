@@ -30,18 +30,76 @@ public static class LensingLevels
         LensingLevel.Half => LensingLevel.Quarter,
         _ => null,
     };
+
+    /// <summary>"full", "half" or "quarter".</summary>
+    public static string Word(LensingLevel level) => level switch
+    {
+        LensingLevel.Half => "half",
+        LensingLevel.Quarter => "quarter",
+        _ => "full",
+    };
+}
+
+/// <summary>
+/// The user's light-bending detail (spec §2.5, ruling R-P3-9): Close-up menu ▸ Light-bending detail, remembered in layout.json.
+/// <see cref="Auto"/> (the default) lets the <see cref="LensingGovernor"/> choose the level while the camera moves and refines to
+/// full resolution when it stops; the others hold that level.
+/// </summary>
+public enum LensingDetail { Auto, Full, Half, Quarter }
+
+public static class LensingDetails
+{
+    /// <summary>The level a fixed detail holds; null for <see cref="LensingDetail.Auto"/>.</summary>
+    public static LensingLevel? Fixed(LensingDetail detail) => detail switch
+    {
+        LensingDetail.Full => LensingLevel.Full,
+        LensingDetail.Half => LensingLevel.Half,
+        LensingDetail.Quarter => LensingLevel.Quarter,
+        _ => null,
+    };
+
+    /// <summary>The level traced while the camera moves: the fixed level, or the governor's for Auto.</summary>
+    public static LensingLevel MovingLevel(LensingDetail detail, LensingLevel governed) => Fixed(detail) ?? governed;
+
+    /// <summary>
+    /// The level the view refines to once the camera stops (ruling R-P3-10): the fixed level, or full resolution for Auto. The cached
+    /// ray map makes a still view cheap at any level, and the refinement is spread over frames, so Auto can afford full.
+    /// </summary>
+    public static LensingLevel StillLevel(LensingDetail detail) => Fixed(detail) ?? LensingLevel.Full;
+
+    /// <summary>The Close-up's note: "Light bending: half resolution (your setting)" or "... (automatic)".</summary>
+    public static string Note(LensingLevel shown, bool automatic)
+        => $"Light bending: {LensingLevels.Word(shown)} resolution ({(automatic ? "automatic" : "your setting")})";
+
+    /// <summary>A stored name ("Auto", "full", ...), case-insensitive; anything else (a number, an unknown name, null) is Auto.</summary>
+    public static LensingDetail Parse(string? text)
+        => text is not null && !text.Any(char.IsDigit) && Enum.TryParse(text, ignoreCase: true, out LensingDetail d) && Enum.IsDefined(d)
+            ? d
+            : LensingDetail.Auto;
 }
 
 /// <summary>
 /// Steps the lensing resolution down when the Close-up's GPU time stays over <see cref="MaxGpuMs"/> (plan ruling P3-9), on Project 2's
 /// <see cref="QualityGovernor"/> pattern: feed it each drawn frame's GPU time (a GL timer query around the Close-up's drawing,
 /// <see cref="GpuTimer"/>) and the wall time since the previous frame; over each 3 s of frames it takes the mean GPU time, and above
-/// 12 ms it steps down one level (1/1 to 1/2 to 1/4). It never steps up by itself; <see cref="Reset"/> is the only way up.
+/// 12 ms, or (ruling proposal R-P3-12) the frames average over 20 ms apart while the lensing takes over 2 ms of them, it steps down one
+/// level (1/1 to 1/2 to 1/4). It never steps up by itself; <see cref="Reset"/> is the only way up. With the ray cache (R-P3-10) the
+/// Close-up feeds it only the frames that traced a whole map (a moving camera), under the Auto detail only.
 /// </summary>
 public sealed class LensingGovernor
 {
     /// <summary>A mean GPU time per Close-up frame above this (ms) steps the level down (ruling P3-9).</summary>
     public const double MaxGpuMs = 12;
+
+    /// <summary>
+    /// Ruling proposal R-P3-12 (Task 4b): fed frames averaging more than this far apart (ms; below 50 fps, spec §2.5) step the level
+    /// down too, when the lensing takes more than <see cref="MinGpuMsForFrameRule"/> of them. The two GL views are drawn one after the
+    /// other on the UI thread, so the Close-up's GPU time adds to the whole window's frame.
+    /// </summary>
+    public const double MaxFrameIntervalMs = 20;
+
+    /// <summary>The least mean GPU time (ms) for the frame-rate rule: below it the lensing is not why the frames are slow.</summary>
+    public const double MinGpuMsForFrameRule = 2;
 
     /// <summary>The length of the window the mean is taken over (wall time), s; as <see cref="QualityGovernor.WindowS"/>.</summary>
     public const double WindowS = QualityGovernor.WindowS;
@@ -62,9 +120,12 @@ public sealed class LensingGovernor
         _frames++;
         if (_elapsedS < WindowS - 1e-9) return false;
         double mean = _gpuS / _frames;
+        double meanInterval = _elapsedS / _frames;
         _elapsedS = _gpuS = 0;
         _frames = 0;
-        if (!(mean > MaxGpuMs / 1000) || LensingLevels.NextDown(Level) is not { } next) return false;
+        // P3-9's rule, and (ruling proposal R-P3-12) below 50 fps while the lensing is a real part of the frame.
+        bool tooSlow = mean > MaxGpuMs / 1000 || (meanInterval > MaxFrameIntervalMs / 1000 && mean > MinGpuMsForFrameRule / 1000);
+        if (!tooSlow || LensingLevels.NextDown(Level) is not { } next) return false;
         Level = next;
         return true;
     }

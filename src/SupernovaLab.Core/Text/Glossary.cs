@@ -334,6 +334,8 @@ public static class Glossary
     public const string CloseUpCutaway = "Cuts the neutron star open to show its layers: the crust, and the core below it.";
     public const string CloseUpLabels = "Shows or hides the labels on the view, such as the measuring rings' distances.";
     public const string CloseUpFocusView = "Shows the view alone, without the column of numbers beside it.";
+    public const string CloseUpLightBendingDetail =
+        "How finely the bending of light round the black hole is worked out. Full is sharpest and slowest. Auto picks a coarser level while the view moves, if the graphics card needs it, and full resolution once it stops.";
 
     public const string Cutaway =
         "Removes one quarter of the picture, like a wedge cut from a cake, so you can see inside. The two flat faces of the cut " +

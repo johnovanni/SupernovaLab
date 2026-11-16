@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using SupernovaLab.App.Controllers;
@@ -365,4 +366,164 @@ public class CloseUpWindowTests
     }
 
     private static void Pump() => Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ContextIdle);
+
+    // ---- Task 4b: the light-bending detail (ruling R-P3-9) ----
+
+    [Fact]
+    public void LensingDetail_RoundTripsThroughLayoutStore_AndAnUnknownStoredValueIsAuto()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "snl-detail-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new LayoutStore(dir);
+            Assert.Equal(LensingDetail.Auto, store.Load().CloseUpLensingDetail);   // no file: Auto
+            foreach (var d in Enum.GetValues<LensingDetail>())
+            {
+                store.Save(new LayoutSettings { CloseUpLensingDetail = d, FocusView = true });
+                Assert.Equal(d, store.Load().CloseUpLensingDetail);
+            }
+            Assert.Contains("\"CloseUpLensingDetail\": \"Quarter\"", File.ReadAllText(store.Path));   // stored by name
+            foreach (string stored in new[] { "\"Ultra\"", "7", "2", "null", "true", "{}", "\"\"" })
+            {
+                File.WriteAllText(store.Path, $"{{\"FocusView\": true, \"CloseUpLensingDetail\": {stored}, \"KeyFolded\": true}}");
+                var loaded = store.Load();
+                Assert.Equal(LensingDetail.Auto, loaded.CloseUpLensingDetail);
+                Assert.True(loaded.FocusView && loaded.KeyFolded, $"the rest of the layout survives {stored}");
+            }
+            File.WriteAllText(store.Path, "{\"CloseUpLensingDetail\": \"half\"}");   // names are read case-insensitively
+            Assert.Equal(LensingDetail.Half, store.Load().CloseUpLensingDetail);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void CloseUpViewModel_LensingDetail_IsTheSavedLayoutSetting()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "snl-detail-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var main = new MainViewModel(TestOutcomes.Engine, new FakeWindowService(), new LayoutStore(dir));
+            var cu = new CloseUpViewModel(main);
+            Assert.Equal(LensingDetail.Auto, cu.LensingDetail);
+            var changed = new List<string?>();
+            cu.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+            cu.LensingDetail = LensingDetail.Half;
+            Assert.Contains(nameof(CloseUpViewModel.LensingDetail), changed);
+            Assert.Contains(nameof(CloseUpViewModel.Notes), changed);
+            Assert.Equal(LensingDetail.Half, main.Layout.CloseUpLensingDetail);
+            main.Layout.Flush();
+            cu.Dispose();
+
+            var again = new CloseUpViewModel(new MainViewModel(TestOutcomes.Engine, new FakeWindowService(), new LayoutStore(dir)));
+            Assert.Equal(LensingDetail.Half, again.LensingDetail);   // remembered between runs
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void CloseUpViewModel_LightBendingNote_NamesTheLevelShownAndWhoChoseIt()
+    {
+        var cu = OpenCloseUp("n6946bh1", out _);
+        Assert.Contains("Light bending: full resolution (automatic)", cu.Notes);
+        cu.ShownLensingLevel = LensingLevel.Quarter;   // the governor's level while the camera moves
+        Assert.Contains("Light bending: quarter resolution (automatic)", cu.Notes);
+        cu.LensingDetail = LensingDetail.Half;
+        cu.ShownLensingLevel = LensingLevel.Half;
+        Assert.Contains("Light bending: half resolution (your setting)", cu.Notes);
+        Assert.Single(cu.Notes, n => n.StartsWith("Light bending:", StringComparison.Ordinal));
+
+        var none = OpenCloseUp("sn2011fe", out _);   // nothing lensed: no note
+        Assert.DoesNotContain(none.Notes, n => n.StartsWith("Light bending:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CloseUpController_HonoursTheDetail_AutoIsTheGovernor()
+    {
+        var cu = OpenCloseUp("n6946bh1", out _);
+        var c = new CloseUpSceneController(cu, () => new FakeHost());
+        Assert.Equal(LensingDetail.Auto, c.Detail);
+        Assert.Equal((LensingLevel.Full, LensingLevel.Full), (c.MovingLevel, c.StillLevel));
+        for (int k = 0; k < 200; k++) c.FeedRenderTime(0.020, 1.0 / 60);
+        Assert.Equal((LensingLevel.Half, LensingLevel.Full), (c.MovingLevel, c.StillLevel));   // Auto: moving governed, still full
+
+        cu.LensingDetail = LensingDetail.Quarter;
+        Assert.Equal(LensingDetail.Quarter, c.Detail);
+        Assert.Equal((LensingLevel.Quarter, LensingLevel.Quarter), (c.MovingLevel, c.StillLevel));
+        cu.LensingDetail = LensingDetail.Full;
+        for (int k = 0; k < 400; k++) c.FeedRenderTime(0.050, 1.0 / 60);   // the user's level is never stepped down
+        Assert.Equal((LensingLevel.Full, LensingLevel.Full), (c.MovingLevel, c.StillLevel));
+        cu.LensingDetail = LensingDetail.Auto;   // back to Auto: the governor starts again from full
+        Assert.Equal(LensingLevel.Full, c.MovingLevel);
+        c.Dispose();
+    }
+
+    /// <summary>R-P3-10 at the controller: the rays it hands the tracer do not change with the time, only with the camera.</summary>
+    [Fact]
+    public void CloseUpController_TracedRays_DependOnTheCamera_NotOnTheTime()
+    {
+        var cu = OpenCloseUp("n6946bh1", out var main);
+        var c = new CloseUpSceneController(cu, () => new FakeHost());
+        var view = new Size(900, 600);
+        var before = c.RaysFor(view);
+        main.Timeline.ObserverTimeS = 3e7;
+        Assert.True(RayMapPlanner.SameRays(before, c.RaysFor(view)));
+        c.Rotate(10, 0);
+        Assert.False(RayMapPlanner.SameRays(before, c.RaysFor(view)));
+        c.Dispose();
+    }
+
+    /// <summary>
+    /// Task 4b's on-demand drawing: a time step that changes nothing the Close-up draws asks for no frame; one that moves the
+    /// environment past the refresh step (ruling P3-6) does.
+    /// </summary>
+    [Fact]
+    public void CloseUpController_ATimeStepThatChangesNothingDrawn_AsksForNoFrame()
+    {
+        var cu = OpenCloseUp("n6946bh1", out var main);
+        var host = new FakeHost();
+        var c = new CloseUpSceneController(cu, () => host);
+        c.Start();
+        main.Timeline.ObserverTimeS = 1e6;
+        c.MarkEnvironmentCapturedForTest();   // as if the cube map had just been drawn at this time
+        int renders = host.Renders;
+        main.Timeline.ObserverTimeS = 1e6 * 1.001;   // 0.0004 in log10: below the 0.005 step
+        Assert.Equal(renders, host.Renders);
+        main.Timeline.ObserverTimeS = 1e6 * 1.02;    // 0.0086: the surroundings must be redrawn
+        Assert.True(host.Renders > renders);
+        c.Dispose();
+    }
+
+    [Fact]
+    public void CloseUpViewModel_DetailMenuItems_AreRadioItems()
+    {
+        var cu = OpenCloseUp("n6946bh1", out _);
+        Assert.True(cu.IsDetailAuto);
+        cu.IsDetailQuarter = true;
+        Assert.Equal(LensingDetail.Quarter, cu.LensingDetail);
+        Assert.True(cu.IsDetailQuarter);
+        Assert.False(cu.IsDetailAuto || cu.IsDetailFull || cu.IsDetailHalf);
+        cu.IsDetailQuarter = false;   // a click on the checked item keeps it
+        Assert.Equal(LensingDetail.Quarter, cu.LensingDetail);
+        cu.IsDetailFull = true;
+        Assert.Equal(LensingDetail.Full, cu.LensingDetail);
+    }
+
+    /// <summary>Ruling proposal R-P3-11 as a pure function: which time steps redraw the Close-up.</summary>
+    [Fact]
+    public void TimeStepNeedsFrame_OnlyWhenSomethingDrawnChanged()
+    {
+        Assert.False(CloseUpSceneController.TimeStepNeedsFrame(false, false, true, 3.000, 3.004, true, 1));   // inside the 0.005 step
+        Assert.True(CloseUpSceneController.TimeStepNeedsFrame(false, false, true, 3.000, 3.006, true, 1));    // past it
+        Assert.False(CloseUpSceneController.TimeStepNeedsFrame(false, false, true, 3.000, 3.006, true, 0.1)); // past it, inside the cap
+        Assert.True(CloseUpSceneController.TimeStepNeedsFrame(false, false, true, 3.000, 3.000, false, 1));   // a new outcome
+        Assert.False(CloseUpSceneController.TimeStepNeedsFrame(false, false, false, 3.000, 4.000, true, 1));  // nothing lensed
+        Assert.True(CloseUpSceneController.TimeStepNeedsFrame(true, false, false, 3.000, 3.000, true, 0));    // a new state record
+        Assert.True(CloseUpSceneController.TimeStepNeedsFrame(false, true, false, 3.000, 3.000, true, 0));    // a menu switch
+    }
 }

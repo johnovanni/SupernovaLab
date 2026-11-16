@@ -58,10 +58,13 @@ public sealed partial class LayoutViewModel : ObservableObject
     [ObservableProperty] private bool _isNotesExpanded;
     [ObservableProperty] private bool _isCaptionCollapsed;
 
+    /// <summary>The Close-up's light-bending detail (Task 4b, ruling R-P3-9); the Close-up's view model reads and sets it here.</summary>
+    [ObservableProperty] private SupernovaLab.Rendering.LensingDetail _closeUpLensingDetail;
+
     public LayoutSettings Settings => new()
     {
         LabPanelFolded = IsLabFolded, OutcomeColumnFolded = IsOutcomeFolded, FocusView = IsFocusView, KeyFolded = IsKeyFolded,
-        NotesExpanded = IsNotesExpanded, CaptionCollapsed = IsCaptionCollapsed,
+        NotesExpanded = IsNotesExpanded, CaptionCollapsed = IsCaptionCollapsed, CloseUpLensingDetail = CloseUpLensingDetail,
     };
 
     /// <summary>Sets every state from settings (the saved file, the snapshot tool's <c>--layout</c>); nothing is saved.</summary>
@@ -76,6 +79,7 @@ public sealed partial class LayoutViewModel : ObservableObject
             IsKeyFolded = s.KeyFolded;
             IsNotesExpanded = s.NotesExpanded;
             IsCaptionCollapsed = s.CaptionCollapsed;
+            CloseUpLensingDetail = s.CloseUpLensingDetail;
         }
         finally
         {
@@ -131,7 +135,7 @@ public sealed partial class LayoutViewModel : ObservableObject
                 break;
         }
         if (!_loading && (e.PropertyName is nameof(IsLabFolded) or nameof(IsOutcomeFolded) or nameof(IsFocusView) or nameof(IsKeyFolded)
-                or nameof(IsNotesExpanded) or nameof(IsCaptionCollapsed)))
+                or nameof(IsNotesExpanded) or nameof(IsCaptionCollapsed) or nameof(CloseUpLensingDetail)))
             RequestSave();
     }
 

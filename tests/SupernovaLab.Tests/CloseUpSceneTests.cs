@@ -223,4 +223,154 @@ public class CloseUpSceneTests
         director.Jump(30e2);                                  // a 30 m framing radius
         Assert.Equal(50e2, director.OuterRingCm, 6);
     }
+
+    // ---- Task 4b: the cached ray map (ruling R-P3-10) and the light-bending detail (ruling R-P3-9) ----
+
+    private static LensingUniforms Rays(float yaw = 0, float spin = 0.9f, float surface = 0, Vector3 color = default)
+        => new(spin, new Vector3(36 * MathF.Cos(yaw), 36 * MathF.Sin(yaw), 0), new Vector3(-MathF.Cos(yaw), -MathF.Sin(yaw), 0),
+            new Vector3(-MathF.Sin(yaw), MathF.Cos(yaw), 0), Vector3.UnitZ, new Vector2(0.5f, 0.4f), 60, surface, color);
+
+    [Fact]
+    public void RayMap_TracesOnce_ThenOnlySamples_WhileNothingButTimeChanges()   // R-P3-10: time is not an input of the map
+    {
+        var p = new RayMapPlanner();
+        var first = p.Next(Rays(), 900, 600, LensingLevel.Full, LensingLevel.Full);
+        Assert.Equal(RayMapWork.Trace, first.Work);
+        Assert.Equal((900, 600), (first.Width, first.Height));
+        Assert.Equal(LensingLevel.Full, p.ShownLevel);
+        for (int k = 0; k < 10; k++) Assert.Equal(RayMapWork.None, p.Next(Rays(), 900, 600, LensingLevel.Full, LensingLevel.Full).Work);
+        // A neutron star's surface colour is applied when the map is sampled: it changes nothing traced.
+        Assert.Equal(RayMapWork.None, p.Next(Rays(color: Vector3.One), 900, 600, LensingLevel.Full, LensingLevel.Full).Work);
+    }
+
+    [Fact]
+    public void RayMap_RetracesWhenTheCameraSpinSurfaceViewportOrLevelChanges()
+    {
+        var cases = new (LensingUniforms U, int W, int H, LensingLevel L)[]
+        {
+            (Rays(yaw: 0.01f), 900, 600, LensingLevel.Half),   // the camera moved
+            (Rays(spin: 0.5f), 900, 600, LensingLevel.Half),   // the spin
+            (Rays(surface: 5), 900, 600, LensingLevel.Half),   // a neutron star's surface radius
+            (Rays() with { Grid = true }, 900, 600, LensingLevel.Half),
+            (Rays(), 901, 600, LensingLevel.Half),             // the viewport
+            (Rays(), 900, 600, LensingLevel.Quarter),          // the level (coarser: traced at once)
+        };
+        foreach (var (u, w, h, level) in cases)
+        {
+            var p = new RayMapPlanner();
+            p.Next(Rays(), 900, 600, LensingLevel.Half, LensingLevel.Half);
+            var step = p.Next(u, w, h, level, level);
+            Assert.Equal(RayMapWork.Trace, step.Work);
+            Assert.Equal(level, step.Level);
+            Assert.Equal(LensingLevels.TargetSize(w, h, level), (step.Width, step.Height));
+        }
+    }
+
+    [Fact]
+    public void RayMap_TracesAtTheMovingLevelWhileTheCameraMoves_ThenRefinesInStripsWhenItStops()
+    {
+        var p = new RayMapPlanner();
+        for (int k = 0; k < 5; k++)
+        {
+            var moving = p.Next(Rays(yaw: 0.01f * k), 900, 600, LensingLevel.Quarter, LensingLevel.Full);
+            Assert.Equal(RayMapWork.Trace, moving.Work);
+            Assert.Equal(LensingLevel.Quarter, moving.Level);
+        }
+        var still = Rays(yaw: 0.04f);
+        int rows = 0, frames = 0;
+        RayMapStep step;
+        do
+        {
+            step = p.Next(still, 900, 600, LensingLevel.Quarter, LensingLevel.Full);
+            Assert.Equal(RayMapWork.RefineStrip, step.Work);
+            Assert.Equal(LensingLevel.Full, step.Level);
+            Assert.Equal(rows, step.FirstRow);
+            Assert.True(step.Pixels <= p.PixelsPerFrame, "a strip stays inside one frame's budget");
+            Assert.Equal(LensingLevel.Quarter, step.Completes ? LensingLevel.Quarter : p.ShownLevel);   // the coarse map stays shown
+            rows += step.Rows;
+            frames++;
+        } while (!step.Completes);
+        Assert.Equal(600, rows);
+        Assert.True(frames > 1);
+        Assert.Equal(LensingLevel.Full, p.ShownLevel);
+        Assert.Equal(RayMapWork.None, p.Next(still, 900, 600, LensingLevel.Quarter, LensingLevel.Full).Work);
+    }
+
+    [Fact]
+    public void RayMap_AMoveDuringARefineStartsOver()
+    {
+        var p = new RayMapPlanner();
+        p.Next(Rays(), 900, 600, LensingLevel.Quarter, LensingLevel.Full);
+        Assert.Equal(RayMapWork.RefineStrip, p.Next(Rays(), 900, 600, LensingLevel.Quarter, LensingLevel.Full).Work);
+        Assert.True(p.IsRefining);
+        var moved = p.Next(Rays(yaw: 0.2f), 900, 600, LensingLevel.Quarter, LensingLevel.Full);
+        Assert.Equal(RayMapWork.Trace, moved.Work);
+        Assert.False(p.IsRefining);
+        Assert.Equal(0, p.Next(Rays(yaw: 0.2f), 900, 600, LensingLevel.Quarter, LensingLevel.Full).FirstRow);   // the refine restarts
+        p.Invalidate();
+        Assert.Equal(RayMapWork.Trace, p.Next(Rays(yaw: 0.2f), 900, 600, LensingLevel.Quarter, LensingLevel.Full).Work);
+    }
+
+    [Fact]
+    public void RayMap_StripBudget_FollowsTheMeasuredCostPerPixel()
+    {
+        Assert.Equal(RayMapPlanner.DefaultPixelsPerFrame, new RayMapPlanner().PixelsPerFrame);
+        Assert.Equal(40_000, RayMapPlanner.PixelsFor(RayMapPlanner.RefineBudgetS / 40_000));
+        Assert.Equal(RayMapPlanner.MinPixelsPerFrame, RayMapPlanner.PixelsFor(1));   // a very slow GPU still progresses
+        Assert.Equal(RayMapPlanner.DefaultPixelsPerFrame, RayMapPlanner.PixelsFor(double.NaN));
+        var p = new RayMapPlanner();
+        for (int k = 0; k < 30; k++)
+        {
+            p.ReportGpuTime(0, 0.001);                    // frames that only sample: 1 ms of other work
+            p.ReportGpuTime(100_000, 0.001 + 0.010);      // 10 ms for 100,000 rays: 1e-7 s per ray
+        }
+        Assert.InRange(p.PixelsPerFrame, 38_000, 42_000);   // 4 ms / 1e-7 s
+    }
+
+    [Theory]
+    [InlineData(LensingLevel.Full, false, "Light bending: full resolution (your setting)")]
+    [InlineData(LensingLevel.Half, false, "Light bending: half resolution (your setting)")]
+    [InlineData(LensingLevel.Quarter, false, "Light bending: quarter resolution (your setting)")]
+    [InlineData(LensingLevel.Full, true, "Light bending: full resolution (automatic)")]
+    [InlineData(LensingLevel.Quarter, true, "Light bending: quarter resolution (automatic)")]
+    public void LensingDetail_Note_IsTheExactString(LensingLevel shown, bool automatic, string expected)
+        => Assert.Equal(expected, LensingDetails.Note(shown, automatic));
+
+    [Fact]
+    public void LensingDetail_Levels_AutoIsTheGovernorMovingAndFullStill()
+    {
+        Assert.Equal(LensingLevel.Half, LensingDetails.MovingLevel(LensingDetail.Auto, governed: LensingLevel.Half));
+        Assert.Equal(LensingLevel.Full, LensingDetails.StillLevel(LensingDetail.Auto));
+        foreach (var (d, l) in new[] { (LensingDetail.Full, LensingLevel.Full), (LensingDetail.Half, LensingLevel.Half),
+                     (LensingDetail.Quarter, LensingLevel.Quarter) })
+        {
+            Assert.Equal(l, LensingDetails.MovingLevel(d, governed: LensingLevel.Quarter));
+            Assert.Equal(l, LensingDetails.StillLevel(d));
+        }
+        Assert.Equal(LensingDetail.Auto, default(LensingDetail));
+        Assert.Equal(LensingDetail.Half, LensingDetails.Parse("half"));
+        Assert.Equal(LensingDetail.Auto, LensingDetails.Parse("Ultra"));
+        Assert.Equal(LensingDetail.Auto, LensingDetails.Parse(null));
+        Assert.Equal(LensingDetail.Auto, LensingDetails.Parse("7"));
+    }
+
+    /// <summary>
+    /// Ruling proposal R-P3-12 (Task 4b): Auto holds 50 fps (spec §2.5). With the two GL views drawn one after the other on the UI
+    /// thread, the Close-up's GPU time adds to the frame, so a level can stay under 12 ms and still hold the window below 50 fps.
+    /// The governor therefore also steps down when the frames it is fed average more than 20 ms apart while the lensing costs more
+    /// than 2 ms of them; a slow frame that the lensing is not part of (under 2 ms) never steps it.
+    /// </summary>
+    [Fact]
+    public void LensingGovernor_AlsoStepsDownBelow50fps_WhenTheLensingIsPartOfTheFrame()
+    {
+        var g = new LensingGovernor(LensingLevel.Full);
+        for (int k = 0; k < 130; k++) g.Update(0.0115, 0.025);   // 11.5 ms (under 12) but 40 fps: steps down
+        Assert.Equal(LensingLevel.Half, g.Level);
+        var slow = new LensingGovernor(LensingLevel.Half);
+        for (int k = 0; k < 400; k++) slow.Update(0.0015, 0.030);   // 33 fps, but the lensing is only 1.5 ms of it: stays
+        Assert.Equal(LensingLevel.Half, slow.Level);
+        var fine = new LensingGovernor(LensingLevel.Half);
+        for (int k = 0; k < 400; k++) fine.Update(0.006, 0.019);    // 53 fps: stays
+        Assert.Equal(LensingLevel.Half, fine.Level);
+    }
 }

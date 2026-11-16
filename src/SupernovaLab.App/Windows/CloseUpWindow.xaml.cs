@@ -48,6 +48,9 @@ public partial class CloseUpWindow : Window
     /// <summary>Whether the GL control had its context right after Start (--snapshot logs it).</summary>
     public bool? GlContextExistsAfterStart => _glHost?.ContextExistsAfterStart;
 
+    /// <summary>The GL host, once the view has started (the bench reads its frame timings).</summary>
+    public GlHost? GlHost => _glHost;
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (Scene is not null || DataContext is not CloseUpViewModel vm) return;

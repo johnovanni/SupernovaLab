@@ -70,6 +70,9 @@ public partial class MainWindow : Window
     /// <summary>Whether the GL control had its context right after Start (--snapshot logs it; see GlHost).</summary>
     public bool? GlContextExistsAfterStart => _glHost?.ContextExistsAfterStart;
 
+    /// <summary>The GL host, once the view has started (the bench reads its frame timings).</summary>
+    public GlHost? GlHost => _glHost;
+
     /// <summary>The beams' clock shared with the Close-up (plan ruling P3-5); set at composition, before the window loads.</summary>
     public SupernovaLab.App.Services.BeamClock? BeamClock { get; init; }
 

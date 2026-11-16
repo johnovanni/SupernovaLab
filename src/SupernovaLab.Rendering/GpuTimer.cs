@@ -12,6 +12,7 @@ public sealed class GpuTimer : IDisposable
     private const int Slots = 4;
     private readonly int[] _queries = new int[Slots];
     private readonly Queue<int> _pending = new();
+    private readonly long[] _tags = new long[Slots];
     private readonly bool[] _busy = new bool[Slots];
     private int _next;
     private bool _active;
@@ -45,19 +46,23 @@ public sealed class GpuTimer : IDisposable
         _active = true;
     }
 
-    /// <summary>Ends the timing started by <see cref="Begin"/>.</summary>
-    public void End()
+    /// <summary>Ends the timing started by <see cref="Begin"/>; <paramref name="tag"/> comes back with its result (what the frame did).</summary>
+    public void End(long tag = 0)
     {
         if (!_active) return;
         GL.EndQuery(QueryTarget.TimeElapsed);
         _busy[_next] = true;
+        _tags[_next] = tag;
         _pending.Enqueue(_next);
         _next = (_next + 1) % Slots;
         _active = false;
     }
 
     /// <summary>Hands each finished measurement (seconds), oldest first, to <paramref name="onResult"/>; never waits for an unfinished one.</summary>
-    public void Poll(Action<double> onResult)
+    public void Poll(Action<double> onResult) => Poll((t, _) => onResult(t));
+
+    /// <summary>As <see cref="Poll(Action{double})"/>, with each measurement's tag from <see cref="End"/>.</summary>
+    public void Poll(Action<double, long> onResult)
     {
         if (!Available) return;
         try
@@ -70,7 +75,7 @@ public sealed class GpuTimer : IDisposable
                 GL.GetQueryObject(_queries[slot], GetQueryObjectParam.QueryResult, out long ns);
                 _pending.Dequeue();
                 _busy[slot] = false;
-                onResult(ns * 1e-9);
+                onResult(ns * 1e-9, _tags[slot]);
             }
         }
         catch

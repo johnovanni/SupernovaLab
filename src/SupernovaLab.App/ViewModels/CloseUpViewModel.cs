@@ -41,6 +41,7 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         main.OutcomeChanged += OnOutcomeChanged;
         main.Timeline.PropertyChanged += OnTimelineChanged;
         main.PropertyChanged += OnMainChanged;
+        main.Layout.PropertyChanged += OnLayoutChanged;
     }
 
     /// <summary>The shared lab state this window follows.</summary>
@@ -62,8 +63,65 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<ReadoutRow> Readouts { get; private set; } = Array.Empty<ReadoutRow>();
 
-    /// <summary>The scene notes (or the model error in their place).</summary>
-    public IReadOnlyList<string> Notes => _modelError is not null ? new[] { _modelError } : State.Notes;
+    /// <summary>
+    /// The scene notes (or the model error in their place), and while something is lensed the light-bending note (ruling R-P3-9):
+    /// "Light bending: half resolution (your setting)", or "(automatic)" for Auto.
+    /// </summary>
+    public IReadOnlyList<string> Notes => _modelError is not null ? new[] { _modelError }
+        : State.IsLensed ? State.Notes.Append(LightBendingNote).ToList()
+        : State.Notes;
+
+    /// <summary>The light-bending note for the level shown (or, before the view has drawn, the level it settles at).</summary>
+    public string LightBendingNote
+        => LensingDetails.Note(ShownLensingLevel ?? LensingDetails.StillLevel(LensingDetail), LensingDetail == LensingDetail.Auto);
+
+    /// <summary>
+    /// The user's light-bending detail (Close-up menu ▸ Light-bending detail, spec §2.5): kept in the main window's layout, so it is
+    /// saved to layout.json and outlives this window.
+    /// </summary>
+    public LensingDetail LensingDetail
+    {
+        get => Main.Layout.CloseUpLensingDetail;
+        set => Main.Layout.CloseUpLensingDetail = value;   // OnLayoutChanged raises the change
+    }
+
+    private LensingLevel? _shownLensingLevel;
+
+    /// <summary>The level of the light bending on screen now, set by the view's controller (null before it has drawn).</summary>
+    public LensingLevel? ShownLensingLevel
+    {
+        get => _shownLensingLevel;
+        set
+        {
+            if (_shownLensingLevel == value) return;
+            _shownLensingLevel = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Notes));
+        }
+    }
+
+    /// <summary>The menu's radio items (as the main view's Quality items): true chooses that detail; false on the checked one keeps it.</summary>
+    public bool IsDetailAuto { get => LensingDetail == LensingDetail.Auto; set => ChooseDetail(value, LensingDetail.Auto, nameof(IsDetailAuto)); }
+    public bool IsDetailFull { get => LensingDetail == LensingDetail.Full; set => ChooseDetail(value, LensingDetail.Full, nameof(IsDetailFull)); }
+    public bool IsDetailHalf { get => LensingDetail == LensingDetail.Half; set => ChooseDetail(value, LensingDetail.Half, nameof(IsDetailHalf)); }
+    public bool IsDetailQuarter { get => LensingDetail == LensingDetail.Quarter; set => ChooseDetail(value, LensingDetail.Quarter, nameof(IsDetailQuarter)); }
+
+    private void ChooseDetail(bool on, LensingDetail detail, string property)
+    {
+        if (on) LensingDetail = detail;
+        else OnPropertyChanged(property);   // a click on the checked item: it stays checked
+    }
+
+    private void OnLayoutChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(LayoutViewModel.CloseUpLensingDetail)) return;
+        OnPropertyChanged(nameof(LensingDetail));
+        OnPropertyChanged(nameof(IsDetailAuto));
+        OnPropertyChanged(nameof(IsDetailFull));
+        OnPropertyChanged(nameof(IsDetailHalf));
+        OnPropertyChanged(nameof(IsDetailQuarter));
+        OnPropertyChanged(nameof(Notes));
+    }
 
     /// <summary>Spec §2.3: why there is nothing to show; null when there is a compact remnant.</summary>
     public string? NoRemnantMessage => State.NoRemnantMessage;
@@ -190,5 +248,6 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         Main.OutcomeChanged -= OnOutcomeChanged;
         Main.Timeline.PropertyChanged -= OnTimelineChanged;
         Main.PropertyChanged -= OnMainChanged;
+        Main.Layout.PropertyChanged -= OnLayoutChanged;
     }
 }
