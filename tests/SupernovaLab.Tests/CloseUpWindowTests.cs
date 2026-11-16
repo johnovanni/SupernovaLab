@@ -1030,4 +1030,32 @@ public class CloseUpWindowTests
         thread.Join();
         Assert.Null(error);
     }
+
+    /// <summary>
+    /// Plan Task 11: while the collapsar's disk shows, the lensing pass gets its annulus (the ISCO of the drawn spin to the outer edge,
+    /// in GM/c²) and a brightness, and the escape sphere encloses the disk; the disk's fade changes only the brightness (no retrace). After
+    /// the disk ends there is no annulus.
+    /// </summary>
+    [Fact]
+    public void CloseUpController_PassesTheDiskToTheLensing_AndItsFadeNeverRetraces()
+    {
+        var cu = OpenCloseUp("sn1998bw", out var main);
+        double tbh = main.CurrentOutcome.Remnant.FormationTimeS!.Value;
+        main.Timeline.ObserverTimeS = tbh * main.CurrentObserver.TimeDilation + 5 * main.CurrentObserver.TimeDilation;
+        var c = new CloseUpSceneController(cu, () => new FakeHost());
+        var view = new Size(900, 640);
+        c.SetViewSize(view);
+        var s = cu.State;
+        Assert.True(s.HasDisk);
+        var u = c.RaysFor(view);
+        Assert.Equal((float)s.DiskInnerGm, u.DiskInner);
+        Assert.Equal((float)s.DiskOuterGm, u.DiskOuter);
+        Assert.True(u.DiskLevel > 0);
+        Assert.True(u.EscapeRadius >= 1.05f * u.DiskOuter);
+        main.Timeline.ObserverTimeS = (tbh + 20) * main.CurrentObserver.TimeDilation;
+        var after = c.RaysFor(view);
+        Assert.Equal(0, after.DiskOuter);
+        Assert.Equal(0, after.DiskLevel);
+        c.Dispose();
+    }
 }

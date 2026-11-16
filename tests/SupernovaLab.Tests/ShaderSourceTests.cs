@@ -150,4 +150,44 @@ public class ShaderSourceTests
         Assert.Contains("ray.a > 2.5", shade);
         Assert.Contains("uniform vec3 u_gridColor", shade);
     }
+
+    /// <summary>
+    /// Plan Task 11: the disk in lensing.frag mirrors BlackHoleOptics.Trace (the first crossing of the equatorial plane, linear between
+    /// steps, inside the annulus [u_diskInner, u_diskOuter], tested before the other fates; ℓ from the tracer's momentum, sign flipped by the
+    /// time reversal; g = 1/(u^t (1 − Ω ℓ)), Bardeen, Press &amp; Teukolsky 1972); the ray map keeps (g, r) with alpha 5, and disk.frag,
+    /// linked into both programs, shades it with the C# DiskRenderer's profile and ramp.
+    /// </summary>
+    [Fact]
+    public void LensingShader_DiskMirrorsTheCSharpTracer_AndDiskFragTheShading()
+    {
+        string Text(string name) => System.Text.Encoding.ASCII.GetString(Shaders().Single(s => s.Name.EndsWith("." + name)).Bytes);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string trace = Text("lensing.frag");
+        foreach (string needle in new[]
+                 {
+                     "uniform float u_diskInner", "uniform float u_diskOuter",
+                     "u_diskOuter > 0.0 && zPrev * x.z < 0.0",
+                     "vec3 xc = mix(xPrev, x, zPrev / (zPrev - x.z));",
+                     "rc >= u_diskInner && rc <= u_diskOuter",
+                     "float ell = -(x.x * p.y - x.y * p.x);",
+                     "float omega = 1.0 / (sr * rc + u_spin);",
+                     "float ut = (sr * rc + u_spin) / (sqrt(sr * rc) * sqrt(sr * rc - 3.0 * sr + 2.0 * u_spin));",
+                     "1.0 / (ut * (1.0 - omega * ell))",
+                     "o_color = vec4(diskG, diskR, 0.0, 5.0);",
+                     "vec3 diskShade(float g, float r);",
+                 })
+            Assert.Contains(needle, trace);
+        string shade = Text("lensing_shade.frag");
+        Assert.Contains("ray.a > 4.5", shade);
+        Assert.Contains("diskShade(ray.x, ray.y)", shade);
+        string disk = Text("disk.frag");
+        Assert.Contains($"const int RAMP_SIZE = {DiskRenderer.RampSize};", disk);
+        Assert.Contains("uniform vec3 u_diskRamp[RAMP_SIZE];", disk);
+        Assert.Contains($"const float PROFILE_PEAK_ISCOS = {DiskRenderer.ProfilePeakIscos.ToString("0.0000", inv)};", disk);
+        Assert.Contains($"const float PEAK_TEMPERATURE_K = {DiskRenderer.PeakTemperatureK.ToString("0.0", inv)};", disk);
+        Assert.Contains($"const float RAMP_FIRST_K = {DiskRenderer.RampFirstK.ToString("0.0", inv)};", disk);
+        Assert.Contains($"const float RAMP_STEP = {DiskRenderer.RampStep.ToString("0.000000", inv)};", disk);
+        Assert.Contains("g * g * g * g * diskProfile(r)", disk);
+        Assert.Contains("uniform float u_diskLevel", disk);
+    }
 }

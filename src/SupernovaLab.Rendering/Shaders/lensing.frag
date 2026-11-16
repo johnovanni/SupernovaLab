@@ -31,6 +31,14 @@
 //
 // Plan Task 10 (ruling P3-8): with u_grid = 1, a ray that crosses the sphere r = 50 outward and then escapes (or runs out of steps)
 // carries the grid's coverage at that crossing: latitude and longitude lines every 10 deg (a = 3 + coverage in the ray map).
+//
+// Plan Task 11 (spec section 6.2): with u_diskOuter > 0, the collapsar's thin, opaque accretion disk in the equatorial plane, the
+// annulus [u_diskInner (the ISCO), u_diskOuter] (BlackHoleOptics.Trace's disk item): before the fate tests of each step after the
+// first, a step whose z changed sign is cut at the plane (linear between its two points), and if the crossing's r lies in the
+// annulus the ray ends there (FATE_HIT_DISK). The light's redshift factor is g = 1/(u^t (1 - Omega l)) for a prograde circular Kerr
+// orbit, Omega = 1/(r^1.5 + a), u^t = (r^1.5 + a)/(r^0.75 sqrt(r^1.5 - 3 r^0.5 + 2 a)) (Bardeen, Press and Teukolsky 1972, eqs 2.12 and
+// 2.16), with l the light's angular momentum about +z per unit energy: -(x p_y - y p_x), the sign flipped by the time reversal (item 2).
+// The ray map keeps (g, r) with a = 5; disk.frag shades it (brightness g^4 times a schematic profile; colour schematic).
 
 in vec2 v_uv;
 
@@ -47,11 +55,14 @@ uniform float u_surfaceRadius; // a neutron star's surface (spin 0 only), GM/c^2
 // The surface is shaded by nsurface.frag (plan Task 6), linked into this program: nsSurface(hit point).
 uniform int u_grid;            // the grid sphere r = 50 GM/c^2 (plan ruling P3-8): 1 = on (plan Task 10)
 uniform vec3 u_gridColor;      // the grid lines' colour (the direct path; the ray map's shading pass has its own)
+uniform float u_diskInner;     // plan Task 11: the disk's inner edge, the ISCO (GM/c^2); shared with disk.frag
+uniform float u_diskOuter;     // the disk's outer edge (GM/c^2); 0 for no disk
 uniform samplerCube u_env;     // the surroundings seen from the remnant (EnvironmentCapture)
 
 out vec4 o_color;
 
 vec3 nsSurface(vec3 hit);      // nsurface.frag
+vec3 diskShade(float g, float r);   // disk.frag (plan Task 11)
 
 const int MAX_STEPS = 400;
 const float CAPTURE_MARGIN = 0.01;
@@ -65,6 +76,7 @@ const int FATE_CAPTURED = 0;
 const int FATE_ESCAPED = 1;
 const int FATE_HIT_SURFACE = 2;
 const int FATE_STEP_LIMIT = 3;
+const int FATE_HIT_DISK = 4;
 
 // Plan Task 10, ruling P3-8 (BlackHoleOptics.GridRadius, GridStepDeg, GridLineDistanceDeg): the grid sphere and its line spacing.
 const float GRID_RADIUS = 50.0;
@@ -238,6 +250,8 @@ void main()
     vec3 xPrev = x;
     vec3 gridHit = vec3(0.0, 0.0, GRID_RADIUS);
     bool crossed = false;
+    float diskG = 0.0;
+    float diskR = 0.0;
     if (fate == FATE_NONE)
     {
         for (int steps = 0; steps <= MAX_STEPS; steps++)
@@ -251,6 +265,25 @@ void main()
             {
                 gridHit = mix(xPrev, x, (GRID_RADIUS - rPrev) / (r - rPrev));
                 crossed = true;
+            }
+            // Plan Task 11: the thin disk, where the step crossed the equatorial plane inside the annulus.
+            float zPrev = xPrev.z;
+            if (rPrev >= 0.0 && u_diskOuter > 0.0 && zPrev * x.z < 0.0)
+            {
+                vec3 xc = mix(xPrev, x, zPrev / (zPrev - x.z));
+                float rc = ksR(a * a, vec3(xc.xy, 0.0));
+                if (rc >= u_diskInner && rc <= u_diskOuter)
+                {
+                    float ell = -(x.x * p.y - x.y * p.x);
+                    float sr = sqrt(rc);
+                    float omega = 1.0 / (sr * rc + u_spin);
+                    float ut = (sr * rc + u_spin) / (sqrt(sr * rc) * sqrt(sr * rc - 3.0 * sr + 2.0 * u_spin));
+                    diskG = 1.0 / (ut * (1.0 - omega * ell));
+                    diskR = rc;
+                    x = vec3(xc.xy, 0.0);
+                    fate = FATE_HIT_DISK;
+                    break;
+                }
             }
             if (u_surfaceRadius > 0.0 && r < u_surfaceRadius) { fate = FATE_HIT_SURFACE; break; }
             if (r < rCapture) { fate = FATE_CAPTURED; break; }
@@ -270,14 +303,16 @@ void main()
 
     if (u_output == 1)
     {
-        // The ray map's alpha: 0 captured, 1 escaped, 2 surface, 3 + coverage (below 1) escaped across a grid line.
-        if (fate == FATE_HIT_SURFACE) o_color = vec4(x, 2.0);
+        // The ray map's alpha: 0 captured, 1 escaped, 2 surface, 3 + coverage (below 1) escaped across a grid line, 5 the disk (g, r).
+        if (fate == FATE_HIT_DISK) o_color = vec4(diskG, diskR, 0.0, 5.0);
+        else if (fate == FATE_HIT_SURFACE) o_color = vec4(x, 2.0);
         else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) o_color = vec4(dir, grid > 0.002 ? 3.0 + min(grid, 0.999) : 1.0);
         else o_color = vec4(0.0);
         return;
     }
     vec3 color = vec3(0.0);
     if (fate == FATE_HIT_SURFACE) color = nsSurface(x);
+    else if (fate == FATE_HIT_DISK) color = diskShade(diskG, diskR);
     else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) color = mix(texture(u_env, dir).rgb, u_gridColor, grid);
     o_color = vec4(color, 1.0);
 }

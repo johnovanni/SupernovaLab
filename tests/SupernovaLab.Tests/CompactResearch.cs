@@ -183,6 +183,8 @@ public static class CompactResearch
         public const double DiskOuterKm = 200, DiskOuterGm29 = 46.7;
         /// <summary>§C8 App: the disk exists from t_BH + 1 s to t_BH + 15 s.</summary>
         public const double DiskFromS = 1, DiskToS = 15;
+        /// <summary>§C8 App: the disk "fades over the last 20%" of that window [APPROX].</summary>
+        public const double DiskFadeFraction = 0.2;
         /// <summary>§C8 observed spins: Cygnus X-1 a* &gt; 0.9985 (Zhao et al. 2021); A0620−00 0.12 ± 0.19 (Gou et al. 2010).</summary>
         public const string CygX1 = "0.9985", A0620 = "0.12 ± 0.19";
     }

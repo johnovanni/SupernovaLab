@@ -145,6 +145,29 @@ public sealed record CloseUpState
     /// </summary>
     public BlackHoleState? BlackHole { get; init; }
 
+    // ---- Plan Task 11: the collapsar's accretion disk and jets (spec §6.2). 0, false or NaN without them. ----
+
+    /// <summary>The disk's inner edge: the ISCO of <see cref="Spin"/>, the drawn spin (GM/c², exact; compact §C7); 0 without a disk.</summary>
+    public double DiskInnerGm { get; init; }
+
+    /// <summary>The disk's outer edge: MW99's 200 km torus in the drawn mass's GM/c² (compact §C8); 0 without a disk.</summary>
+    public double DiskOuterGm { get; init; }
+
+    /// <summary>The disk's brightness, 0 to 1 (<see cref="BlackHoleState.DiskBrightness"/>: its fade in and out).</summary>
+    public double DiskBrightness { get; init; }
+
+    /// <summary>Whether the lensing pass draws the disk (it exists: t_BH + 1 s to t_BH + 15 s for a collapsar).</summary>
+    public bool HasDisk => DiskOuterGm > 0;
+
+    /// <summary>Whether the jets' base is drawn: while the disk feeds the hole (the burst's engine).</summary>
+    public bool ShowJets { get; init; }
+
+    /// <summary>The jets' axis: the spin axis, +z, the main view's jet axis (<see cref="JetRenderer.JetAxis"/>).</summary>
+    public Vec3 JetAxis { get; init; } = new(0, 0, 1);
+
+    /// <summary>The jets' half-opening angle, the main view's (<see cref="Core.Signals.GrbModel.JetHalfAngleRad"/>); NaN without jets.</summary>
+    public double JetHalfAngleRad { get; init; } = double.NaN;
+
     /// <summary>Whether the core is drawn (the PreCollapse or FirstSecond era): unlensed surfaces (plan Task 9, as ruling R-P3-19).</summary>
     public bool IsCoreStage => Core is not null;
 
@@ -427,6 +450,23 @@ public sealed class CloseUpScene
 
     private CloseUpState? _settledBlackHole;
 
+    // ---- Plan Task 11: the collapsar's accretion disk and jets (spec §6.2, §6.4; compact §C7, §C8) ----
+
+    /// <summary>The plan's exact note while the disk is drawn.</summary>
+    public const string DiskNote = "Accretion disk: inner edge at the ISCO (exact); size from simulations; brightness schematic";
+
+    /// <summary>What is exact and what schematic in the disk's light (spec §6.2).</summary>
+    public const string DiskShadingNote =
+        "The disk is drawn thin, in the hole's equator, from the innermost stable orbit (the ISCO, exact for the spin) to the 200 km torus of the simulations (MacFadyen & Woosley 1999), for the ≈ 15 s the infall feeds it. Its light carries the exact shift of gas orbiting a spinning hole, gravitational and Doppler together (g = 1/(u^t(1 − Ωℓ)); Bardeen, Press & Teukolsky 1972), as seen from far away: the side turning towards you is brighter (by g⁴) and bluer, the gas near the hole redder. Its radial brightness and colours are schematic: the real torus is thick, at billions of degrees, and shines mostly in neutrinos. Seen edge-on, as the camera starts, its far side shows bent over and under the shadow";
+
+    /// <summary>The jets' base (spec §6.2: "the jets point along the spin axis, which is the main view's rotation axis").</summary>
+    public const string JetsNote =
+        "Jets: their base, along the spin axis, the same axis as the main view's jets, drawn while the disk feeds the hole (schematic, the main view's 5° half-angle; drawn without the bending of light, and hidden inside the shadow). The main view draws the jets while the lab models the burst, so the two views need not show them at the same time (#67)";
+
+    /// <summary>After the disk: why it is gone (spec §6.2: "the disk fades out when accretion ends").</summary>
+    public const string DiskEndedNote =
+        "The accretion disk is gone: the infall that fed it ends about 15 s after the hole formed (MacFadyen & Woosley 1999), and the jets' base with it";
+
     /// <summary>
     /// Plan Task 10: the black hole at this time (<see cref="BlackHoleModel.At"/>): the forming, settling and settled eras (ruling P3-12),
     /// the readouts of spec §6.1 (mass, horizon, shadow, spin, kick and the size from Earth), the notes and the stage caption. The lensing
@@ -504,6 +544,12 @@ public sealed class CloseUpScene
         notes.Add(bh.Birth == BlackHoleBirth.DirectCollapse ? NoKickNote : ScaledKickNote);
         notes.Add(SurroundingsNote);
         if (_spin > 0) notes.Add(BenchSpinNote);
+        // Plan Task 11: the collapsar's disk and the jets' base while accretion feeds the hole; afterwards, why they are gone.
+        bool disk = bh.HasDisk;
+        if (disk) notes.InsertRange(bh.IsSettled ? 2 : 1, new[] { DiskNote, DiskShadingNote, JetsNote });
+        else if (bh.Birth == BlackHoleBirth.Collapsar && sourceTimeS - t0 > BlackHoleModel.DiskToS) notes.Add(DiskEndedNote);
+        var key = new List<string> { "┄ the shadow's exact edge (computed for this camera)", "View ▸ Grid: the measuring grid, horizon, photon orbits, ergosphere" };
+        if (disk) key.Insert(0, "Accretion disk (inner edge at the ISCO; brightness schematic) and the jets' base along the spin axis");
 
         double drawnShadowKm = BlackHoleOptics.ApparentShadowDiameterRad(bh.DrawnMassMsun, 1e5, bh.DrawnSpin);
         var state = new CloseUpState
@@ -517,7 +563,12 @@ public sealed class CloseUpScene
             Spin = bh.DrawnSpin,
             BlackHole = bh,
             StageLabel = caption,
-            StageKey = new[] { "┄ the shadow's exact edge (computed for this camera)", "View ▸ Grid: the measuring grid, horizon, photon orbits, ergosphere" },
+            StageKey = key,
+            DiskInnerGm = disk ? bh.DiskInnerGm : 0,
+            DiskOuterGm = disk ? bh.DiskOuterGm : 0,
+            DiskBrightness = disk ? bh.DiskBrightness : 0,
+            ShowJets = disk,
+            JetHalfAngleRad = disk ? Core.Signals.GrbModel.JetHalfAngleRad : double.NaN,
         };
         if (bh.IsSettled && still) _settledBlackHole = state;
         return state;

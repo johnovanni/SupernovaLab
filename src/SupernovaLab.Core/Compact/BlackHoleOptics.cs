@@ -13,6 +13,8 @@ public enum RayFate
     HitSurface,
     /// <summary>Still inside after <see cref="BlackHoleOptics.MaxSteps"/> steps (a ray looping near the photon sphere).</summary>
     StepLimit,
+    /// <summary>Plan Task 11: crossed the equatorial plane inside the accretion disk's annulus (opaque, thin). Shade the disk there.</summary>
+    HitDisk,
 }
 
 /// <summary>
@@ -25,6 +27,12 @@ public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 Ex
 {
     /// <summary>Where the ray first crossed r = <see cref="BlackHoleOptics.GridRadius"/> outward, or null (ruling P3-8).</summary>
     public Vec3? GridCrossing { get; init; }
+
+    /// <summary>
+    /// Plan Task 11: for <see cref="RayFate.HitDisk"/>, the Boyer–Lindquist r where the ray met the disk (GM/c²) and the light's redshift
+    /// factor g = ν_received/ν_emitted there (<see cref="BlackHoleOptics.DiskRedshift"/>); null otherwise.
+    /// </summary>
+    public (double RadiusGm, double Redshift)? DiskHit { get; init; }
 }
 
 /// <summary>
@@ -80,6 +88,14 @@ public readonly record struct RayResult(RayFate Fate, Vec3 ExitPosition, Vec3 Ex
 /// <item><b>Grid</b> (plan Task 10, ruling P3-8). The first outward crossing of the sphere r = <see cref="GridRadius"/> (50), the
 /// point linear between the two steps either side (<see cref="RayResult.GridCrossing"/>); the shader draws the grid lines there
 /// (<see cref="GridLineDistanceDeg"/>).</item>
+/// <item><b>Disk</b> (plan Task 11; spec §6.2). With an annulus [diskInner, diskOuter] (diskOuter &gt; 0), before the fate tests of each
+/// step after the first: if z changed sign over the step (z_prev · z &lt; 0), the crossing point is linear between the two points
+/// (u = z_prev/(z_prev − z)), and if its r (the Kerr–Schild r at z = 0, √(x² + y² − a²)) lies in the annulus the ray ends there as
+/// HitDisk: a thin, opaque disk, so the first crossing is the one seen, and a ray through the plunging region inside the ISCO goes on.
+/// The light's redshift is g = 1/(u^t (1 − Ω ℓ)) (<see cref="DiskRedshift"/>), with ℓ = L/E the photon's own angular momentum about +z.
+/// The tracer's momentum is the time-reversed ray's (p_t = −1, item 2), so the light's is ℓ = −(x p_y − y p_x), the rotation Killing
+/// component x p_y − y p_x being conserved and the same in the outgoing chart (the charts differ only in t and in a shift of φ by a
+/// function of r).</item>
 /// </list>
 /// <para>
 /// Budget: a ray from a camera at distance D travels about 2.2 D (in, then out to R_esc = 1.2 D) at h = 2.0, plus about
@@ -328,9 +344,11 @@ public static class BlackHoleOptics
     /// <see cref="MaxSteps"/> steps. Positions in Kerr–Schild Cartesian coordinates, GM/c², spin axis +z. The algorithm,
     /// which the shader mirrors, is set out on <see cref="BlackHoleOptics"/>.
     /// </summary>
+    /// <param name="diskInner">Plan Task 11: the accretion disk's inner edge (the ISCO), GM/c².</param>
+    /// <param name="diskOuter">The disk's outer edge; 0 (the default) for no disk.</param>
     public static RayResult TraceRay(double spin, Vec3 cameraPosition, Vec3 direction, double escapeRadius,
-                                     double surfaceRadius = 0)
-        => Trace(spin, cameraPosition, direction, escapeRadius, surfaceRadius, MaxSteps, farCameras: true);
+                                     double surfaceRadius = 0, double diskInner = 0, double diskOuter = 0)
+        => Trace(spin, cameraPosition, direction, escapeRadius, surfaceRadius, MaxSteps, farCameras: true, diskInner, diskOuter);
 
     /// <summary>
     /// <see cref="TraceRay"/> with a different step budget. Only the tests use another budget (rays fired from
@@ -339,7 +357,7 @@ public static class BlackHoleOptics
     /// Everything else is identical.
     /// </summary>
     internal static RayResult Trace(double spin, Vec3 cameraPosition, Vec3 direction, double escapeRadius,
-                                    double surfaceRadius, int maxSteps, bool farCameras = false)
+                                    double surfaceRadius, int maxSteps, bool farCameras = false, double diskInner = 0, double diskOuter = 0)
     {
         double a = -spin; // time reversal: the future-directed ray around −a (see the class notes, item 2)
         double rPlus = HorizonRadius(spin), floor = StepFloor(spin);
@@ -374,6 +392,21 @@ public static class BlackHoleOptics
                 double u = (GridRadius - rPrev) / (r - rPrev);
                 grid = new Vec3(xPrev + u * (x - xPrev), yPrev + u * (y - yPrev), zPrev + u * (z - zPrev));
             }
+            // Plan Task 11 (class notes, the disk item): the thin disk, where the step crossed the equatorial plane inside the annulus.
+            if (rPrev >= 0 && diskOuter > 0 && zPrev * z < 0)
+            {
+                double u = zPrev / (zPrev - z);
+                double xc = xPrev + u * (x - xPrev), yc = yPrev + u * (y - yPrev);
+                double rc = KerrSchildR(a * a, xc, yc, 0);
+                if (rc >= diskInner && rc <= diskOuter)
+                {
+                    double ell = -(x * py - y * px);
+                    return new(RayFate.HitDisk, new Vec3(xc, yc, 0), new Vec3(k1x, k1y, k1z).Normalized(), steps)
+                    {
+                        GridCrossing = grid, DiskHit = (rc, DiskRedshift(spin, rc, ell)),
+                    };
+                }
+            }
             RayFate fate;
             if (surfaceRadius > 0 && r < surfaceRadius) fate = RayFate.HitSurface;
             else if (r < rCapture) fate = RayFate.Captured;
@@ -392,6 +425,41 @@ public static class BlackHoleOptics
 
     /// <summary>Ruling P3-8: the grid sphere's radius (GM/c²) and its lines' spacing in latitude and longitude (degrees).</summary>
     public const double GridRadius = 50, GridStepDeg = 10;
+
+    // ---- Plan Task 11: the accretion disk's light (spec §6.2: "gravitational redshift and the Doppler brightening ... are exact") ----
+
+    /// <summary>
+    /// The angular velocity dφ/dt of a prograde circular equatorial orbit of radius r about a hole of spin a (M = 1):
+    /// Ω = 1/(r^{3/2} + a) (Bardeen, Press &amp; Teukolsky 1972, ApJ 178, 347, eq. 2.16). The same in Boyer–Lindquist and Kerr–Schild
+    /// time, which differ by a function of r only.
+    /// </summary>
+    public static double CircularOrbitOmega(double spin, double r) => 1 / (r * Math.Sqrt(r) + spin);
+
+    /// <summary>
+    /// u^t = dt/dτ of that orbit: (r^{3/2} + a)/(r^{3/4} √(r^{3/2} − 3 r^{1/2} + 2a)) (Bardeen, Press &amp; Teukolsky 1972, eq. 2.12,
+    /// M = 1). Infinite (no circular orbit) where the root's argument is not positive: inside the prograde photon orbit.
+    /// </summary>
+    public static double CircularOrbitUt(double spin, double r)
+    {
+        double sr = Math.Sqrt(r);
+        double arg = r * sr - 3 * sr + 2 * spin;
+        return arg > 0 ? (r * sr + spin) / (Math.Sqrt(r * sr) * Math.Sqrt(arg)) : double.PositiveInfinity;
+    }
+
+    /// <summary>
+    /// The redshift factor g = ν_received/ν_emitted of light from gas on a prograde circular equatorial orbit at r, reaching an observer at
+    /// rest far away: g = 1/(u^t (1 − Ω ℓ)), with ℓ = L/E the photon's conserved angular momentum about the spin axis per unit energy (the
+    /// photon's energy measured by the gas is E u^t (1 − Ω ℓ), and E far away; Cunningham 1975, ApJ 202, 788; Luminet 1979, A&amp;A 75,
+    /// 228). It holds the gravitational redshift and the Doppler shift together, both exact: 1/u^t = √(1 − 3/r) for ℓ = 0 without spin.
+    /// 0 where there is no circular orbit. [The Close-up's camera is a coordinate camera close in (#65); g is the shift to a distant
+    /// observer, as the readouts' sizes are.]
+    /// </summary>
+    public static double DiskRedshift(double spin, double r, double ell)
+    {
+        double ut = CircularOrbitUt(spin, r);
+        if (!double.IsFinite(ut)) return 0;
+        return 1 / (ut * (1 - CircularOrbitOmega(spin, r) * ell));
+    }
 
     /// <summary>
     /// Ruling P3-8: how far a point on the grid sphere is from the nearest latitude line (in degrees of the polar angle θ, from the spin

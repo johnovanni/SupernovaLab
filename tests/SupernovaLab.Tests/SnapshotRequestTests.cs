@@ -267,6 +267,20 @@ public class SnapshotRequestTests
         Assert.Null(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.BenchSpin);
     }
 
+    /// <summary>
+    /// Plan Task 11: <c>--lab-mass</c> sets the lab's initial mass (M☉) before the captures, so a "default@t" entry can show an outcome no
+    /// preset has (the fallback black hole, 27.4 M☉ at the default inputs); within the lab's range only.
+    /// </summary>
+    [Fact]
+    public void LabMass_SetsTheLabsInitialMass_ForDefaultEntries()
+    {
+        var r = SnapshotRequest.Parse(new[] { "--snapshot", "out", "--preset", "default@10", "--lab-mass", "27.4", "--window", "closeup" })!;
+        Assert.Equal(27.4, r.LabMass);
+        Assert.Null(SnapshotRequest.Parse(new[] { "--snapshot", "out" })!.LabMass);
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--lab-mass", "heavy" }));
+        Assert.Throws<ArgumentException>(() => SnapshotRequest.Parse(new[] { "--snapshot", "out", "--lab-mass", "100000" }));
+    }
+
     [Theory]
     [InlineData("1")]
     [InlineData("-0.1")]

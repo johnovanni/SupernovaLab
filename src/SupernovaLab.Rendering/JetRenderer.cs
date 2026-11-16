@@ -13,8 +13,14 @@ public sealed class JetRenderer : IDisposable
     private const int Segments = 48;
 
     /// <summary>The jets: bluish white (schematic), reaching 1.6 × the framing radius.</summary>
-    private static readonly Vector3 JetColor = new(0.75f, 0.85f, 1f);
+    public static readonly Vector3 JetColor = new(0.75f, 0.85f, 1f);
     public const double JetLength = 1.6;
+
+    /// <summary>
+    /// The jets' axis, the rotation axis (scene +z; spec §6 of Project 2). Plan Task 11: the Close-up's black hole spins about it too
+    /// (the tracer's chart, ruling R-P3-8), so both views draw the jets along the same axis.
+    /// </summary>
+    public static readonly Vector3d JetAxis = Vector3d.UnitZ;
 
     /// <summary>Task 11: through the HDR target the jets are drawn at this multiple of their ordinary strength, so they bloom (scene light, not a fixed colour).</summary>
     public const float HdrGain = 4f;
@@ -50,8 +56,18 @@ public sealed class JetRenderer : IDisposable
     public void RenderJets(OrbitCamera camera, Size viewportPx, double halfAngleRad, double scale, bool hdr = false)
     {
         var color = JetColor * GainFor(hdr);
-        foreach (var axis in new[] { Vector3d.UnitZ, -Vector3d.UnitZ })
+        foreach (var axis in new[] { JetAxis, -JetAxis })
             RenderCone(camera, viewportPx, axis, JetLength * scale, halfAngleRad, color, 0.9f);
+    }
+
+    /// <summary>
+    /// Plan Task 11: the Close-up's jets, the same two cones along ± <see cref="JetAxis"/> from the hole, <paramref name="length"/> long, in
+    /// this colour, with the parts the hole's shadow hides dropped (<paramref name="occluder"/>: the horizon and the shadow's radius).
+    /// </summary>
+    public void RenderJets(OrbitCamera camera, Size viewportPx, double halfAngleRad, double length, Vector3 color, StarOccluder? occluder)
+    {
+        foreach (var axis in new[] { JetAxis, -JetAxis })
+            RenderCone(camera, viewportPx, axis, length, halfAngleRad, color, 0.9f, default, occluder);
     }
 
     /// <summary>

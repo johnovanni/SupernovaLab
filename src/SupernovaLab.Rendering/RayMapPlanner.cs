@@ -77,12 +77,15 @@ public sealed class RayMapPlanner
 
     /// <summary>
     /// True when two sets of uniforms give the same rays: all equal except the surface's shading (its colour, and plan Task 6's spin
-    /// phase, tilt, polar cap and markings) and plan Task 10's grid colour, which are applied when the map is sampled.
+    /// phase, tilt, polar cap and markings), plan Task 10's grid colour and plan Task 11's disk brightness, which are applied when the map
+    /// is sampled. The disk's edges are part of the rays (a ray ends where it meets the disk): Task 11's caching choice, see
+    /// <see cref="DiskRenderer"/>.
     /// </summary>
     public static bool SameRays(in LensingUniforms a, in LensingUniforms b) => RaysOnly(a) == RaysOnly(b);
 
     private static LensingUniforms RaysOnly(in LensingUniforms u)
-        => u with { SurfaceColor = default, SurfacePhaseRad = 0, SurfaceTiltRad = 0, SurfaceCapCos = 0, SurfaceMarkings = false, GridColor = default };
+        => u with { SurfaceColor = default, SurfacePhaseRad = 0, SurfaceTiltRad = 0, SurfaceCapCos = 0, SurfaceMarkings = false, GridColor = default,
+            DiskLevel = 0 };
 
     /// <summary>The band size that takes <see cref="RefineBudgetS"/> at this cost per ray (s); the default when it is unknown.</summary>
     public static int PixelsFor(double secondsPerRay)

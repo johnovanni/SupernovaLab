@@ -12,11 +12,14 @@ namespace SupernovaLab.Rendering;
 /// colour, and the grid switch (plan ruling P3-8). Plan Task 6: the surface's shading (<c>nsurface.frag</c>): the spin phase about +z,
 /// the magnetic tilt, the cosine of the polar cap's angular radius, and whether the schematic markings are drawn. The shading is
 /// applied when the ray map is sampled, so it never causes a retrace (<see cref="RayMapPlanner.SameRays"/>). Plan Task 10: the grid lines' colour
-/// (<see cref="GridColor"/>), likewise applied when the map is sampled.
+/// (<see cref="GridColor"/>), likewise applied when the map is sampled. Plan Task 11: the collapsar's accretion disk, the annulus from
+/// <see cref="DiskInner"/> (the ISCO) to <see cref="DiskOuter"/> in GM/c² (0: no disk), part of the rays, and its brightness
+/// <see cref="DiskLevel"/> (the fade times the exposure's gain), applied when the map is sampled (<see cref="DiskRenderer"/>).
 /// </summary>
 public readonly record struct LensingUniforms(float Spin, Vector3 CameraPosition, Vector3 Forward, Vector3 Right, Vector3 Up,
     Vector2 TanHalf, float EscapeRadius, float SurfaceRadius = 0, Vector3 SurfaceColor = default, bool Grid = false,
-    float SurfacePhaseRad = 0, float SurfaceTiltRad = 0, float SurfaceCapCos = 1, bool SurfaceMarkings = false, Vector3 GridColor = default);
+    float SurfacePhaseRad = 0, float SurfaceTiltRad = 0, float SurfaceCapCos = 1, bool SurfaceMarkings = false, Vector3 GridColor = default,
+    float DiskInner = 0, float DiskOuter = 0, float DiskLevel = 0);
 
 /// <summary>
 /// The Close-up's light bending (spec §6.6, plan rulings P3-7 and P3-9, ruling R-P3-10). <c>lensing.frag</c>, the GLSL mirror of
@@ -35,8 +38,9 @@ public readonly record struct LensingUniforms(float Spin, Vector3 CameraPosition
 public sealed class LensingPass : ILensingPass
 {
     // Plan Task 6: the tracer (for its direct path) and the shading pass both link nsurface.frag, the neutron star's surface shading.
-    private readonly ShaderProgram _trace = ShaderProgram.FromResources("fullscreen.vert", "lensing.frag", "nsurface.frag");
-    private readonly ShaderProgram _shade = ShaderProgram.FromResources("fullscreen.vert", "lensing_shade.frag", "nsurface.frag");
+    // Plan Task 11: both also link disk.frag, the accretion disk's shading.
+    private readonly ShaderProgram _trace = ShaderProgram.FromResources("fullscreen.vert", "lensing.frag", "nsurface.frag", "disk.frag");
+    private readonly ShaderProgram _shade = ShaderProgram.FromResources("fullscreen.vert", "lensing_shade.frag", "nsurface.frag", "disk.frag");
     private readonly ShaderProgram _upsample = ShaderProgram.FromResources("fullscreen.vert", "upsample.frag");
     private readonly int _vao = GL.GenVertexArray();
     private readonly bool _hdr;
@@ -190,6 +194,7 @@ public sealed class LensingPass : ILensingPass
         program.Set("u_capCos", u.SurfaceCapCos);
         program.Set("u_markings", u.SurfaceMarkings ? 1 : 0);
         program.Set("u_gridColor", u.GridColor);   // plan Task 10: the grid lines, applied when the map is sampled
+        DiskRenderer.Apply(program, u);             // plan Task 11: the disk's edges (traced), level and colour ramp (sampled)
     }
 
     /// <summary>Stretches the colour target over the current framebuffer and viewport (alpha masked off, as before).</summary>

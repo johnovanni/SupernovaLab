@@ -63,7 +63,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     int? SweepSteps = null, IReadOnlyList<QualityLevel>? QualityLevelList = null, bool Cutaway = false,
     IReadOnlyList<int>? TourStopList = null, bool BenchTour = false, LayoutSettings? Layout = null, bool OpenCloseUp = false,
     double? BenchSpin = null, bool BenchBaseline = false, IReadOnlyList<LensingDetail>? BenchDetails = null,
-    IReadOnlyList<CloseUpBenchCamera>? BenchCameras = null)
+    IReadOnlyList<CloseUpBenchCamera>? BenchCameras = null, double? LabMass = null)
 {
     /// <summary>The orbiting camera's rate in a bench run (degrees of yaw per second): one turn in 12 s.</summary>
     public const double BenchOrbitDegPerS = 30;
@@ -159,7 +159,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         bool openCloseUp = false, benchBaseline = false;
         List<LensingDetail>? benchDetails = null;
         List<CloseUpBenchCamera>? benchCameras = null;
-        double? benchSpin = null;
+        double? benchSpin = null, labMass = null;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -239,6 +239,12 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                         throw new ArgumentException($"--bench-spin needs a spin from 0 to 0.998, not '{value}'.");
                     benchSpin = spin;
                     break;
+                case "--lab-mass":   // plan Task 11: the lab's initial mass for "default" entries (e.g. 27.4 M☉: a fallback black hole)
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double mass)
+                        || !(mass >= LabInputs.MinInitialMass) || mass > LabInputs.MaxInitialMass)
+                        throw new ArgumentException($"--lab-mass needs an initial mass from {LabInputs.MinInitialMass} to {LabInputs.MaxInitialMass} M☉, not '{value}'.");
+                    labMass = mass;
+                    break;
                 case "--quality":
                     foreach (string q in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                         qualities.Add(QualityLevels.Parse(q) ?? throw new ArgumentException($"--quality needs high, medium or low, not '{q}'."));
@@ -251,7 +257,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
         if (windows.Contains(SnapshotWindow.CloseUp)) openCloseUp = true;
         return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour, layout,
-            openCloseUp, benchSpin, benchBaseline, benchDetails, benchCameras);
+            openCloseUp, benchSpin, benchBaseline, benchDetails, benchCameras, labMass);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -442,6 +448,11 @@ public static class SnapshotRenderer
                 quality.IsCutaway = request.Cutaway;
             }
             if (request.OpenCloseUp) await OpenCloseUp(request, windows, log);
+            if (request.LabMass is double labMass)   // plan Task 11: for "default" entries (list them before any preset)
+            {
+                vm.Lab.InitialMass = labMass;
+                log.Add($"lab initial mass {labMass.ToString("0.###", CultureInfo.InvariantCulture)} M☉");
+            }
             var presets = request.PresetIds.Count > 0 ? request.PresetIds.Cast<string?>().ToList() : new List<string?> { null };
             foreach (string? entry in presets)
             {
@@ -1098,6 +1109,10 @@ public static class SnapshotRenderer
             log.Add($"closeup{suffix}: black hole {bvm.State.Era}, {bvm.State.StageLabel}; drawn {bh.DrawnMassMsun.ToString("0.###", inv)} M☉, " +
                     $"spin {bh.DrawnSpin.ToString("0.###", inv)} (hole {bh.Spin.ToString("0.###", inv)}), settled {bh.SettledFraction.ToString("0.###", inv)}; " +
                     $"grid {bvm.ShowGrid}; labels {string.Join(", ", w.Scene?.ViewLabels.Select(l => l.Text) ?? Array.Empty<string>())}");
+            // Plan Task 11: the collapsar's disk and jets.
+            log.Add($"closeup{suffix}: birth {bh.Birth}; disk {(bvm.State.HasDisk ? $"{bvm.State.DiskInnerGm.ToString("0.###", inv)}–{bvm.State.DiskOuterGm.ToString("0.#", inv)} GM/c², brightness {bvm.State.DiskBrightness.ToString("0.###", inv)}" : "none")}; " +
+                    $"jets {bvm.State.ShowJets}; camera {(w.Scene is { } cam ? (cam.Camera.DistanceMpc / bvm.State.GravitationalRadiusKm).ToString("0.#", inv) : "?")} GM/c² from the hole; " +
+                    $"kick drift {UnitFormat.Distance(bh.OffsetCm.Length)}");
         }
         log.Add(await w.ShowFrameForSnapshotAsync());
         await NextFrame(w);
@@ -1116,6 +1131,18 @@ public static class SnapshotRenderer
             log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}-wide.png")));
             w.HideFrameForSnapshot();
             wide.Home();
+        }
+        // Plan Task 11: the collapsar's disk lies edge-on to the starting camera, so a second capture frames the whole disk from 20° above it.
+        if (w.Scene is { } tilt && w.DataContext is CloseUpViewModel dvm && dvm.State is { HasDisk: true } ds)
+        {
+            tilt.FrameForSnapshot(1.15 * ds.DiskOuterGm * ds.GravitationalRadiusKm, 20);
+            for (int k = 0; k < 120 && tilt.ShownLevel != LensingLevel.Full; k++) await NextFrame(w);
+            log.Add($"closeup{suffix}-disk: framed {(1.15 * ds.DiskOuterGm * ds.GravitationalRadiusKm).ToString("N0", CultureInfo.InvariantCulture)} km from 20° above the disk; {RayLog(tilt)}");
+            log.Add(await w.ShowFrameForSnapshotAsync());
+            await NextFrame(w);
+            log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}-disk.png")));
+            w.HideFrameForSnapshot();
+            tilt.Home();
         }
     }
 

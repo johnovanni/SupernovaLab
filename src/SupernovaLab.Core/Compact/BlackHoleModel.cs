@@ -23,7 +23,8 @@ public enum BlackHoleBirth
 /// spin climbs during its spin-up. <see cref="SpinQuantity"/> is the spin with its confidence (always Speculative) and range.
 /// <see cref="SettledFraction"/> is how far the settling has gone (0 at t_BH, 1 once settled). <see cref="Forming"/> is true for
 /// the first <see cref="BlackHoleModel.FormingS"/> after t_BH. <see cref="HasDisk"/> and <see cref="DiskOuterGm"/> (the disk's outer
-/// edge in the hole's GM/c² now) are the collapsar's accretion disk (§C8; drawn from Task 11). <see cref="OffsetCm"/> is the drift
+/// edge in the hole's GM/c² now) are the collapsar's accretion disk (§C8; drawn in the Close-up's lensing pass from Task 11, with
+/// <see cref="DiskInnerGm"/> and <see cref="DiskBrightness"/>). <see cref="OffsetCm"/> is the drift
 /// from the explosion's centre (<see cref="KickDrift"/>).
 /// <para>What the picture uses: <see cref="DrawnSpin"/> and <see cref="DrawnMassMsun"/>, the settling stepped in
 /// <see cref="BlackHoleModel.TransitionSteps"/> steps, so the cached ray map is retraced a bounded number of times however finely the
@@ -55,6 +56,18 @@ public sealed record BlackHoleState(double MassMsun, double Spin, Quantity SpinQ
 
     /// <summary>Whether the settling is over (the caption "Settled: spinning black hole").</summary>
     public bool IsSettled => SettledFraction >= 1;
+
+    /// <summary>
+    /// Plan Task 11: the disk's inner edge, the prograde ISCO of <see cref="DrawnSpin"/> (GM/c², exact for the drawn spin; compact §C7), while
+    /// <see cref="BlackHoleState.HasDisk"/>; 0 without a disk.
+    /// </summary>
+    public double DiskInnerGm { get; init; }
+
+    /// <summary>
+    /// Plan Task 11: the disk's brightness, 0 to 1: a fade-in over <see cref="BlackHoleModel.DiskFadeInS"/> [presentation], then 1, then a
+    /// linear fade over the last <see cref="BlackHoleModel.DiskFadeFraction"/> of its life (§C8 App [APPROX]); 0 without a disk.
+    /// </summary>
+    public double DiskBrightness { get; init; }
 }
 
 /// <summary>
@@ -93,6 +106,25 @@ public static class BlackHoleModel
 
     /// <summary>§C8 App: the collapsar disk's outer edge (MW99's 200 km torus) and when it exists (t_BH + 1 s to t_BH + 15 s).</summary>
     public const double DiskOuterKm = 200, DiskFromS = 1, DiskToS = 15;
+
+    /// <summary>§C8 App: the disk "fades over the last 20%" of <see cref="DiskFromS"/> to <see cref="DiskToS"/> [APPROX].</summary>
+    public const double DiskFadeFraction = 0.2;
+
+    /// <summary>
+    /// [Presentation] Plan Task 11: the disk fades in over this long after it forms (s of source time), so it does not appear as a sudden
+    /// bright flash; §C8 gives only its start ("a disk forms after ≈ 1 M☉ has been accreted (≈ 1 s)").
+    /// </summary>
+    public const double DiskFadeInS = 0.5;
+
+    /// <summary>The disk's brightness Δt after t_BH (0 to 1): fade-in, full, then the last 20% fading linearly to 0 at 15 s (§C8).</summary>
+    public static double DiskBrightnessAt(double dt)
+    {
+        if (!(dt >= DiskFromS) || !(dt <= DiskToS)) return 0;
+        double fadeFrom = DiskToS - DiskFadeFraction * (DiskToS - DiskFromS);
+        double rise = Math.Min(1, (dt - DiskFromS) / DiskFadeInS);
+        double fall = dt <= fadeFrom ? 1 : (DiskToS - dt) / (DiskToS - fadeFrom);
+        return Math.Clamp(Math.Min(rise, fall), 0, 1);
+    }
 
     /// <summary>
     /// The formation (spec §6.4: the new hole rings down to a smooth Kerr state "within milliseconds"; §C8: the quasi-normal period is
@@ -245,6 +277,8 @@ public static class BlackHoleModel
             FinalMassMsun = final,
             SourceTimeS = sourceTimeS,
             FormationTimeS = t0,
+            DiskInnerGm = disk ? BlackHoleOptics.IscoRadius(drawnSpin) : 0,
+            DiskBrightness = disk ? DiskBrightnessAt(dt) : 0,
         };
     }
 
