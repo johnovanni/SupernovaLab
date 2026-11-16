@@ -1188,3 +1188,39 @@ public sealed class FlashLimiter { public double Apply(double intensity, double 
 | §7.3 gamma-panel flare spike | 12 |
 | §8.1 research | 1 |
 | §10 flagged items | not built; listed in Task 14's README and calls doc |
+
+---
+
+## After the owner's first look (2026-11-16)
+
+### Task 15: Reset on outcome changes, the initial condition at t = 0, the Close-up's sound, and its starting place
+
+The owner's four requests, in their words:
+1. "If the user changes the settings that affect the outcome, the scenario should stop and reset to time = 0."
+2. "The main window should display the initial condition when time = 0."
+3. "I can't turn on the sound on the core closeup window."
+4. "The core closeup window should initially display in the lower right so it doesn't cover the first appearance of changes
+   on the main screen. The user can move it if they need to."
+
+**Rulings (my calls, for the owner's review):**
+- **R-P3-41:** "settings that affect the outcome" are the star inputs, the Advanced inputs and choosing a preset (anything
+  that makes a new Outcome). They pause playback and move the timeline to t = 0. The observer settings (distance, dust,
+  beam toward Earth) and Re-roll do not reset, because they change what is seen, not what happens. A running guided tour
+  ends with its existing note. This replaces Project 1 spec §2.4's "keeping the current time".
+- **R-P3-42:** "t = 0" is the timeline's left end. There every view shows the initial condition: the main 3D view the star
+  before collapse (Project 1 §6), the instrument panels "Not yet", the Close-up the pre-collapse core.
+- **R-P3-43:** the Close-up opens at the lower-right corner of the screen that holds the main window (its work area, with a
+  16 DIP margin), unless the owner has already moved it this session.
+
+**Steps:**
+- [ ] **Step 1 (diagnose, superpowers:systematic-debugging):** find why the sound cannot be turned on, and why t = 0 does not
+  show the initial condition. Reproduce each in a test before fixing.
+- [ ] **Step 2: Fix 1–4 with tests** (reset on outcome change; initial condition at the left end; the sound; the Close-up's
+  starting place). For the sound, also make its state visible for every outcome (not only in the pulse-trace row), and
+  check the click is audible to a hard-of-hearing listener (a lower-pitched click is a reasonable call; it stays labelled
+  schematic).
+- [ ] **Step 3: One confirming launch** (app's own --snapshot only; the sound check by log, not by ear).
+- [ ] **Step 4: Log SN-002 to SN-005** in private/SupernovaLab-issues.xlsx (git-excluded), and update the spec and the
+  build record.
+- [ ] **Step 5: Commit.**
+
