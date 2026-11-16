@@ -130,7 +130,8 @@ could be": from Earth every object here is far too small to picture.
   radio beams are drawn. The spin is shown at most one turn in 2 s ("Shown 60× slower" for the Crab), so nothing flashes.
   View > Cutaway opens it: the crust, the neutron drip line, nuclear pasta and the core, to scale, with a magnified strip
   of the crust. The pulse trace at the bottom marks each beam crossing Earth; View > Sound plays the real pulse rate as
-  clicks (off by default; nothing depends on hearing it). The kick moves the star, in both windows.
+  clicks (off by default; while it is on, a line at the top of the window says what it plays or why it is silent;
+  nothing depends on hearing it). The kick moves the star, in both windows.
 - **A magnetar**: its stronger field and its rare giant flares (drawn at random from the run number: Re-roll redraws
   them), each a single modest brightening, also shown as a spike on the gamma-ray panel's burst tab.
 - **A black hole** bends the main view's real scene behind it (general relativity, traced ray by ray). Its shadow,

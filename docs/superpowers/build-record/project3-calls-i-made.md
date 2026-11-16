@@ -2,7 +2,7 @@
 
 You asked me to make every reversible call myself and to report them afterwards. Here they are, grouped by theme, in
 plain words. Each has a number so you can find its full wording, reason and cost-if-wrong in `project3-rulings.md`
-(plan rulings P3-1 to P3-13 are in the plan; the pre-flight rulings are S1–S3; execution rulings are R-P3-1 to R-P3-37).
+(plan rulings P3-1 to P3-13 are in the plan; the pre-flight rulings are S1–S3; execution rulings are R-P3-1 to R-P3-43).
 Any of these can be changed. Where a decision was yours, not mine, it says so.
 
 ## First, one correction you need to know about
@@ -13,6 +13,38 @@ Any of these can be changed. Where a decision was yours, not mine, it says so.
   lab gives) it is about 1.4–1.5 million K. So the comparison had been apples to oranges, and the lab is warm, not cool.
   The spec was corrected, and the Close-up's temperature tooltip for Cas A gives both figures. It is disclosed, not
   tuned, because changing the cooling model would change the X-ray panel.
+
+## After your first look (2026-11-16)
+
+You asked for four things after first using the app. What I found and changed:
+
+- **A new explosion starts again from the beginning (R-P3-41).** Changing a star setting, an Advanced setting or the
+  preset now stops playback and moves the timeline back to its start. Changing the distance, the dust or "beam toward
+  Earth", or pressing Re-roll, does not: those change how the same explosion is seen, not what happens. A running tour
+  ends with "Tour ended: new explosion", as before.
+- **At the start, everything shows the star before the explosion (R-P3-42).** The timeline's left end is 1 millisecond
+  after the core's bounce (a log scale cannot reach zero), and the views were drawn at that moment: the shock was
+  already inside the star, and the neutrino panel said "Detected". Now the left end means t = 0: the time reads
+  "t = 0 · before core bounce", the main view shows the star with no shock yet (a Type Ia's white dwarf), every
+  instrument says "Not yet", and the Close-up shows the core before collapse. One step after you press Play, the
+  explosion has begun as before.
+- **The Close-up's sound (my call, please check it).** The Sound switch did work, but you could hardly ever hear it,
+  and nothing showed it was on. It played only while the timeline was playing *and* the pulsar's pulses reached Earth:
+  that is only from 10 years on, about 6 seconds of a 40-second run, and then playback stops at 1,000 years; at a
+  paused moment it never played. Its on/off state was shown only in the pulse row, which is hidden for the core's
+  first second, a black hole or a Type Ia, so the switch seemed to do nothing. Now:
+  - the sound plays whenever the pulses reach Earth, paused or playing (the pulse row keeps running while paused too);
+  - while the sound is on, a line at the top of the Close-up says what it plays ("clicking 30 a second") or why it is
+    silent ("silent: no pulsar in this outcome", "silent until the pulsar's pulses reach Earth (10 years)", "hidden by
+    debris until 10 years"), with a volume slider;
+  - the click is lower and louder, for ears that lose the high notes first: one cycle of a 500 Hz tone in the same
+    2-millisecond click (it was two cycles of 1,000 Hz), and 80% volume to start (it was 50%). Still schematic;
+  - the switch and the volume stay as you set them when you close and reopen the Close-up (until the app closes).
+  If you would rather it stayed silent while paused, that is one line to change back.
+- **The Close-up opens at the lower right (R-P3-43).** The first time, it opens in the lower-right corner of the screen
+  (16 pixels in from the edges), so it does not cover the main view's first changes. Once you move it, it comes back
+  where you left it. On a second monitor it goes to the lower right of the main window instead, because the app does
+  not use the Windows calls that would find the other screen's edges (your antivirus rule).
 
 ## The ones that change what you see most
 

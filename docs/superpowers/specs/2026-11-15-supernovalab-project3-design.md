@@ -324,7 +324,8 @@ Two more rules:
     the radio panel:
     - the pulsar's beam is toward Earth;
     - the pulses have escaped the debris;
-    - the timeline is playing.
+    - the timeline is playing (removed 2026-11-16, Task 15: the sound now plays paused or playing, as the pulse trace
+      does; see §14).
     - Otherwise it is silent, and the trace's on-screen words say why ("hidden by debris", "beam misses Earth").
   - **The sound and the picture keep separate rates, both labelled.**
     - The sound plays at the real rate. Sound has no flash limit, and the real rate is the accurate one.
@@ -741,3 +742,34 @@ Built on the `project3` branch, subagent-driven as before. Reversible calls are 
   would receive the pulses. Both rates are labelled on screen.
 - **Builder check (2026-11-15):** a fresh reviewer read this spec before the owner. Its six questions are settled above
   (C2, C13–C18). None needed the owner.
+
+## 14. After the owner's first look (2026-11-16, Task 15)
+
+The owner's four requests after first using the app, and what changed:
+
+1. **"If the user changes the settings that affect the outcome, the scenario should stop and reset to time = 0."**
+   Ruling R-P3-41: a star or Advanced input, or choosing a preset (anything that makes a new outcome), pauses playback
+   and moves the timeline to its left end. The observer's settings (distance, dust, beam toward Earth) and Re-roll do
+   not reset: they change what is seen, not what happens. A running guided tour ends with its note "Tour ended: new
+   explosion". This replaces Project 1 spec §2.4's "keeping the current time" (a dated note there says so).
+2. **"The main window should display the initial condition when time = 0."** Ruling R-P3-42: t = 0 is the timeline's
+   left end (the log axis starts at 1 ms, so that point stands for 0). There the time reads "t = 0 · before core
+   bounce" (or "before ignition"); the main 3D view shows the star before the explosion, with no shock in it yet (a
+   Type Ia's white dwarf as its marker); every instrument badge says "Not yet" (a signal this supernova never makes
+   still says "Not produced") and no value is read out; the Close-up shows the core before collapse (as it already
+   did). Before this, the views were drawn at 1 ms after bounce: the shock was already in the star and the neutrinos
+   were "Detected".
+3. **"I can't turn on the sound on the core closeup window."** The switch worked, but the sound almost never played and
+   nothing showed that it was on: it played only while the timeline was playing *and* pulses reached Earth (from 10
+   years on, about 6 seconds of a 40-second run, after which playback stops at 1,000 years), and its state was shown only
+   in the pulse-trace row, which is hidden for the core's first second, a black hole and a Type Ia. Now, my call for
+   the owner's review: the sound plays whenever Earth receives the pulses, paused or playing (it agrees with the pulse
+   trace, which keeps running while paused); while it is on, a line at the top of the Close-up says what it plays
+   ("clicking 30 a second") or why it is silent ("silent: no pulsar in this outcome", "silent until the pulsar's pulses
+   reach Earth (10 years)"), with a volume slider. The click is lower and louder: one cycle of 500 Hz under the same
+   2 ms envelope (it was two cycles of 1 kHz), peak 0.97 of full scale, default volume 80% (was 50%); still schematic.
+   The switch and volume are kept for the session when the window is closed and reopened.
+4. **"The core closeup window should initially display in the lower right."** Ruling R-P3-43: the Close-up first opens
+   at the lower-right corner of the work area of the screen that holds the main window, 16 DIP in from its edges; once
+   the owner has moved it, it reopens where it was left (for the session). WPF alone knows only the primary screen's
+   work area, so a main window on another screen puts the Close-up at the main window's own lower right.

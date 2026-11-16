@@ -122,6 +122,10 @@ failed supernova), and Betelgeuse ("if it exploded today").
 ### 2.4 Explode
 - **Explode** computes the outcome and starts the timeline at t = 0. Changing an input recomputes the outcome
   immediately, keeping the current time.
+  - **Changed 2026-11-16 (Project 3, Task 15; ruling R-P3-41, at the owner's request):** a change that makes a new
+    outcome (a star or Advanced input, or choosing a preset) now pauses playback and moves the timeline to t = 0, its
+    left end, instead of keeping the current time. The observer's settings (distance, dust, beam toward Earth) and
+    Re-roll still keep the time and playback. At t = 0 every view shows the initial condition (ruling R-P3-42).
 - The physics is **deterministic**: the same inputs always give the same outcome. Randomness appears only in
   displayed **events** (individual neutrino and photon counts, drawn from Poisson statistics). It uses a seed
   shown as "Run #n", and **Re-roll** draws new events.
