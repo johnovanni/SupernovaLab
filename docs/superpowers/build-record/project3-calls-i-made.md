@@ -26,7 +26,7 @@ Any of these can be changed. Where a decision was yours, not mine, it says so.
   something changes. Auto drops to a coarser level if the frames get slow, stepping two levels at once when it predicts
   one is not enough.
 - **Far cameras (R-P3-6).** A ray from a camera more than 200 GM/c² away is moved straight to that distance first and
-  given the small textbook bend (4GM/bc²) for the stretch it skips. The bend left out is under half a degree.
+  given the small textbook bend (4GM/bc²) for the stretch it skips. The bend left out is up to about 1° in a thin ring at 200 GM/c² (only when zoomed out about 10× past the default view), elsewhere well under.
 - **The thin bright rim at the black hole's shadow edge is the photon ring (R-P3-7):** rays that nearly orbit the hole
   run out of steps, and they are drawn as the ring they are.
 - **Before the shock breaks out, the core is surrounded by a dim warm haze (R-P3-21),** because it is inside the
@@ -42,9 +42,12 @@ Any of these can be changed. Where a decision was yours, not mine, it says so.
   screen: the pulse trace marks each beam crossing, and its line says the real rate and how much the picture is slowed.
 - **One beam clock for both windows (P3-5).** Both 3D views read the beam's phase from one shared clock, so the main
   view's beams and the Close-up's always point the same way. The drawn turn is never faster than once in 2 s.
-- **What the black hole bends (P3-6).** The Close-up renders the main view's real scene (its own particles, at the Low
-  quality) from the remnant's position into a 256 × 256 cube map, refreshed when the time has moved by more than 0.005 of a
-  decade, the outcome or run changes, and at most 4 times a second. The bent view is that picture.
+- **What the black hole bends (P3-6).** The Close-up renders Project 2's scene at Low quality (50,000 particles) from the
+  remnant's position into a 256 × 256 cube map, refreshed when the time has moved by more than 0.005 of a decade, the
+  outcome or run changes, and at most 4 times a second. It ignores the main view's cutaway (a viewing aid, not
+  physical) and quality setting, and it leaves out the wind haze, the jets (drawn separately along +z in the Close-up) and
+  SN 1987A's rings, so the bent sky is a simplified version of the main view's scene (ruling R-P3-40). The Close-up's
+  note says so. The bent view is that picture.
 - **The ray tracer (P3-7).** One algorithm written twice, in C# for the tests and in the shader for the picture: light is
   traced backwards from the camera through the spinning hole's space-time (Kerr–Schild coordinates, fourth-order
   Runge–Kutta steps, at most 400 of them), and a ray is captured, escapes, or hits the neutron star's surface.
@@ -79,8 +82,9 @@ Any of these can be changed. Where a decision was yours, not mine, it says so.
 - **The beam's width is 5.6° × P^(−1/2) (R-P3-4, #59),** a published fit (Biggs 1990) between the two published
   families; the plan's 5.4° was not a published value. **The Crab's magnetic tilt is the published 62° (R-P3-4)**; every
   other pulsar uses the schematic 45°, the same in both windows.
-- **Black-hole spins until the research confirmed them (P3-13):** Slow 0.1, Fast 0.5, Extreme 0.9, any gamma-ray-burst
-  outcome 0.9, a collapsar starting at 0.5. All Speculative. The research (§C8) confirmed them.
+- **Black-hole spins (P3-13):** Slow 0.1, Fast 0.5, Extreme 0.9, any gamma-ray-burst outcome 0.9, a collapsar starting
+  at 0.5. All Speculative. The research (§C8) supports the others, but marks the Fast = 0.5 value as an [APPROX mapping]
+  (a rounded choice between published values), not a confirmed one.
 - **The first second's earliest rows (under 30 ms) are approximate stand-ins (R-P3-5),** labelled "From simulations",
   as the whole first second is.
 - **The magnetar's period only reaches seconds for the slow-rotation magnetar (R-P3-3, #57).** Observed magnetars

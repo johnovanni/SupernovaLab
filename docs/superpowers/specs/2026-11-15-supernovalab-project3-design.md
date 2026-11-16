@@ -531,6 +531,7 @@ exactly as relativity says:
 - At 1,000 yr the drift is a fraction of the remnant's size: about 0.4 pc at 400 km/s.
 - The director camera still frames the debris, not the marker.
 - The main view's beams keep their phase and tilt in step with the close-up (§4.3).
+- The remnant marker glows, bounded and flash-limited, during a magnetar's giant flare, so the views agree (ruling R-P3-39).
 
 ### 7.3 The gamma-ray panel (Project 1)
 - A magnetar's giant flare (§5) appears on the gamma-ray panel as a short spike with its event marker, at the flare's

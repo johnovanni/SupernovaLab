@@ -81,6 +81,8 @@ In addition:
     the remnant's position into a **256² RGBA16F cube map**.
   - It refreshes when log₁₀ source time has moved by > 0.005, the outcome or run number changed, or the main view's
     cutaway or quality changed, and at most **4 times per wall second**.
+    *(Amended by R-P3-40: the environment is fixed at Low quality and ignores the main view's cutaway and quality, so
+    only the time, outcome and run triggers apply.)*
   - The no-HDR path uses RGBA8.
 - **P3-7, the ray tracer.**
   - One algorithm, written twice: GLSL in `lensing.frag` and C# in `BlackHoleOptics.TraceRay`.
@@ -175,3 +177,7 @@ Numbered in the order they were made. The ledger (`project3-ledger.md`) says whi
 
 - Ruling R-P3-36 (renumbered from R-P3-28 — that number is used in the build record for the uneven-interpulse test): add Task 14b — diagnose and fix the main-view frame-time regression before the final review: instrument per-subsystem UI-thread timing in --bench (ExplosionScene.At, panel/VM updates, Close-up VM, layout/render), up to 2 launches (diagnose, confirm), optional bisect by building an older commit in a temporary detached worktree outside the repo folder (never switch this checkout's branch). Also confirm the three post-launch fixes in the confirming launch — why: Project 2's view must not regress and criterion 5 is a success criterion — cost: 2 more launches (logged).
 - Ruling R-P3-37: Task 14's doc fix round waits until Task 14b lands (both touch docs/perf-2026-11.md / README) — why: no concurrent edits — cost: minutes.
+
+- Ruling R-P3-39: keep the main view's giant-flare glow (bounded, flash-limited) — why: spec §1 "the views can never contradict" means a flare drawn in the Close-up must show at the remnant marker too, and plan Task 12 called for it — record it as a spec §7.2 bullet and in the calls doc for the owner to approve or veto — cost if wrong: one renderer change to remove.
+- Ruling R-P3-40: ratify the P3-6 deviation — the Close-up environment is Project 2's scene at Low quality from the remnant's position, ignoring the main view's cutaway (a viewing aid, not physical) and quality; it omits the wind haze (disclosed), the jets (drawn separately along +z in the Close-up) and SN 1987A's rings (a simplification). `CloseUpScene.SurroundingsNote` names every omission; rulings and calls docs amended — why: honest record — cost: a slightly simpler sky than "the main view's scene".
+- Ruling R-P3-38: Task 14's docs-only fix round is verified by the final whole-branch review instead of a separate scoped re-review — why: docs only, and the final review reads the whole branch — cost: none.
