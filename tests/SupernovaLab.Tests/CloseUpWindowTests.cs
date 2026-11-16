@@ -534,14 +534,140 @@ public class CloseUpWindowTests
     {
         public List<RayMapStep> Steps { get; } = new();
         public bool FailBands { get; set; }
+        public bool FailTraces { get; set; }
+        public int DirectFrames { get; private set; }
+        public LensingUniforms Last { get; private set; }
         public bool CachesRays => true;
         public bool Render(Size viewportPx, RayMapStep step, in LensingUniforms u, int environmentCubeMap)
         {
             Steps.Add(step);
-            return !(FailBands && step.Work == RayMapWork.RefineStrip);
+            Last = u;
+            return !(FailBands && step.Work == RayMapWork.RefineStrip) && !(FailTraces && step.Work == RayMapWork.Trace);
         }
-        public void RenderDirect(Size viewportPx, LensingLevel level, in LensingUniforms u, int environmentCubeMap) { }
+        public void RenderDirect(Size viewportPx, LensingLevel level, in LensingUniforms u, int environmentCubeMap)
+        {
+            DirectFrames++;
+            Last = u;
+        }
         public void Dispose() { }
+    }
+
+    // ---- Plan Task 6: the neutron star's moving parts join the on-demand drawing (ruling R-P3-11's condition) ----
+
+    private const double CrabAgeS = 2.9568e10;
+
+    private static (CloseUpSceneController C, FakeHost Host, FakeLensing Lensing, CloseUpViewModel Vm) DrawnCrab(double wall = 5)
+    {
+        var (c, host, lensing, vm) = Drawn("sn1054");
+        vm.Main.Timeline.ObserverTimeS = CrabAgeS * vm.Main.CurrentObserver.TimeDilation;
+        return (c, host, lensing, vm);
+    }
+
+    [Fact]
+    public void Controller_APulsarsBeams_KeepTheViewDrawing_EvenWhilePaused()
+    {
+        var (c, host, _, vm) = DrawnCrab();
+        Assert.False(vm.Main.Timeline.IsPlaying);
+        Assert.True(vm.State.ShowBeams);
+        for (int k = 0; k < 100; k++) host.Tick();   // the ray map refined long since: only the beams move now
+        Assert.Equal(LensingLevel.Full, c.ShownLevel);
+        Assert.True(c.IsAnimating, "the beams turn with the beam clock while the timeline is paused");
+        Assert.True(host.Animating);
+        c.SetVisible(false);
+        Assert.False(host.Animating);                // hidden: nothing turns on screen
+        c.Dispose();
+    }
+
+    [Fact]
+    public void Controller_TheFieldLineAndLightCylinderSwitches_AskForAFrame()
+    {
+        var (c, host, _, vm) = DrawnCrab();
+        int renders = host.Renders;
+        vm.ShowFieldLines = !vm.ShowFieldLines;
+        Assert.True(host.Renders > renders);
+        renders = host.Renders;
+        vm.ShowLightCylinder = !vm.ShowLightCylinder;
+        Assert.True(host.Renders > renders);
+        c.Dispose();
+    }
+
+    [Fact]
+    public void Controller_TheSurfaceShading_IsHandedToTheLensingPass_AndTurnsWithTheBeams()
+    {
+        double wall = 1;
+        var vm = OpenCloseUp("sn1054", out var main);
+        main.Timeline.ObserverTimeS = CrabAgeS * main.CurrentObserver.TimeDilation;
+        var host = new FakeHost();
+        var lensing = new FakeLensing();
+        var c = new CloseUpSceneController(vm, () => host, new BeamClock(() => wall), gpuFactory: () => new CloseUpGpu(lensing));
+        c.Start();
+        host.FirstFrame("Intel | Intel(R) Iris(R) Xe Graphics | 4.1.0 - Build 30.0.101.1960");
+        host.Tick();
+        var first = lensing.Last;
+        Assert.True(first.SurfaceMarkings);
+        Assert.Equal((float)vm.State.BeamTiltRad, first.SurfaceTiltRad);
+        Assert.Equal((float)(c.BeamPhaseRad % (2 * Math.PI)), first.SurfacePhaseRad, 5);
+        Assert.True(first.SurfaceColor.Length > 0);
+        wall = 1.5;   // a quarter turn later (2 s a turn)
+        host.Tick();
+        Assert.Equal(first.SurfacePhaseRad + Math.PI / 2, lensing.Last.SurfacePhaseRad, 4);
+        Assert.True(RayMapPlanner.SameRays(first, lensing.Last), "turning the surface retraces nothing");
+        c.Dispose();
+    }
+
+    [Fact]
+    public void Controller_LabelsTheEarthArrow_AndTheLightCylinderWhenItIsOnScreen()
+    {
+        var (c, _, _, vm) = DrawnCrab();
+        c.SetViewSize(new Size(737, 705));
+        Assert.Contains(c.ViewLabels, l => l.Text == CloseUpSceneController.ToEarthLabel);
+        Assert.DoesNotContain(c.ViewLabels, l => l.Text == CloseUpSceneController.LightCylinderLabel);   // 1,600 km: far off the view
+        c.FrameForSnapshot(1.15 * vm.State.LightCylinderKm, 25);
+        var ring = Assert.Single(c.ViewLabels, l => l.Text == CloseUpSceneController.LightCylinderLabel);
+        Assert.InRange(ring.XDip, 0, 737 - 100);   // room for the text
+        vm.ShowLabels = false;
+        Assert.Empty(c.ViewLabels);
+        c.Dispose();
+    }
+
+    /// <summary>Spec C12: the surface is tone-mapped to read at about 0.9 of full brightness whatever the surroundings' exposure.</summary>
+    [Theory, InlineData(0.15f), InlineData(0.2f), InlineData(1f)]
+    public void SurfaceColour_IsToneMappedToRead(float exposure)
+    {
+        var srgb = BlackbodyColor.FromTemperature(1.8e6);
+        var hdr = CloseUpSceneController.ToneMappedSurface(srgb, hdr: true, exposure);
+        static double Aces(double x) => Math.Clamp(x * (2.51 * x + 0.03) / (x * (2.43 * x + 0.59) + 0.14), 0, 1);
+        double shown = Math.Pow(Aces(Math.Max(hdr.X, Math.Max(hdr.Y, hdr.Z)) * exposure), 1 / 2.2);   // tonemap.frag
+        Assert.InRange(shown, 0.85, 0.97);
+        Assert.True(hdr.Z >= hdr.X, "blue-white stays blue-white");
+        var plain = CloseUpSceneController.ToneMappedSurface(srgb, hdr: false, exposure);
+        Assert.Equal(new OpenTK.Mathematics.Vector3(srgb.R, srgb.G, srgb.B), plain);   // the no-HDR path draws the colour as it is
+    }
+
+    [Fact]
+    public void Controller_ABandThatAlwaysFails_IsGivenUp_AndTheViewRests()   // Task 4b review carry-over
+    {
+        var (c, host, lensing, vm) = Drawn();
+        c.SetLevel(LensingLevel.Quarter);
+        lensing.FailBands = true;
+        for (int k = 0; k < 60; k++) host.Tick();
+        Assert.Equal(CloseUpSceneController.MaxConsecutiveFailures, c.RefineBandsFailed);
+        Assert.False(c.IsAnimating, "no retracing forever");
+        Assert.False(host.Animating);
+        Assert.Equal(LensingLevel.Quarter, c.ShownLevel);
+        Assert.Contains(vm.Notes, n => n.Contains("could not be refined", StringComparison.Ordinal));
+        c.Dispose();
+    }
+
+    [Fact]
+    public void Controller_AWholeMapThatAlwaysFails_FallsBackToDirectTracing()   // Task 4b review carry-over
+    {
+        var (c, host, lensing, _) = Drawn();
+        lensing.FailTraces = true;
+        for (int k = 0; k < 10; k++) { c.Orbit(1); host.Tick(); }
+        Assert.Equal(CloseUpSceneController.MaxConsecutiveFailures, c.MapTracesFailed);
+        Assert.True(lensing.DirectFrames > 0, "the view still draws, tracing colour directly");
+        c.Dispose();
     }
 
     private static (CloseUpSceneController C, FakeHost Host, FakeLensing Lensing, CloseUpViewModel Vm) Drawn(string preset = "n6946bh1")
@@ -659,6 +785,74 @@ public class CloseUpWindowTests
                 Assert.True(host.IsTicking);
                 Assert.False(host.Shutdown(() => throw new InvalidOperationException("no context, nothing to release")));
                 Assert.False(host.IsTicking);
+            }
+            catch (Exception e) { error = e; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        Assert.Null(error);
+    }
+
+    /// <summary>
+    /// Task 4b review carry-over (b): after Shutdown nothing can subscribe the host to CompositionTarget.Rendering again (a static event:
+    /// a late Animating or RequestRender would otherwise keep the dead host, its control and its window alive).
+    /// </summary>
+    [Fact]
+    public void GlHost_AfterShutdown_NeverTicksAgain()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var host = new GlHost(new OpenTK.Wpf.GLWpfControl());
+                host.Shutdown(() => { });
+                host.Animating = true;
+                Assert.False(host.IsTicking);
+                host.RequestRender();
+                Assert.False(host.IsTicking);
+            }
+            catch (Exception e) { error = e; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        Assert.Null(error);
+    }
+
+    /// <summary>
+    /// Task 4b review carry-over (a): while its control is not visible (the window hidden or minimized) the host owes no frames and does
+    /// not tick, even when animating; shown again, it ticks for the animation and owes one fresh frame. (An off-screen window on an STA
+    /// thread; no GL context is made.)
+    /// </summary>
+    [Fact]
+    public void GlHost_WhileItsControlIsHidden_OwesNoFramesAndDoesNotTick()
+    {
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var control = new OpenTK.Wpf.GLWpfControl();
+                var window = new Window { Content = control, Left = -20000, Top = -20000, Width = 200, Height = 150, ShowActivated = false, ShowInTaskbar = false };
+                window.Show();
+                var host = new GlHost(control);
+                host.RequestRender();
+                Assert.True(host.IsTicking);
+                window.Hide();
+                Assert.False(control.IsVisible);
+                Assert.False(host.IsTicking, "hidden: the owed frames are dropped");
+                host.Animating = true;
+                Assert.False(host.IsTicking, "hidden: even an animation does not tick");
+                host.RequestRender();
+                Assert.False(host.IsTicking);
+                window.Show();
+                Assert.True(host.IsTicking, "shown again: the animation ticks");
+                host.Animating = false;
+                Assert.True(host.IsTicking, "and one fresh frame is owed");
+                host.Shutdown(() => { });
+                window.Close();
             }
             catch (Exception e) { error = e; }
         });

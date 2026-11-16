@@ -9,10 +9,13 @@ namespace SupernovaLab.Rendering;
 /// spin along +z): the spin, the camera's position and basis (forward, right, up: unit vectors, as <see cref="OrbitCamera"/>
 /// gives them), tan of half the field of view across and up, the escape radius
 /// (<see cref="Core.Compact.BlackHoleOptics.EscapeRadiusFor"/>), a neutron star's surface radius (0 for a black hole) and its
-/// colour, and the grid switch (plan ruling P3-8).
+/// colour, and the grid switch (plan ruling P3-8). Plan Task 6: the surface's shading (<c>nsurface.frag</c>): the spin phase about +z,
+/// the magnetic tilt, the cosine of the polar cap's angular radius, and whether the schematic markings are drawn. The shading is
+/// applied when the ray map is sampled, so it never causes a retrace (<see cref="RayMapPlanner.SameRays"/>).
 /// </summary>
 public readonly record struct LensingUniforms(float Spin, Vector3 CameraPosition, Vector3 Forward, Vector3 Right, Vector3 Up,
-    Vector2 TanHalf, float EscapeRadius, float SurfaceRadius = 0, Vector3 SurfaceColor = default, bool Grid = false);
+    Vector2 TanHalf, float EscapeRadius, float SurfaceRadius = 0, Vector3 SurfaceColor = default, bool Grid = false,
+    float SurfacePhaseRad = 0, float SurfaceTiltRad = 0, float SurfaceCapCos = 1, bool SurfaceMarkings = false);
 
 /// <summary>
 /// The Close-up's light bending (spec §6.6, plan rulings P3-7 and P3-9, ruling R-P3-10). <c>lensing.frag</c>, the GLSL mirror of
@@ -30,8 +33,9 @@ public readonly record struct LensingUniforms(float Spin, Vector3 CameraPosition
 /// </summary>
 public sealed class LensingPass : ILensingPass
 {
-    private readonly ShaderProgram _trace = ShaderProgram.FromResources("fullscreen.vert", "lensing.frag");
-    private readonly ShaderProgram _shade = ShaderProgram.FromResources("fullscreen.vert", "lensing_shade.frag");
+    // Plan Task 6: the tracer (for its direct path) and the shading pass both link nsurface.frag, the neutron star's surface shading.
+    private readonly ShaderProgram _trace = ShaderProgram.FromResources("fullscreen.vert", "lensing.frag", "nsurface.frag");
+    private readonly ShaderProgram _shade = ShaderProgram.FromResources("fullscreen.vert", "lensing_shade.frag", "nsurface.frag");
     private readonly ShaderProgram _upsample = ShaderProgram.FromResources("fullscreen.vert", "upsample.frag");
     private readonly int _vao = GL.GenVertexArray();
     private readonly bool _hdr;
@@ -93,7 +97,7 @@ public sealed class LensingPass : ILensingPass
             GL.ActiveTexture(TextureUnit.Texture1);
             GL.BindTexture(TextureTarget.TextureCubeMap, environmentCubeMap);
             _shade.Set("u_env", 1);
-            _shade.Set("u_surfaceColor", u.SurfaceColor);
+            SetSurfaceUniforms(_shade, u);
             GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
             GL.BindTexture(TextureTarget.TextureCubeMap, 0);
             GL.ActiveTexture(TextureUnit.Texture0);
@@ -169,11 +173,21 @@ public sealed class LensingPass : ILensingPass
         _trace.Set("u_tanHalf", u.TanHalf);
         _trace.Set("u_escapeRadius", u.EscapeRadius);
         _trace.Set("u_surfaceRadius", u.SurfaceRadius);
-        _trace.Set("u_surfaceColor", u.SurfaceColor);
+        SetSurfaceUniforms(_trace, u);
         _trace.Set("u_grid", u.Grid ? 1 : 0);
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.TextureCubeMap, environmentCubeMap);
         _trace.Set("u_env", 0);
+    }
+
+    /// <summary>The surface's shading (nsurface.frag): its colour, spin phase, tilt, polar cap and markings switch.</summary>
+    private static void SetSurfaceUniforms(ShaderProgram program, in LensingUniforms u)
+    {
+        program.Set("u_surfaceColor", u.SurfaceColor);
+        program.Set("u_surfacePhase", u.SurfacePhaseRad);
+        program.Set("u_surfaceTilt", u.SurfaceTiltRad);
+        program.Set("u_capCos", u.SurfaceCapCos);
+        program.Set("u_markings", u.SurfaceMarkings ? 1 : 0);
     }
 
     /// <summary>Stretches the colour target over the current framebuffer and viewport (alpha masked off, as before).</summary>

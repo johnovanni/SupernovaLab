@@ -73,7 +73,8 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
 
     /// <summary>The light-bending note for the level shown (or, before the view has drawn, the level it settles at).</summary>
     public string LightBendingNote
-        => LensingDetails.Note(ShownLensingLevel ?? LensingDetails.StillLevel(LensingDetail), LensingDetail == LensingDetail.Auto);
+        => LensingDetails.Note(ShownLensingLevel ?? LensingDetails.StillLevel(LensingDetail), LensingDetail == LensingDetail.Auto)
+           + (RefineFailed ? "; it could not be refined further on this computer's graphics" : "");
 
     /// <summary>
     /// The user's light-bending detail (Close-up menu ▸ Light-bending detail, spec §2.5): kept in the main window's layout, so it is
@@ -133,10 +134,10 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
 
     /// <summary>Spec §6.3: the measuring grid round a black hole (drawn from Task 10).</summary>
     [ObservableProperty] private bool _showGrid;
-    /// <summary>Spec §4.3: a neutron star's magnetic field lines.</summary>
-    [ObservableProperty] private bool _showFieldLines;
-    /// <summary>Spec §4.3: a pulsar's light cylinder.</summary>
-    [ObservableProperty] private bool _showLightCylinder;
+    /// <summary>Spec §4.3: a neutron star's magnetic field lines (on by default, plan Task 6).</summary>
+    [ObservableProperty] private bool _showFieldLines = true;
+    /// <summary>Spec §4.3: a pulsar's light cylinder (on by default; it lies far outside the default framing, so zoom out to see it).</summary>
+    [ObservableProperty] private bool _showLightCylinder = true;
     /// <summary>Spec §4.2: the neutron star's cutaway (its layers).</summary>
     [ObservableProperty] private bool _isCutaway;
     /// <summary>The view's labels (the distance rings' labels, and later the grid's).</summary>
@@ -152,6 +153,30 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     partial void OnShowGridChanged(bool value) => StateChanged?.Invoke(this, false);
     partial void OnIsCutawayChanged(bool value) => StateChanged?.Invoke(this, false);
     partial void OnShowLabelsChanged(bool value) => StateChanged?.Invoke(this, false);
+    // Plan Task 6 (ruling R-P3-11's condition): the field lines and the light cylinder are drawn, so their switches redraw the view.
+    partial void OnShowFieldLinesChanged(bool value) => StateChanged?.Invoke(this, false);
+    partial void OnShowLightCylinderChanged(bool value) => StateChanged?.Invoke(this, false);
+
+    /// <summary>The view's speed label (spec §2.1, §4.3): "Shown 60× slower" for a neutron star; null for anything else.</summary>
+    public string? SpeedLabel => State.SpeedLabel;
+
+    private bool _refineFailed;
+
+    /// <summary>
+    /// Set by the view's controller when the finer light-bending map could not be built on this graphics card (Task 4b review
+    /// carry-over: a band that always fails is given up, not retraced forever); the light-bending note then says so.
+    /// </summary>
+    public bool RefineFailed
+    {
+        get => _refineFailed;
+        set
+        {
+            if (_refineFailed == value) return;
+            _refineFailed = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Notes));
+        }
+    }
 
     private double _benchSpin;
 
@@ -223,12 +248,16 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         }
         // A time step that leaves the state as it was (the same record) changes nothing on screen: no rebinding at 60 Hz.
         if (ReferenceEquals(before.State, State) && before._modelError == _modelError && Readouts.Count == State.Readouts.Count) return;
-        Readouts = State.Readouts.Select(ReadoutRow.From).ToList();
+        // Plan Task 6: a neutron star's state is new at every time step; the column is rebound only when a row's text changes.
+        var rows = State.Readouts.Select(ReadoutRow.From).ToList();
+        bool rowsChanged = !rows.SequenceEqual(Readouts);
+        if (rowsChanged) Readouts = rows;
         OnPropertyChanged(nameof(State));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(WindowTitle));
-        OnPropertyChanged(nameof(Readouts));
-        OnPropertyChanged(nameof(Notes));
+        OnPropertyChanged(nameof(SpeedLabel));
+        if (rowsChanged) OnPropertyChanged(nameof(Readouts));
+        if (before._modelError != _modelError || !before.State.Notes.SequenceEqual(State.Notes)) OnPropertyChanged(nameof(Notes));
         OnPropertyChanged(nameof(NoRemnantMessage));
         OnPropertyChanged(nameof(HasRemnant));
     }

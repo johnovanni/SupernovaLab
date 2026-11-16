@@ -40,11 +40,13 @@ uniform vec3 u_camUp;
 uniform vec2 u_tanHalf;        // tan of half the field of view, horizontally and vertically
 uniform float u_escapeRadius;  // R_esc = max(60, 1.2 x the camera distance) (BlackHoleOptics.EscapeRadiusFor)
 uniform float u_surfaceRadius; // a neutron star's surface (spin 0 only), GM/c^2; 0 for none
-uniform vec3 u_surfaceColor;   // the surface's colour (HDR)
+// The surface is shaded by nsurface.frag (plan Task 6), linked into this program: nsSurface(hit point).
 uniform int u_grid;            // the grid sphere r = 50 GM/c^2 (plan ruling P3-8): 1 = on; drawn from Task 10
 uniform samplerCube u_env;     // the surroundings seen from the remnant (EnvironmentCapture)
 
 out vec4 o_color;
+
+vec3 nsSurface(vec3 hit);      // nsurface.frag
 
 const int MAX_STEPS = 400;
 const float CAPTURE_MARGIN = 0.01;
@@ -222,7 +224,7 @@ void main()
         return;
     }
     vec3 color = vec3(0.0);
-    if (fate == FATE_HIT_SURFACE) color = u_surfaceColor;
+    if (fate == FATE_HIT_SURFACE) color = nsSurface(x);
     else if (fate == FATE_ESCAPED || fate == FATE_STEP_LIMIT) color = texture(u_env, dir).rgb;
     o_color = vec4(color, 1.0);
 }

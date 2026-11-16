@@ -148,6 +148,36 @@ public class ExplosionSceneTests
         Assert.DoesNotContain(late.Notes, n => n.Contains("real period", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Plan Task 6 (spec §7.2): the beams follow the magnetosphere's tilt (45° schematic here) and the period's half-width ρ(P),
+    /// not Project 2's fixed 10°, past the pulsar model's 1,000 yr too; without beams the half-width is NaN.
+    /// </summary>
+    [Fact]
+    public void Pulsar_BeamsFollowTheMagnetosphere_AtEveryAge()
+    {
+        var o = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 3, 0.07, 3e12, TestOutcomes.Pulsar(0.02, 3e12));
+        var scene = new ExplosionScene(o);
+        Assert.True(double.IsNaN(scene.At(Year).BeamHalfAngleRad));
+        foreach (double t in new[] { 100 * Year, 3000 * Year })
+        {
+            var s = scene.At(t);
+            Assert.Equal(SceneMarker.Pulsar, s.Marker);
+            Assert.Equal(PulsarModel.Spin.Of(o).PeriodS(t), s.PulsarPeriodS);
+            Assert.Equal(Core.Compact.Magnetosphere.BeamHalfAngleRad(s.PulsarPeriodS), s.BeamHalfAngleRad);
+            Assert.Equal(Math.PI / 4, s.BeamTiltRad, 12);
+        }
+    }
+
+    [Fact]
+    public void RemnantOffset_IsTheKicksDrift_ZeroWithoutAKick()
+    {
+        var o = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 3, 0.07, 3e12, TestOutcomes.Pulsar(0.02, 3e12));
+        var s = new ExplosionScene(o, 1, Core.Observer.ObserverSetup.Default, 4).At(100 * Year);
+        Assert.Equal(Core.Compact.KickDrift.OffsetCm(o, Core.Observer.ObserverSetup.Default, 4, 100 * Year), s.RemnantOffsetCm);
+        var ia = new ExplosionScene(TestOutcomes.TypeIa()).At(100 * Year);
+        Assert.Equal(default, ia.RemnantOffsetCm);
+    }
+
     // ---------------------------------------------------------------- fix round 1
 
     /// <summary>The dense-gas input on a II-P star: SN 2023ixf's confined gas, 1e15 cm. (The engine itself turns the input into a Type IIn.)</summary>

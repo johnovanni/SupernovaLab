@@ -445,6 +445,14 @@ public static class SnapshotRenderer
                 if ((main as MainWindow)?.Scene is { } scene) scene.IsCutaway = request.Cutaway || SnapshotRequest.WantsCutaway(entry);
                 if ((own ?? request.ObserverTimeS) is double t) vm.Timeline.ObserverTimeS = t;
                 string suffix = SnapshotRequest.FileSuffix(entry);
+                if ((main as MainWindow)?.Scene is { } drift)   // plan Task 6: where the main view's marker is (spec §7.2)
+                {
+                    var st = drift.State;
+                    var inv = CultureInfo.InvariantCulture;
+                    log.Add($"main{suffix}: marker {st.Marker}, drift {UnitFormat.Distance(st.RemnantOffsetCm.Length)} = " +
+                            $"{(st.RemnantOffsetCm.Length / st.FrameRadiusCm).ToString("0.000", inv)} of the framing radius; beam tilt " +
+                            $"{(st.BeamTiltRad * 180 / Math.PI).ToString("0.#", inv)}°, half-width {(st.BeamHalfAngleRad * 180 / Math.PI).ToString("0.#", inv)}°");
+                }
                 if (!request.ToursEntry(entry))
                 {
                     await Capture(request, main, windows, suffix, log);
@@ -1075,6 +1083,20 @@ public static class SnapshotRenderer
         await NextFrame(w);
         log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}.png")));
         w.HideFrameForSnapshot();
+        // Plan Task 6: a neutron star's light cylinder lies far outside the default framing (1,600 km for the Crab against 48 km), so a
+        // second, wide capture zooms out to it, seen from 25° above the equator, then hands the camera back.
+        if (w.Scene is { } wide && w.DataContext is CloseUpViewModel nvm && nvm.State is { NeutronStar: not null, LightCylinderKm: > 0 } ns)
+        {
+            wide.FrameForSnapshot(1.15 * ns.LightCylinderKm, 25);
+            for (int k = 0; k < 120 && wide.ShownLevel != LensingLevel.Full; k++) await NextFrame(w);
+            log.Add($"closeup{suffix}-wide: light cylinder {ns.LightCylinderKm.ToString("N0", CultureInfo.InvariantCulture)} km; " +
+                    $"labels {string.Join(", ", wide.ViewLabels.Select(l => l.Text))}; beam phase {(wide.BeamPhaseRad % (2 * Math.PI)).ToString("0.00", CultureInfo.InvariantCulture)} rad");
+            log.Add(await w.ShowFrameForSnapshotAsync());
+            await NextFrame(w);
+            log.Add(Save(w, Path.Combine(request.OutDirectory, $"closeup{suffix}-wide.png")));
+            w.HideFrameForSnapshot();
+            wide.Home();
+        }
     }
 
     private static string Shown(SupernovaLab.App.Controllers.CloseUpSceneController c) => c.ShownLevel is { } s ? LensingLevels.Text(s) : "none";

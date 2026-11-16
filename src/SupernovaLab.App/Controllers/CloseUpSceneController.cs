@@ -18,7 +18,7 @@ namespace SupernovaLab.App.Controllers;
 /// give the controller a fake <see cref="ILensingPass"/> (and nothing else) and drive its per-frame lensing decisions without OpenGL.
 /// </summary>
 public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, EnvironmentCapture? Environment = null,
-    ExplosionPainter? Painter = null, RingRenderer? Rings = null, GpuTimer? Timer = null)
+    ExplosionPainter? Painter = null, RingRenderer? Rings = null, GpuTimer? Timer = null, NeutronStarRenderer? NeutronStar = null)
 {
     /// <summary>The real objects (call with the GL context current).</summary>
     public static CloseUpGpu Create()
@@ -28,7 +28,8 @@ public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, E
         var painter = new ExplosionPainter((int)QualityLevel.Low);
         var rings = new RingRenderer();
         var timer = new GpuTimer();
-        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer);
+        var neutronStar = new NeutronStarRenderer();
+        return new CloseUpGpu(new LensingPass(hdr.Enabled), hdr, environment, painter, rings, timer, neutronStar);
     }
 }
 /// <summary>
@@ -42,6 +43,11 @@ public sealed record CloseUpGpu(ILensingPass Lensing, HdrPipeline? Hdr = null, E
 /// the levels follow the user's <see cref="LensingDetail"/>, Auto being a <see cref="LensingGovernor"/>), then the distance rings,
 /// then the main view's bloom and tone map at its exposure. A time step that changes nothing it draws asks for no frame (R-P3-11).
 /// It skips drawing while the window is hidden or minimized (<see cref="SetVisible"/>, spec §2.5).</para>
+/// <para>Plan Task 6: a neutron star's surface is shaded in the lensing pass (its blackbody colour tone-mapped,
+/// <see cref="ToneMappedSurface"/>, and markings turned by the spin phase); its beams are drawn before the bloom and its field lines,
+/// light cylinder and Earth arrow after it (<see cref="NeutronStarRenderer"/>), all turned by <see cref="BeamPhaseRad"/>, the main
+/// view's phase from the shared <see cref="BeamClock"/>. A neutron star keeps the view drawing (<see cref="IsAnimating"/>), paused
+/// or not. A refinement band or a whole map that keeps failing is given up after <see cref="MaxConsecutiveFailures"/> in a row.</para>
 /// <para>Camera (spec §2.2): <see cref="OrbitCamera"/>, <see cref="CameraDirector"/> and <see cref="DistanceRings"/>, as the main
 /// view, centred on the compact object. The scene unit is 1 km (plan ruling P3-1): the camera's distance carries the scale
 /// (<see cref="SceneController.AutoDistance"/> half-heights while auto-framing). Drag rotates; the wheel zooms and freezes the scale;
@@ -61,8 +67,30 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// <summary>The camera's default yaw.</summary>
     public const double DefaultYawDeg = 30;
 
-    /// <summary>[Presentation, placeholder] A neutron star's surface colour (HDR) until its own surface is drawn (Task 5).</summary>
-    public static readonly Vector3 PlaceholderSurfaceColor = new(0.6f, 0.65f, 0.75f);
+    /// <summary>
+    /// [Presentation, spec C12] The surface's tone-map input: its blackbody colour, linearised, at this level ÷ the exposure, so the
+    /// surface shows at about 0.88 of full brightness after the tone map whatever the surroundings' exposure. Tuned after Task 6's
+    /// launch: at 1.1 the disc and its bloom saturated and hid the surface's markings.
+    /// </summary>
+    public const float SurfaceLevel = 0.8f;
+
+    /// <summary>
+    /// [Presentation] The lines' level (field lines, light cylinder, arrow), as <see cref="SurfaceLevel"/>: low enough that their
+    /// colours do not saturate to white (Task 6's launch, at 0.9).
+    /// </summary>
+    public const float OverlayLevel = 0.6f;
+
+    /// <summary>
+    /// [Presentation] The beams' level ÷ the exposure: about the main view's beam brightness (its cones at gain 1 and alpha 0.8, at
+    /// exposure 0.2). At 0.9 (Task 6's launch) the wide cones washed the view out.
+    /// </summary>
+    public const float BeamLevel = 0.3f;
+
+    /// <summary>[Presentation] The beams' length, in half-heights of the view: they always reach past its edge.</summary>
+    public const double BeamLengthHalfHeights = 1.6;
+
+    /// <summary>Task 4b review carry-over: a refinement band or a whole map failing this many times in a row is given up.</summary>
+    public const int MaxConsecutiveFailures = 3;
 
     private readonly CloseUpViewModel _vm;
     private readonly Func<IRenderHost> _hostFactory;
@@ -84,6 +112,11 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     private ExplosionPainter? _painter;
     private RingRenderer? _rings;
     private GpuTimer? _gpuTimer;
+    private NeutronStarRenderer? _neutronStar;
+
+    // Task 4b review carry-over: failures in a row, and what was given up (reset with a new context or viewport).
+    private int _bandFailuresInRow, _traceFailuresInRow;
+    private bool _refineGivenUp, _directFallback;
 
     // The environment's scene (Project 2's, rebuilt on a new outcome) and what was last captured (ruling P3-6).
     private ExplosionScene? _envScene;
@@ -109,7 +142,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         _hostFactory = hostFactory ?? throw new ArgumentNullException(nameof(hostFactory));
         BeamClock = beamClock ?? new BeamClock();
         _clock = wallClock ?? (() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
-        _envSceneFactory = envSceneFactory ?? ((o, z1) => new ExplosionScene(o, z1));
+        // Plan Task 6: the surroundings' scene knows the observer and run, so it is captured from where the kick has carried the star.
+        _envSceneFactory = envSceneFactory ?? ((o, z1) => new ExplosionScene(o, z1, _vm.Main.CurrentObserver, _vm.Main.RunNumber));
         BuildEnvironmentScene();
         Home(jumpOnly: true);
         vm.StateChanged += OnStateChanged;
@@ -120,6 +154,25 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     /// <summary>The beams' clock, the same instance as the main view's (plan ruling P3-5).</summary>
     public BeamClock BeamClock { get; }
+
+    /// <summary>
+    /// Plan Task 6: the neutron star's spin phase now (radians, not wrapped): the shared <see cref="BeamClock"/> at the drawn period, the
+    /// main view's (<see cref="SceneController.BeamPhaseRad"/>); it turns the beams, the field lines and the surface's markings. 0 for
+    /// anything but a neutron star.
+    /// </summary>
+    public double BeamPhaseRad => _vm.State.NeutronStar is not null ? BeamClock.PhaseRad(_vm.State.DrawnPeriodS) : 0;
+
+    /// <summary>Whether the beams are drawn now (spec C6: from the magnetosphere's formation).</summary>
+    public bool ShowsBeams => _vm.State.ShowBeams;
+
+    private IReadOnlyList<RingLabel> _viewLabels = Array.Empty<RingLabel>();
+
+    /// <summary>Plan Task 6: the view's own labels ("To Earth" at the arrow's tip, "Light cylinder" on its ring), DIP, while on screen.</summary>
+    public IReadOnlyList<RingLabel> ViewLabels
+    {
+        get => _viewLabels;
+        private set => SetProperty(ref _viewLabels, value);
+    }
 
     public OrbitCamera Camera { get; } = new() { YawDeg = DefaultYawDeg, PitchDeg = DefaultPitchDeg };
 
@@ -274,8 +327,15 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// <summary>The uniforms the tracer would get for this viewport now (the test hook for R-P3-10: no time in them).</summary>
     public LensingUniforms RaysFor(Size viewportPx) => Uniforms(_vm.State, viewportPx);
 
-    /// <summary>Whether a finer ray map is owed (the camera has stopped, the shown map is coarser than the still level).</summary>
-    private bool RefineOwed => _planner.HasMap && _lensingEnabled && _vm.State.IsLensed && (int)StillLevel < (int)_planner.ShownLevel;
+    /// <summary>
+    /// Whether a finer ray map is owed (the camera has stopped, the shown map is coarser than the still level), unless refining has
+    /// been given up after <see cref="MaxConsecutiveFailures"/> failed bands.
+    /// </summary>
+    private bool RefineOwed => !_refineGivenUp && !_directFallback && _planner.HasMap && _lensingEnabled && _vm.State.IsLensed
+                               && (int)StillLevel < (int)_planner.ShownLevel;
+
+    /// <summary>The level the planner refines to: the still level, or the moving one once refining has been given up.</summary>
+    private LensingLevel PlannedStillLevel => _refineGivenUp ? MovingLevel : StillLevel;
 
     private double _gpuSumS;
 
@@ -332,9 +392,17 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
 
     public void SetViewSize(Size dip)
     {
+        if (dip != _viewDip) ResetFailures();   // new targets: what failed may work at the new size
         _viewDip = dip;
         UpdateRings();
         RequestRender();
+    }
+
+    private void ResetFailures()
+    {
+        _bandFailuresInRow = _traceFailuresInRow = 0;
+        _refineGivenUp = _directFallback = false;
+        _vm.RefineFailed = false;
     }
 
     public void Rotate(double dxDip, double dyDip)
@@ -356,6 +424,23 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         if (notches == 0) return;
         _frozenHalfHeightCm ??= Director.HalfHeightCm;
         Camera.Zoom(notches);
+        ClampDistance();
+        IsAutoFraming = false;
+        UpdateAnimating();
+        UpdateRings();
+        RequestRender();
+    }
+
+    /// <summary>
+    /// The snapshot's wide view (plan Task 6's visual check): freezes the scale so a sphere of this radius (km) fills the view, seen
+    /// from this pitch, as a wheel zoom would; <see cref="Home"/> hands the camera back.
+    /// </summary>
+    public void FrameForSnapshot(double radiusKm, double pitchDeg)
+    {
+        if (!(radiusKm > 0)) return;
+        _frozenHalfHeightCm = radiusKm * UnitCm;
+        Camera.DistanceMpc = SceneController.AutoDistance * radiusKm;
+        Camera.PitchDeg = pitchDeg;
         ClampDistance();
         IsAutoFraming = false;
         UpdateAnimating();
@@ -500,12 +585,17 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     }
 
     /// <summary>
-    /// Whether the view renders every frame now: the bench's switch, a camera ease, a finer ray map owed (R-P3-10), or an environment
-    /// refresh held back by its rate cap once the timeline has stopped (while it plays, the next time step asks for it, R-P3-11).
+    /// Whether the view renders every frame now: the bench's switch, a camera ease, a finer ray map owed (R-P3-10), an environment
+    /// refresh held back by its rate cap once the timeline has stopped (while it plays, the next time step asks for it, R-P3-11), or
+    /// (plan Task 6, R-P3-11's condition) a neutron star, whose beams, field lines and surface markings turn with the beam clock even
+    /// while the timeline is paused, as Project 2's beams do.
     /// </summary>
     public bool IsAnimating => !IsFailed && _visible &&
                                (_forceAnimating || (Director.IsEasing && _frozenHalfHeightCm is null) || (_envPending && !_vm.Main.Timeline.IsPlaying)
-                                || RefineOwed);
+                                || RefineOwed || Turns);
+
+    /// <summary>Whether something drawn turns with the spin now: a neutron star (its surface markings, field lines and beams).</summary>
+    private bool Turns => _vm.State.NeutronStar is not null && _vm.State.IsLensed;
 
     private void UpdateAnimating()
     {
@@ -522,6 +612,8 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             throw new NotSupportedException($"this computer's OpenGL is {(version.Length > 0 ? version : "unknown")}");
         var gpu = _gpuFactory();
         (_hdr, _environment, _painter, _rings, _gpuTimer, _lensing) = (gpu.Hdr, gpu.Environment, gpu.Painter, gpu.Rings, gpu.Timer, gpu.Lensing);
+        _neutronStar = gpu.NeutronStar;
+        ResetFailures();
         _planner.Invalidate();
         _uploadEnvParticles = true;
         _envOutcome = null;
@@ -575,7 +667,20 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             tracedTag = DrawLensing(state, viewportPx, captured);
         if (state.IsLensed)
             foreach (var ring in CurrentRings()) _rings?.Render(Camera, viewportPx, ring.RadiusCm / UnitCm, ring.Opacity);
-        _hdr?.End(_exposure, BloomStrength);
+        // Plan Task 6: a neutron star's beams glow (drawn before the bloom); its field lines, light cylinder and Earth arrow are
+        // drawn after it (crisp, still tone-mapped), as the main view's cut faces are.
+        Action? lines = null;
+        if (_neutronStar is not null && state.NeutronStar is not null && state.IsLensed && viewportPx.Width > 0 && viewportPx.Height > 0)
+        {
+            double phase = BeamPhaseRad;
+            var occluder = Occluder(state);
+            float gain = OverlayGain;
+            _neutronStar.RenderBeams(Camera, viewportPx, state, phase, BeamLengthHalfHeights * HalfHeightCm / UnitCm, Gain(BeamLevel), occluder);
+            _linesFrame = (viewportPx, state, phase, occluder, gain);
+            lines = _drawLinesNow ??= DrawLinesNow;
+        }
+        _hdr?.End(_exposure, BloomStrength, lines);
+        if (_hdr is null) lines?.Invoke();
         _gpuTimer?.End(tracedTag);
         UpdateAnimating();   // a refinement still owed keeps the view drawing; a finished one lets it rest
         if (_readback is { } readback)
@@ -596,7 +701,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         var u = Uniforms(state, viewportPx);
         if (_lensing is null) return LensingFrameTag.Encode(default, captured);
         int env = _environment?.Texture ?? 0;
-        if (!_lensing.CachesRays)
+        if (!_lensing.CachesRays || _directFallback)
         {
             _lensing.RenderDirect(viewportPx, MovingLevel, u, env);
             _vm.ShownLensingLevel = MovingLevel;
@@ -604,16 +709,37 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             var (w, h) = LensingLevels.TargetSize((int)viewportPx.Width, (int)viewportPx.Height, MovingLevel);
             return LensingFrameTag.EncodeDirect((long)w * h, captured);
         }
-        var step = _planner.Next(u, (int)viewportPx.Width, (int)viewportPx.Height, MovingLevel, StillLevel);
+        var step = _planner.Next(u, (int)viewportPx.Width, (int)viewportPx.Height, MovingLevel, PlannedStillLevel);
         if (!_lensing.Render(viewportPx, step, u, env))
         {
             // The pass could not make a target: forget the map (the next frame traces it whole again) and count it, so a failing band
-            // shows in the bench and snapshot logs instead of looking like a refinement that never starts.
-            if (step.Work == RayMapWork.RefineStrip) RefineBandsFailed++;
-            else if (step.Work == RayMapWork.Trace) MapTracesFailed++;
+            // shows in the bench and snapshot logs instead of looking like a refinement that never starts. Task 4b review carry-over:
+            // after MaxConsecutiveFailures in a row, a failing band gives up refining (the view rests at the moving level, and the
+            // light-bending note says so); a failing whole map falls back to tracing colour directly every frame, as without a ray cache.
+            if (step.Work == RayMapWork.RefineStrip)
+            {
+                RefineBandsFailed++;
+                if (++_bandFailuresInRow >= MaxConsecutiveFailures)
+                {
+                    _refineGivenUp = true;
+                    _vm.RefineFailed = true;
+                    Trace.TraceWarning($"Close-up: refinement bands failed {_bandFailuresInRow} times in a row; refining given up.");
+                }
+            }
+            else if (step.Work == RayMapWork.Trace)
+            {
+                MapTracesFailed++;
+                if (++_traceFailuresInRow >= MaxConsecutiveFailures)
+                {
+                    _directFallback = true;
+                    Trace.TraceWarning($"Close-up: the ray map failed {_traceFailuresInRow} times in a row; tracing colour directly.");
+                }
+            }
             _planner.Invalidate();
             return LensingFrameTag.Encode(default, captured);
         }
+        if (step.Work == RayMapWork.RefineStrip) _bandFailuresInRow = 0;
+        if (step.Work == RayMapWork.Trace) _traceFailuresInRow = 0;
         _vm.ShownLensingLevel = _planner.ShownLevel;
         if (step.Work == RayMapWork.Trace)
         {
@@ -627,6 +753,40 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// <summary>[Presentation] The bloom strength, the main view's.</summary>
     private const float BloomStrength = 0.5f;
 
+    // This frame's inputs for the lines drawn after the bloom (one cached delegate, no closure per frame).
+    private (Size Viewport, CloseUpState State, double Phase, StarOccluder Occluder, float Gain) _linesFrame;
+    private Action? _drawLinesNow;
+
+    private void DrawLinesNow()
+    {
+        var (viewport, state, phase, occluder, gain) = _linesFrame;
+        _neutronStar?.RenderLines(Camera, viewport, state, phase, _vm.ShowFieldLines, _vm.ShowLightCylinder, gain, occluder);
+    }
+
+    /// <summary>The overlays' colour gain: through the HDR target, <see cref="OverlayLevel"/> ÷ the exposure (so they read whatever the surroundings' brightness); 1 without it.</summary>
+    private float OverlayGain => Gain(OverlayLevel);
+
+    /// <summary>A colour gain: through the HDR target, this level ÷ the exposure; 1 without it (the no-HDR path draws colours as they are).</summary>
+    private float Gain(float level) => HdrEnabled && _exposure > 0 ? level / _exposure : 1f;
+
+    /// <summary>The star as it hides the overlays: its radius, and the bent disc's apparent radius from the camera (<see cref="StarOcclusion"/>).</summary>
+    private StarOccluder Occluder(CloseUpState state)
+        => new(Vector3d.Zero, state.SurfaceRadiusKm,
+            StarOcclusion.ApparentRadiusKm(state.SurfaceRadiusKm, state.GravitationalRadiusKm, Camera.DistanceMpc));
+
+    /// <summary>
+    /// Spec C12: the surface's colour for the tone map. Through the HDR target the blackbody colour (normalized sRGB) is linearised and
+    /// set to <see cref="SurfaceLevel"/> ÷ the exposure, so the ACES tone map and gamma give it back at about 0.88 of full brightness;
+    /// without the target it is drawn as it is.
+    /// </summary>
+    public static Vector3 ToneMappedSurface((float R, float G, float B) srgb, bool hdr, float exposure)
+    {
+        if (!hdr) return new Vector3(srgb.R, srgb.G, srgb.B);
+        static float Linear(float c) => c <= 0.04045f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
+        float k = exposure > 0 ? SurfaceLevel / exposure : SurfaceLevel;
+        return new Vector3(Linear(srgb.R), Linear(srgb.G), Linear(srgb.B)) * k;
+    }
+
     /// <summary>The lensing pass's uniforms: the camera in GM/c² (scene km × 10⁵ / (GM/c² in cm)), its basis and the hole.</summary>
     private LensingUniforms Uniforms(CloseUpState state, Size viewportPx)
     {
@@ -636,9 +796,13 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
         var forward = -Camera.Backward;
         double tanY = Math.Tan(Camera.FieldOfViewDeg * Math.PI / 360);
         double aspect = viewportPx.Width / viewportPx.Height;
+        // Plan Task 6: the surface's shading (its colour, and the markings turned by the spin phase), applied when the map is sampled.
+        bool star = state.NeutronStar is not null;
+        double phase = star ? BeamPhaseRad % (2 * Math.PI) : 0;
         return new LensingUniforms((float)state.Spin, (Vector3)eye, (Vector3)forward, (Vector3)right, (Vector3)up,
             new Vector2((float)(tanY * aspect), (float)tanY), (float)BlackHoleOptics.EscapeRadiusFor(eye.Length),
-            (float)(state.SurfaceRadiusKm * UnitCm / rgCm), PlaceholderSurfaceColor, _vm.ShowGrid);
+            (float)(state.SurfaceRadiusKm * UnitCm / rgCm), ToneMappedSurface(state.SurfaceColor, HdrEnabled, _exposure), _vm.ShowGrid,
+            (float)phase, star ? (float)state.BeamTiltRad : 0f, star ? (float)Math.Cos(state.PolarCapRad) : 1f, star);
     }
 
     /// <summary>
@@ -673,7 +837,9 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             _painter.Upload(_envScene.ParticlesFor((int)QualityLevel.Low));
         }
         double unit = double.IsFinite(s.FrameRadiusCm) && s.FrameRadiusCm > 0 ? s.FrameRadiusCm : 1e15;
-        _environment.Capture(Vector3d.Zero, (camera, size) => _painter.Paint(camera, size, 1, s, unit));
+        // Ruling P3-6 and plan Task 6: seen from the remnant, where the kick has carried it (spec §2.2: the camera moves with it).
+        var at = new Vector3d(s.RemnantOffsetCm.X, s.RemnantOffsetCm.Y, s.RemnantOffsetCm.Z) / unit;
+        _environment.Capture(at, (camera, size) => _painter.Paint(camera, size, 1, s, unit));
         _exposure = s.Exposure;
         (_envLogT, _envOutcome, _envObserver, _envRun, _envWallS) = (logT, main.CurrentOutcome, main.CurrentObserver, main.RunNumber, now);
     }
@@ -700,6 +866,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
     /// <summary>Places each ring's label at the top of its circle, from the projection (as the main view, ruling P6).</summary>
     private void UpdateRings()
     {
+        UpdateViewLabels();
         if (!(_viewDip.Width > 0) || !(_viewDip.Height > 0) || !_vm.ShowLabels)
         {
             if (_ringLabels.Count > 0) RingLabels = Array.Empty<RingLabel>();
@@ -714,6 +881,61 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             labels.Add(new RingLabel(ring.Label, _viewDip.Width / 2, y, ring.Opacity));
         }
         if (!labels.SequenceEqual(_ringLabels)) RingLabels = labels;
+    }
+
+    /// <summary>The label for the Earth arrow (spec §4.3).</summary>
+    public const string ToEarthLabel = "To Earth";
+
+    /// <summary>The light cylinder's label (spec §4.3).</summary>
+    public const string LightCylinderLabel = "Light cylinder";
+
+    /// <summary>The room a view label needs to its anchor's right, DIP.</summary>
+    private const double LabelRoomDip = 100;
+
+    /// <summary>
+    /// Plan Task 6: places "To Earth" just past the arrow's tip and "Light cylinder" on its ring (on the side toward the screen's right),
+    /// from the camera's projection, when they are on screen, the labels are on and a neutron star is drawn. Neither turns with the spin,
+    /// so they move only with the camera.
+    /// </summary>
+    private void UpdateViewLabels()
+    {
+        var s = _vm.State;
+        if (!(_viewDip.Width > 0) || !(_viewDip.Height > 0) || !_vm.ShowLabels || s.NeutronStar is null || !s.IsLensed)
+        {
+            if (_viewLabels.Count > 0) ViewLabels = Array.Empty<RingLabel>();
+            return;
+        }
+        var labels = new List<RingLabel>();
+        var e = new Vector3d(s.EarthDirection.X, s.EarthDirection.Y, s.EarthDirection.Z);
+        if (ProjectDip(e * (NeutronStarRenderer.ArrowTipRadii + 0.15) * s.SurfaceRadiusKm) is { } tip)
+            labels.Add(new RingLabel(ToEarthLabel, tip.X, tip.Y, 1));
+        if (_vm.ShowLightCylinder && double.IsFinite(s.LightCylinderKm))
+        {
+            // The ring's point nearest the camera, else its sides: the first on screen with room for the label to its right (Task 6's
+            // launch: the right-hand point alone put the label past the view's edge).
+            var (right, _) = Camera.ScreenAxes();
+            var back = Camera.Backward;
+            foreach (var dir in new[] { new Vector3d(back.X, back.Y, 0), new Vector3d(-right.X, -right.Y, 0), new Vector3d(right.X, right.Y, 0) })
+            {
+                if (!(dir.Length > 1e-6) || ProjectDip(dir.Normalized() * s.LightCylinderKm) is not { } ring) continue;
+                if (ring.X > _viewDip.Width - LabelRoomDip) continue;
+                labels.Add(new RingLabel(LightCylinderLabel, ring.X, ring.Y, 1));
+                break;
+            }
+        }
+        if (!labels.SequenceEqual(_viewLabels)) ViewLabels = labels;
+    }
+
+    /// <summary>A scene point (km) on the view, in DIP from its top left; null when it is behind the camera or off the view.</summary>
+    public Point? ProjectDip(Vector3d world)
+    {
+        if (!(_viewDip.Width > 0) || !(_viewDip.Height > 0)) return null;
+        var rel = world - Camera.Eye;
+        var clip = new Vector4d(rel.X, rel.Y, rel.Z, 1) * (Camera.View * Camera.Projection(_viewDip.Width / _viewDip.Height));
+        if (!(clip.W > 0)) return null;
+        double x = clip.X / clip.W, y = clip.Y / clip.W;
+        if (Math.Abs(x) > 1 || Math.Abs(y) > 1) return null;
+        return new Point((x + 1) / 2 * _viewDip.Width, (1 - y) / 2 * _viewDip.Height);
     }
 
     /// <summary>The next frame read back with GL.ReadPixels (no screen capture), or null on failure or timeout.</summary>
@@ -767,6 +989,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
                 GlReleased = host.Shutdown(() =>
                 {
                     _gpuTimer?.Dispose();
+                    _neutronStar?.Dispose();
                     _lensing?.Dispose();
                     _rings?.Dispose();
                     _painter?.Dispose();
@@ -781,6 +1004,7 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             }
         }
         _gpuTimer = null;
+        _neutronStar = null;
         _lensing = null;
         _rings = null;
         _painter = null;

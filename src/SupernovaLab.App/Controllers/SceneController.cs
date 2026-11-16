@@ -7,8 +7,10 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using OpenTK.Graphics.OpenGL4;
+using OpenTK.Mathematics;
 using SupernovaLab.App.Services;
 using SupernovaLab.App.ViewModels;
+using SupernovaLab.Core.Compact;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Structure;
 using SupernovaLab.Core.Units;
@@ -79,12 +81,14 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         _beamClock = beamClock ?? new BeamClock();
         _vm = vm ?? throw new ArgumentNullException(nameof(vm));
         _hostFactory = hostFactory ?? throw new ArgumentNullException(nameof(hostFactory));
-        _sceneFactory = sceneFactory ?? ((o, z1) => new ExplosionScene(o, z1));
+        // Plan Task 6: the scene knows the observer and run, so the remnant drifts as in the Close-up (spec §4.6, §7.2).
+        _sceneFactory = sceneFactory ?? ((o, z1) => new ExplosionScene(o, z1, _vm.CurrentObserver, _vm.RunNumber));
         BuildScene();
         ResetCameraAngles();
         ComputeState();
         Director.Jump(_state.FrameRadiusCm);
         vm.OutcomeChanged += OnOutcomeChanged;
+        vm.PropertyChanged += OnMainChanged;
         vm.Timeline.PropertyChanged += OnTimelineChanged;
         _isNotesExpanded = vm.Layout.IsNotesExpanded;   // remembered across launches (Task 15)
         vm.Layout.PropertyChanged += OnLayoutChanged;
@@ -485,7 +489,9 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     {
         if (_disposed || IsFailed || _host is null) return null;
         _readback?.TrySetResult(null);
-        var tcs = new TaskCompletionSource<BitmapSource?>();
+        // Task 4b review carry-over: as the Close-up's, the waiting code resumes on the dispatcher, never inline inside OnDraw (with
+        // the GL context current and the frame half drawn).
+        var tcs = new TaskCompletionSource<BitmapSource?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _readback = tcs;
         _host.RequestRender();
         var done = await Task.WhenAny(tcs.Task, Task.Delay(timeout));
@@ -510,6 +516,25 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         IsAutoFraming = true;
         Restate(jump: true);   // Review Focus 4: a new outcome reframes at once, even in the middle of an ease
     }
+
+    /// <summary>
+    /// Plan Task 6: Re-roll (a new run number, no new outcome) moves an unmeasured kick's drift, as in the Close-up; the scene keeps its
+    /// particles and the camera its framing.
+    /// </summary>
+    private void OnMainChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_disposed || e.PropertyName != nameof(MainViewModel.RunNumber) || _scene is null) return;
+        _scene.RunNumber = _vm.RunNumber;
+        Restate();
+    }
+
+    /// <summary>
+    /// The beams' rotation phase now (radians, not wrapped): the shared <see cref="BeamClock"/> at <see cref="Magnetosphere.DrawnPeriodS"/>
+    /// of the model period, as the Close-up reads it (spec §4.3, criterion 4); 0 without beams.
+    /// </summary>
+    public double BeamPhaseRad => _state.Marker == SceneMarker.Pulsar
+        ? _beamClock.PhaseRad(Magnetosphere.DrawnPeriodS(_state.PulsarPeriodS))
+        : 0;
 
     private void OnTimelineChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -612,7 +637,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (note.Contains("inconsistency #", StringComparison.Ordinal) || note.Contains("inconsistencies #", StringComparison.Ordinal))
             return 4;
         if (note.Contains("(marker)", StringComparison.Ordinal) || note.Contains("(schematic marker)", StringComparison.Ordinal) ||
-            note.Contains("beams slowed down", StringComparison.Ordinal) ||
+            note.Contains("beams slowed down", StringComparison.Ordinal) || note.Contains("beams shown at real speed", StringComparison.Ordinal) ||
             note.StartsWith("Gamma-ray-burst jets", StringComparison.Ordinal) ||
             note.StartsWith("The gamma-ray burst's jets", StringComparison.Ordinal)) return 6;
         return 5;
@@ -814,10 +839,13 @@ public sealed partial class SceneController : ObservableObject, IDisposable
             if (s.ShowJets) _jets.RenderJets(Camera, viewportPx, s.JetHalfAngleRad, s.FrameRadiusCm / unit, hdr: HdrEnabled);
             foreach (var ring in CurrentRings()) _rings.Render(Camera, viewportPx, ring.RadiusCm / unit, ring.Opacity);
             if (s.ShowRings1987A) _torusRings?.Render(Camera, viewportPx, pxPerDip, unit, s.RingBrightness);
-            double phase = _beamClock.PhaseRad(ExplosionScene.ShownPulsarPeriodS);   // plan ruling P3-5: one clock for both views
+            // Plan ruling P3-5 and Task 6: one clock, one drawn period, tilt and half-width for both views (spec §4.3, §7.2).
+            double phase = BeamPhaseRad;
             // The beams reach 0.9 of the framing radius, as before the director (the scene unit is now the half-height).
             double beam = double.IsFinite(s.FrameRadiusCm) ? 0.9 * s.FrameRadiusCm / unit : 0.9;
-            _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam);
+            // The marker sits where the kick has carried the remnant (spec §7.2); the director still frames the debris.
+            var at = new Vector3d(s.RemnantOffsetCm.X, s.RemnantOffsetCm.Y, s.RemnantOffsetCm.Z) / unit;
+            _remnant.Render(Camera, viewportPx, pxPerDip, s.Marker, phase, beam, at, s.BeamTiltRad, s.BeamHalfAngleRad);
             // The breakout flash is scene light in the HDR target, so it blooms; without the target it is drawn after the frame.
             if (s.FlashIntensity > 0 && HdrEnabled) _flash?.RenderHdr(viewportPx, s.FlashColor, s.FlashIntensity);
             if (starCut || particleCut)
@@ -1076,6 +1104,7 @@ public sealed partial class SceneController : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         _vm.OutcomeChanged -= OnOutcomeChanged;
+        _vm.PropertyChanged -= OnMainChanged;
         _vm.Timeline.PropertyChanged -= OnTimelineChanged;
         _vm.Layout.PropertyChanged -= OnLayoutChanged;
         _readback?.TrySetResult(null);

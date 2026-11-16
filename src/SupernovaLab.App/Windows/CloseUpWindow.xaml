@@ -74,6 +74,44 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <!-- Plan Task 6: the view's own labels ("To Earth" at the arrow's tip, "Light cylinder" on its ring). -->
+                    <ItemsControl ItemsSource="{Binding ViewLabels}" IsHitTestVisible="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Canvas.Left" Value="{Binding XDip}"/>
+                                <Setter Property="Canvas.Top" Value="{Binding YDip}"/>
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="6,-10,0,0" Padding="4,1" CornerRadius="3" Background="#99020308">
+                                    <TextBlock Text="{Binding Text}" Foreground="#F2E27A" FontSize="12"/>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Spec §2.1 and §4.3: a neutron star's speed label, and the key to its lines (colours schematic). -->
+                    <Border Margin="6,4" Padding="6,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
+                            VerticalAlignment="Top" IsHitTestVisible="False"
+                            Visibility="{Binding DataContext.SpeedLabel, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding DataContext.SpeedLabel, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       Foreground="{StaticResource TextBrush}" FontWeight="SemiBold"/>
+                            <StackPanel Visibility="{Binding DataContext.ShowFieldLines, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
+                                <TextBlock Style="{StaticResource Muted}"><Run Text="━ " Foreground="#73A8FF"/><Run Text="closed field lines" Foreground="{StaticResource TextBrush}"/></TextBlock>
+                                <TextBlock Style="{StaticResource Muted}"><Run Text="━ " Foreground="#FF9E4D"/><Run Text="open field lines (to the light cylinder)" Foreground="{StaticResource TextBrush}"/></TextBlock>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource Muted}"
+                                       Visibility="{Binding DataContext.State.ShowBeams, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}"><Run Text="▲ " Foreground="#99FFD9"/><Run Text="radio beams" Foreground="{StaticResource TextBrush}"/></TextBlock>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Spec §6.5: the view's honest label, whenever a remnant is drawn. -->
                     <Border Margin="6,4" Padding="5,3" CornerRadius="4" Background="#CC020308" HorizontalAlignment="Left"
                             VerticalAlignment="Bottom" IsHitTestVisible="False"

@@ -54,9 +54,12 @@ public sealed class JetRenderer : IDisposable
             RenderCone(camera, viewportPx, axis, JetLength * scale, halfAngleRad, color, 0.9f);
     }
 
-    /// <summary>One cone from the origin along <paramref name="axis"/>, additively blended.</summary>
+    /// <summary>
+    /// One cone from <paramref name="apex"/> (the origin by default; plan Task 6: the main view's drifting remnant) along
+    /// <paramref name="axis"/>, additively blended; the parts a neutron star hides are dropped when <paramref name="occluder"/> is given.
+    /// </summary>
     public void RenderCone(OrbitCamera camera, Size viewportPx, Vector3d axis, double length, double halfAngleRad,
-        Vector3 color, float alpha)
+        Vector3 color, float alpha, Vector3d apex = default, StarOccluder? occluder = null)
     {
         var a = axis.Normalized();
         var helper = Math.Abs(a.Z) < 0.9 ? Vector3d.UnitZ : Vector3d.UnitX;
@@ -72,6 +75,8 @@ public sealed class JetRenderer : IDisposable
         _program.Set("u_tanHalf", (float)Math.Tan(halfAngleRad));
         _program.Set("u_color", color);
         _program.Set("u_alpha", alpha);
+        _program.Set("u_apex", (Vector3)apex);
+        StarOccluder.Apply(_program, camera, occluder);
         GL.Enable(EnableCap.Blend);
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
         GL.BindVertexArray(_vao);

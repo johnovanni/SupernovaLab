@@ -1,3 +1,4 @@
+using SupernovaLab.Core.Compact;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Signals;
@@ -58,6 +59,15 @@ public sealed record SceneState
     public SceneMarker Marker { get; init; }
     /// <summary>The lab's model spin period (s) now; NaN unless <see cref="Marker"/> is <see cref="SceneMarker.Pulsar"/>.</summary>
     public double PulsarPeriodS { get; init; } = double.NaN;
+    /// <summary>
+    /// Plan Task 6 (spec §4.6, §7.2): the remnant's drift from the explosion's centre, cm (<see cref="KickDrift.OffsetCm"/>, the same as
+    /// the Close-up's): the marker is drawn there. The director still frames the debris, not the marker.
+    /// </summary>
+    public Vec3 RemnantOffsetCm { get; init; }
+    /// <summary>α, the beams' magnetic tilt from the spin axis (<see cref="Magnetosphere.TiltRad"/>: 45° schematic, or a preset's published value).</summary>
+    public double BeamTiltRad { get; init; } = double.NaN;
+    /// <summary>ρ, each beam's half-opening angle for the period now (<see cref="Magnetosphere.BeamHalfAngleRad"/>); NaN without beams.</summary>
+    public double BeamHalfAngleRad { get; init; } = double.NaN;
     public IReadOnlyList<string> Notes { get; init; } = Array.Empty<string>();
 
     /// <summary>Whether the layered particles are drawn now (an explosion past breakout, or a failed supernova's envelope shell past its launch).</summary>
@@ -143,8 +153,11 @@ public sealed class ExplosionScene
     /// <summary>The faintest ejecta brightness: still visible as a shell.</summary>
     private const float MinBrightness = 0.25f;
 
-    /// <summary>A pulsar's beams turn once in this many seconds on screen, whatever its model period ("slowed down").</summary>
-    public const double ShownPulsarPeriodS = 2;
+    /// <summary>
+    /// The quickest a pulsar's beams turn on screen, s. Plan Task 6: both views now draw <see cref="Magnetosphere.DrawnPeriodS"/>,
+    /// max(real period, this), so a magnetar of several seconds turns at its real speed; kept equal to Magnetosphere's 2 s.
+    /// </summary>
+    public const double ShownPulsarPeriodS = Magnetosphere.MinDrawnPeriodS;
 
     public const string SchematicNote = "Colours schematic";
 
@@ -297,6 +310,8 @@ public sealed class ExplosionScene
     private static readonly ShockBreakoutModel Breakout = new();
 
     private readonly double _z1;
+    private readonly ObserverSetup _observer;
+    private readonly double _beamTiltRad;
     private readonly string _shockNote;
     private readonly bool _nebula;
     private readonly bool _ejecta, _thermonuclear, _lowLuminosityGrb, _pinnedGrb;
@@ -307,11 +322,19 @@ public sealed class ExplosionScene
     private readonly double _flashFromS = double.NaN, _flashToS = double.NaN, _flashTemperatureK = double.NaN;
     private readonly double _breakoutS, _peakLuminosity, _lightCurveEndS, _whiteDwarfS, _pulsarS, _jetsFromS, _jetsToS;
 
-    /// <summary>The scene for this outcome; <paramref name="timeDilation"/> (1 + z) puts the notes' times in observer time.</summary>
-    public ExplosionScene(Outcome outcome, double timeDilation = 1)
+    /// <summary>
+    /// The scene for this outcome; <paramref name="timeDilation"/> (1 + z) puts the notes' times in observer time. Plan Task 6: the
+    /// <paramref name="observer"/> (its beam checkbox places Earth, and so a measured kick's sky plane) and the
+    /// <paramref name="runNumber"/> (an unmeasured kick's direction) give the remnant's drift, as the Close-up's (spec §4.6, §7.2);
+    /// the default observer and run 0 when not given.
+    /// </summary>
+    public ExplosionScene(Outcome outcome, double timeDilation = 1, ObserverSetup? observer = null, int runNumber = 0)
     {
         Outcome = outcome ?? throw new ArgumentNullException(nameof(outcome));
         _z1 = timeDilation > 0 ? timeDilation : 1;
+        _observer = observer ?? ObserverSetup.Default;
+        RunNumber = runNumber;
+        _beamTiltRad = Magnetosphere.TiltRad(outcome);
         _ejecta = EjectaKinematics.HasEjecta(outcome);
         _thermonuclear = outcome.Type is SupernovaType.Ia or SupernovaType.Ia91T or SupernovaType.Ia91bg or SupernovaType.Iax;
         _breakoutS = EjectaKinematics.BreakoutTimeS(outcome);
@@ -365,6 +388,12 @@ public sealed class ExplosionScene
     }
 
     public Outcome Outcome { get; }
+
+    /// <summary>
+    /// The run number the remnant's drift is drawn with (plan Task 6: an unmeasured kick's direction is display randomness from it,
+    /// spec §4.6). Re-roll sets it on the scene it has, so the particles need not be sampled again; nothing else depends on it.
+    /// </summary>
+    public int RunNumber { get; set; }
 
     /// <summary>The ejecta's layers, velocity profile and mixing (null without ejecta); a failed supernova gives its envelope shell.</summary>
     public EjectaStructure? Structure { get; }
@@ -440,6 +469,11 @@ public sealed class ExplosionScene
             FlashIntensity = flash,
             FlashColor = flash > 0 ? BlackbodyColor.FromTemperature(_flashTemperatureK) : (1f, 1f, 1f),
             Notes = notes,
+            // Plan Task 6 (spec §4.3, §4.6, §7.2): where the kick has carried the remnant, and the beams' tilt and half-width, all
+            // as the Close-up has them.
+            RemnantOffsetCm = KickDrift.OffsetCm(Outcome, _observer, RunNumber, sourceTimeS),
+            BeamTiltRad = _beamTiltRad,
+            BeamHalfAngleRad = state.Marker == SceneMarker.Pulsar ? Magnetosphere.BeamHalfAngleRad(state.PulsarPeriodS) : double.NaN,
         };
     }
 
@@ -744,8 +778,13 @@ public sealed class ExplosionScene
                 string what = Outcome.Remnant.Kind == RemnantKind.Magnetar ? "Magnetar" : "Neutron star";
                 if (!double.IsNaN(_pulsarS) && t >= _pulsarS)
                 {
-                    periodS = Pulsar.Sample(Outcome, ObserverSetup.Default, t, "periodS");
-                    notes.Add($"{what}'s beams slowed down (the lab's model period is {UnitFormat.Time(periodS)})");
+                    // Plan Task 6: the spin-down law itself (the pulsar model's own, equal to its sample within 10–1,000 yr), so the
+                    // beams' period and half-width stay defined past the model's 1,000 yr and equal the Close-up's.
+                    periodS = PulsarModel.Spin.Of(Outcome).PeriodS(t);
+                    // Plan Task 6: one drawn period for both views, max(real, 2 s) (spec §4.3); a magnetar's seconds are real speed.
+                    notes.Add(periodS < Magnetosphere.MinDrawnPeriodS
+                        ? $"{what}'s beams slowed down (the lab's model period is {UnitFormat.Time(periodS)})"
+                        : $"{what}'s beams shown at real speed (the lab's model period is {UnitFormat.Time(periodS)})");
                     return SceneMarker.Pulsar;
                 }
                 notes.Add($"{what} (marker)" + (double.IsNaN(_pulsarS) ? "" :

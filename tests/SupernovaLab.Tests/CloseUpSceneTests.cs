@@ -122,7 +122,7 @@ public class CloseUpSceneTests
         Assert.Equal(12, s.SurfaceRadiusKm);
         Assert.Equal(1.4, s.MassMsun);
         Assert.Equal(CloseUpScene.NeutronStarFrameRadii * 12, s.FrameRadiusKm);
-        Assert.Equal(new[] { "Mass", "Radius" }, s.Readouts.Select(r => r.Label));
+        Assert.Equal(new[] { "Mass", "Radius", "Spin", "Field", "Surface", "Age", "Kick" }, s.Readouts.Select(r => r.Label));
     }
 
     [Fact]
@@ -413,5 +413,241 @@ public class CloseUpSceneTests
         Assert.Equal(RayMapTraceReason.Rays, p.LastTraceReason);
         p.Next(Rays(yaw: 0.1f), 901, 600, LensingLevel.Quarter, LensingLevel.Quarter);
         Assert.Equal(RayMapTraceReason.CoarserLevel, p.LastTraceReason);
+    }
+
+    [Fact]
+    public void RayMap_TheSurfacesShadingIsNotTraced()   // plan Task 6: the spin phase turns the surface's markings every frame
+    {
+        var p = new RayMapPlanner();
+        p.Next(Rays(surface: 5), 900, 600, LensingLevel.Full, LensingLevel.Full);
+        var turned = Rays(surface: 5) with { SurfacePhaseRad = 1.3f, SurfaceTiltRad = 1.08f, SurfaceCapCos = 0.99f, SurfaceMarkings = true };
+        Assert.Equal(RayMapWork.None, p.Next(turned, 900, 600, LensingLevel.Full, LensingLevel.Full).Work);
+    }
+
+    // ---- Plan Task 6: the neutron star (spec §4.1, §4.3, §4.5, §4.6) ----
+
+    /// <summary>The Crab's age in 1991, when its 33.39 ms period was measured (the preset's fact).</summary>
+    private const double CrabAgeS = 2.9568e10;
+
+    private const double Year = Core.Units.PhysicalConstants.Year;
+
+    private static CloseUpScene PresetScene(string presetId, int run = 1)
+    {
+        var preset = PresetCatalog.Get(presetId);
+        return new CloseUpScene(TestOutcomes.Engine.Compute(preset.Inputs, preset.Pins), preset.Observer, run);
+    }
+
+    private static Outcome Crab()
+    {
+        var preset = PresetCatalog.Get("sn1054");
+        return TestOutcomes.Engine.Compute(preset.Inputs, preset.Pins);
+    }
+
+    [Fact]
+    public void NeutronStarEra_ReadoutsAndNotes()
+    {
+        var st = SceneFor("sn1054").At(CrabAgeS);
+        Assert.Equal(CloseUpEra.NeutronStar, st.Era);
+        Assert.StartsWith("Close-up: Neutron star (pulsar, 33", $"Close-up: {st.Title}");
+        Assert.Equal(new[] { "Mass", "Radius", "Spin", "Field", "Surface", "Age", "Kick" }, st.Readouts.Select(r => r.Label));
+        Assert.Contains(st.Notes, n => n.Contains("mostly in X-rays"));
+        Assert.Contains("Shown 60× slower", st.SpeedLabel);
+    }
+
+    [Fact]
+    public void NeutronStar_ColourIsBlackbodyOfSurfaceTemperature()
+    {
+        var o = Crab();
+        foreach (double t in new[] { 100.0, 1e5, 10 * Year, CrabAgeS })
+        {
+            var st = SceneFor(o).At(t);
+            double kelvin = NeutronStarModel.SurfaceTemperature(o, t).Value;
+            Assert.Equal(BlackbodyColor.FromTemperature(kelvin), st.SurfaceColor);
+            Assert.Equal(kelvin, st.NeutronStar!.SurfaceTemperatureK.Value);
+        }
+        var notes = SceneFor(o).At(CrabAgeS).Notes;
+        Assert.Contains(notes, n => n.Contains("tone-mapped", StringComparison.Ordinal));   // spec C12
+        Assert.Contains(notes, n => n.Contains("blackbody", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NeutronStar_ReadoutsCarryTheirQuantities_WithConfidenceAndSource()
+    {
+        var o = Crab();
+        var st = SceneFor(o).At(CrabAgeS);
+        var r = st.Readouts.ToDictionary(x => x.Label);
+        Assert.Same(o.Remnant.Mass, r["Mass"].Value);
+        Assert.Same(o.Remnant.RadiusKm, r["Radius"].Value);
+        Assert.Same(o.Remnant.MagneticFieldG, r["Field"].Value);
+        Assert.Same(st.NeutronStar!.SurfaceTemperatureK, r["Surface"].Value);
+        Assert.Equal(st.NeutronStar.PeriodS, r["Spin"].Value.Value);
+        Assert.Equal("s", r["Spin"].Value.Unit);
+        Assert.Equal(st.NeutronStar.PeriodDerivative, r["Spin"].Second!.Value);
+        Assert.Equal(CrabAgeS, r["Age"].Value.Value);
+        Assert.Equal(o.Remnant.KickKmS!.Value, r["Kick"].Value.Value);
+        Assert.Equal(st.NeutronStar.OffsetCm.Length, r["Kick"].Second!.Value, 1e-9 * r["Kick"].Second!.Value);
+        Assert.All(st.Readouts, x => Assert.False(string.IsNullOrEmpty(x.Value.Source.Citation)));
+        Assert.All(st.Readouts.Where(x => x.Second is not null), x => Assert.False(string.IsNullOrEmpty(x.Second!.Source.Citation)));
+        // The column's text: the spin with its Pdot, the kick with its distance, the field in powers of ten, the age in years.
+        Assert.StartsWith("33.", r["Spin"].ValueText);
+        Assert.Contains("ms", r["Spin"].ValueText);
+        Assert.Contains("Ṗ", r["Spin"].ValueText);
+        Assert.Contains("× 10¹²", r["Field"].ValueText);
+        Assert.Contains("km/s", r["Kick"].ValueText);
+        Assert.Contains("pc", r["Kick"].ValueText);
+        Assert.Contains("years", r["Age"].ValueText);
+        Assert.Contains("MK", r["Surface"].ValueText);
+        // The Crab's measured kick direction: the line-of-sight part is unknown (spec §4.6).
+        Assert.Contains("line-of-sight", r["Kick"].ToolTip);
+    }
+
+    [Fact]
+    public void NeutronStar_EarlyTemperature_IsShownAsItsBand()
+    {
+        var st = SceneFor(Crab()).At(5 * Year);   // before 30 yr: the early-cooling band (spec §4.1)
+        var surface = st.Readouts.Single(x => x.Label == "Surface");
+        Assert.Equal(Core.Units.Confidence.ModelDependent, surface.Value.Confidence);
+        Assert.NotNull(surface.Value.Low);
+        Assert.Contains("–", surface.ValueText);
+    }
+
+    [Fact]
+    public void CasA_SurfaceTooltip_CarriesTheComparison_OnlyNearItsObservedAge()   // #54
+    {
+        var at340 = PresetScene("casa").At(340 * Year).Readouts.Single(x => x.Label == "Surface");
+        Assert.Contains("#54", at340.ToolTip);
+        Assert.Contains("Heinke", at340.ToolTip);
+        var at900 = PresetScene("casa").At(900 * Year).Readouts.Single(x => x.Label == "Surface");
+        Assert.DoesNotContain("#54", at900.ToolTip ?? "");
+    }
+
+    [Fact]
+    public void Beams_FromTheMagnetosphereFormation_WithTheNoteOnTheMainView()   // spec C6
+    {
+        var o = Crab();
+        double forms = Magnetosphere.MagnetosphereFormsS(o);
+        Assert.Equal(30, forms);
+        var before = SceneFor(o).At(forms * 0.5);
+        var after = SceneFor(o).At(forms * 2);
+        Assert.False(before.ShowBeams);
+        Assert.True(after.ShowBeams);
+        Assert.Contains(CloseUpScene.BeamsFromBirthNote, after.Notes);
+        Assert.Equal("Beams exist from birth; the main view draws them once the pulses escape the debris", CloseUpScene.BeamsFromBirthNote);
+        Assert.StartsWith("Proto-neutron star", before.Title);
+        Assert.StartsWith("Neutron star (pulsar", after.Title);
+    }
+
+    [Fact]
+    public void Geometry_IsTheMagnetospheres()
+    {
+        var o = Crab();
+        var obs = PresetCatalog.Get("sn1054").Observer;
+        var st = new CloseUpScene(o, obs, 1).At(CrabAgeS);
+        Assert.Equal(Magnetosphere.TiltRad(o), st.BeamTiltRad);
+        Assert.Equal(Magnetosphere.BeamHalfAngleRad(st.NeutronStar!.PeriodS), st.BeamHalfAngleRad);
+        Assert.Equal(Magnetosphere.EarthDirection(o, obs), st.EarthDirection);
+        Assert.Equal(Magnetosphere.BeamCanCrossEarth(o, obs), st.BeamCanCrossEarth);
+        Assert.Equal(Magnetosphere.LightCylinderKm(st.NeutronStar.PeriodS), st.LightCylinderKm);
+        Assert.Equal(Magnetosphere.SpeedLabel(st.NeutronStar.PeriodS), st.SpeedLabel);
+        Assert.Equal(2, st.DrawnPeriodS);
+        Assert.Contains(st.Notes, n => n.Contains("62°") && n.Contains("Romani"));   // the published tilt, named (spec C5)
+        var plain = SceneFor(TestOutcomes.Custom(SupernovaType.IIP, 1e51, 10, 0.07, 3e13)).At(1e4);
+        Assert.Contains(plain.Notes, n => n.Contains("schematic") && n.Contains("45°"));
+    }
+
+    [Fact]
+    public void Magnetar_IsTitledAndShownAtRealSpeed()
+    {
+        var m = TestOutcomes.Custom(SupernovaType.IIP, 1e51, 10, 0.07, 3e13, TestOutcomes.Pulsar(2.5, 1e15, RemnantKind.Magnetar));
+        var st = SceneFor(m).At(100 * Year);
+        Assert.StartsWith("Magnetar (", st.Title);
+        Assert.Equal("Shown at real speed", st.SpeedLabel);
+        Assert.Equal(st.NeutronStar!.PeriodS, st.DrawnPeriodS);
+    }
+
+    [Fact]
+    public void NeutronStar_StateFollowsTheTime_TheLensedBodyDoesNot()
+    {
+        var scene = SceneFor(Crab());
+        var young = scene.At(100 * Year);
+        var old = scene.At(900 * Year);
+        Assert.True(old.NeutronStar!.PeriodS > young.NeutronStar!.PeriodS);
+        Assert.True(old.LightCylinderKm > young.LightCylinderKm);
+        Assert.Equal((young.MassMsun, young.SurfaceRadiusKm, young.Spin), (old.MassMsun, old.SurfaceRadiusKm, old.Spin));
+    }
+
+    // ---- The field lines (plan Task 6: dipole lines r = L sin²θ, schematic count, open beyond R_L) ----
+
+    [Fact]
+    public void FieldLines_AreDipoleLines_TheirNumberGrowsWithTheField()
+    {
+        var weak = FieldLines.For(12, 1e11, 1600);
+        var crab = FieldLines.For(12, 3.8e12, 1600);
+        var magnetar = FieldLines.For(12, 1e15, 2e5);
+        Assert.True(weak.Closed.Count < crab.Closed.Count && crab.Closed.Count < magnetar.Closed.Count);
+        Assert.Equal(FieldLines.ShellCount(3.8e12), FieldLines.ShellsKm(12, 3.8e12).Count);
+        foreach (var line in crab.Closed)
+        {
+            // r = L sin²θ with θ from the magnetic axis (+z): one L along the whole line, footpoints on the surface.
+            double l = line[line.Length / 2].Length;
+            foreach (var p in line)
+            {
+                double sin2 = (p.X * p.X + p.Y * p.Y) / p.LengthSquared;
+                Assert.Equal(l * sin2, p.Length, 1e-6 * l);
+            }
+            Assert.Equal(12, line[0].Length, 1e-6);
+            Assert.Equal(12, line[^1].Length, 1e-6);
+        }
+    }
+
+    [Fact]
+    public void FieldLines_BeyondTheLightCylinder_AreOpen_AndStopThere()
+    {
+        var set = FieldLines.For(12, 3.8e12, 100);   // a light cylinder at 100 km: the outer shells open
+        Assert.NotEmpty(set.Open);
+        Assert.All(set.Closed, line => Assert.All(line, p => Assert.True(p.Length <= 100 + 1e-6)));
+        foreach (var line in set.Open)
+        {
+            Assert.Equal(12, line[0].Length, 1e-6);       // from the surface...
+            Assert.Equal(100, line[^1].Length, 1e-6);     // ...to the light cylinder, no further
+        }
+        Assert.True(FieldLines.PolarCapRad(12, 1600) < 6 * Math.PI / 180);   // the Crab's polar cap: about 5°
+        Assert.Equal(Math.Asin(Math.Sqrt(12.0 / 1600)), FieldLines.PolarCapRad(12, 1600), 12);
+    }
+
+    /// <summary>The overlays the star hides: inside or behind its sphere, and behind its bent (larger-looking) disc; never in front.</summary>
+    [Fact]
+    public void StarOcclusion_HidesWhatIsInsideOrBehindTheStar()
+    {
+        var centre = new Vector3d(100, 0, 0);   // the star 100 km ahead of the eye, along +x
+        const double r = 12, apparent = 14.9;
+        Assert.False(StarOcclusion.Hidden(new Vector3d(80, 0, 0), centre, r, apparent));        // in front
+        Assert.False(StarOcclusion.Hidden(new Vector3d(88, 0, 0), centre, r, apparent));        // on the near surface
+        Assert.True(StarOcclusion.Hidden(new Vector3d(95, 0, 0), centre, r, apparent));         // inside
+        Assert.True(StarOcclusion.Hidden(new Vector3d(130, 0, 0), centre, r, apparent));        // behind
+        Assert.True(StarOcclusion.Hidden(new Vector3d(130, 13.5 * 1.3, 0), centre, r, apparent)); // behind the bent rim (b ≈ 13.5 km)
+        Assert.False(StarOcclusion.Hidden(new Vector3d(130, 20 * 1.3, 0), centre, r, apparent));  // beside it
+        Assert.False(StarOcclusion.Hidden(new Vector3d(95, 13.5 * 0.95, 0), centre, r, apparent)); // nearer than the centre, outside the sphere
+        Assert.False(StarOcclusion.Hidden(new Vector3d(130, 0, 0), centre, 0, 0));                // no star
+        // From afar the 1.4 M☉, 12 km star looks R / √(1 − 2GM/(c²R)) = 1.24 R across.
+        double rg = BlackHoleOptics.GravitationalRadiusCm(1.4) / 1e5;
+        Assert.Equal(12 / Math.Sqrt(1 - 2 * rg / 12), StarOcclusion.ApparentRadiusKm(12, rg, 1e9), 6);
+        Assert.InRange(StarOcclusion.ApparentRadiusKm(12, rg, 1e9) / 12, 1.22, 1.26);
+        Assert.Equal(12, StarOcclusion.ApparentRadiusKm(12, double.NaN, 50));
+    }
+
+    [Fact]
+    public void LineFrames_AreOrthonormal_TheMagneticOneAlongTheBeamsAxis()
+    {
+        var m = LineFrame.Magnetic(62 * Math.PI / 180, 1.1);
+        Assert.Equal(RemnantRenderer.MagneticAxis(62 * Math.PI / 180, 1.1), m.Z);
+        foreach (var (a, b) in new[] { (m.X, m.Y), (m.Y, m.Z), (m.Z, m.X) }) Assert.Equal(0, Vector3d.Dot(a, b), 12);
+        foreach (var v in new[] { m.X, m.Y, m.Z }) Assert.Equal(1, v.Length, 12);
+        Assert.Equal(1, Vector3d.Dot(Vector3d.Cross(m.X, m.Y), m.Z), 12);   // right-handed
+        var e = new Vector3d(0, -Math.Sin(1.08), Math.Cos(1.08));
+        var earth = NeutronStarRenderer.EarthFrame(e, 12);
+        Assert.True((earth.Z - 12 * e).Length < 1e-12, "the arrow's +z is Earth's direction, scaled by the radius");
+        Assert.Equal(0, Vector3d.Dot(earth.X, earth.Z), 9);
+        Assert.Equal(NeutronStarRenderer.ArrowTipRadii, NeutronStarRenderer.EarthArrow()[0][1].Z);
     }
 }

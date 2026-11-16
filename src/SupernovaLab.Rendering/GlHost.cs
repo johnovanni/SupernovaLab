@@ -22,11 +22,32 @@ public sealed class GlHost : IRenderHost
     private bool _contextReady;
     private bool _animating;
     private int _framesOwed;
+    // Task 4b review carry-overs (done in plan Task 6): no ticking while the control is not visible, and none after Shutdown.
+    private bool _controlVisible = true;
+    private bool _shutdown;
 
     public GlHost(GLWpfControl control)
     {
         _control = control;
         _control.Render += OnRender;
+        _control.IsVisibleChanged += OnControlVisibleChanged;
+    }
+
+    /// <summary>
+    /// The control was hidden or shown (its window hidden, minimized or restored). Hidden: the frames owed are dropped and the host stops
+    /// ticking, even while animating (a hidden control is not composed, so a tick would only spin). Shown: it ticks again if animating,
+    /// and owes one fresh frame. The visibility is taken as visible until the control first reports otherwise.
+    /// </summary>
+    private void OnControlVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        _controlVisible = e.NewValue is true;
+        if (!_controlVisible) _framesOwed = 0;
+        else if (!_shutdown)
+        {
+            _framesOwed = FramesPerRequest;
+            _control.InvalidateVisual();
+        }
+        UpdateContinuous();
     }
 
     /// <summary>Raised once, inside the first frame, with "vendor | renderer | version".</summary>
@@ -79,7 +100,11 @@ public sealed class GlHost : IRenderHost
     /// </summary>
     public bool Shutdown(Action release)
     {
+        // The guard first: a late Animating or RequestRender can no longer subscribe the static CompositionTarget.Rendering event,
+        // which would keep this host, its control and its window alive (Task 4b review carry-over).
+        _shutdown = true;
         _control.Render -= OnRender;
+        _control.IsVisibleChanged -= OnControlVisibleChanged;
         _animating = false;
         _framesOwed = 0;
         SetTicking(false);
@@ -89,8 +114,10 @@ public sealed class GlHost : IRenderHost
         return true;
     }
 
+    /// <summary>Asks for a frame (two compositions' worth). Nothing is owed while the control is hidden or after <see cref="Shutdown"/>.</summary>
     public void RequestRender()
     {
+        if (_shutdown || !_controlVisible) return;
         _framesOwed = FramesPerRequest;
         UpdateContinuous();
         _control.InvalidateVisual();
@@ -98,7 +125,7 @@ public sealed class GlHost : IRenderHost
 
     private void UpdateContinuous()
     {
-        SetTicking(_failure == null && (_animating || _framesOwed > 0));
+        SetTicking(!_shutdown && _controlVisible && _failure == null && (_animating || _framesOwed > 0));
     }
 
     /// <summary>

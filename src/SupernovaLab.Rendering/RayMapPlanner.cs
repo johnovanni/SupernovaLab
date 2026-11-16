@@ -31,7 +31,7 @@ public readonly record struct RayMapStep(RayMapWork Work, LensingLevel Level, in
 /// Ruling R-P3-10, the cached ray map, as a pure state machine (the GL side is <see cref="LensingPass"/>). What a pixel's ray does
 /// (captured, escaping along a direction, or hitting a neutron star's surface at a point) depends only on the camera's pose and
 /// field of view, the spin, the surface radius, the grid switch, the viewport and the level: everything in
-/// <see cref="LensingUniforms"/> except the surface colour, and never the time. So the map is traced only when one of those
+/// <see cref="LensingUniforms"/> except the surface's shading, and never the time. So the map is traced only when one of those
 /// changes, and every other frame only samples the (time-varying) environment through it.
 /// <para>While the camera moves (the inputs differ from the shown map's) the whole map is traced at once at the moving level (the
 /// governor's for Auto, or the user's). Once the inputs hold still, a finer still level (full resolution for Auto) is built behind
@@ -75,9 +75,14 @@ public sealed class RayMapPlanner
     /// <summary>The most rays one refinement band traces.</summary>
     public int PixelsPerFrame { get; private set; } = DefaultPixelsPerFrame;
 
-    /// <summary>True when two sets of uniforms give the same rays: all equal except the surface colour (applied when sampling).</summary>
-    public static bool SameRays(in LensingUniforms a, in LensingUniforms b)
-        => (a with { SurfaceColor = default }) == (b with { SurfaceColor = default });
+    /// <summary>
+    /// True when two sets of uniforms give the same rays: all equal except the surface's shading (its colour, and plan Task 6's spin
+    /// phase, tilt, polar cap and markings), which is applied when the map is sampled.
+    /// </summary>
+    public static bool SameRays(in LensingUniforms a, in LensingUniforms b) => RaysOnly(a) == RaysOnly(b);
+
+    private static LensingUniforms RaysOnly(in LensingUniforms u)
+        => u with { SurfaceColor = default, SurfacePhaseRad = 0, SurfaceTiltRad = 0, SurfaceCapCos = 0, SurfaceMarkings = false };
 
     /// <summary>The band size that takes <see cref="RefineBudgetS"/> at this cost per ray (s); the default when it is unknown.</summary>
     public static int PixelsFor(double secondsPerRay)
