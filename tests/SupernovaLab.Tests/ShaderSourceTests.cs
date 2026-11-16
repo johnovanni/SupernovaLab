@@ -189,5 +189,10 @@ public class ShaderSourceTests
         Assert.Contains($"const float RAMP_STEP = {DiskRenderer.RampStep.ToString("0.000000", inv)};", disk);
         Assert.Contains("g * g * g * g * diskProfile(r)", disk);
         Assert.Contains("uniform float u_diskLevel", disk);
+        // Fix round 1: cone.frag drops what the disk hides (StarOcclusion.HiddenByDisk's mirror).
+        string cone = Text("cone.frag");
+        Assert.Contains("uniform vec2 u_diskRadii", cone);
+        Assert.Contains("float t = -eyeZ / p.z;", cone);
+        Assert.Contains("rho >= u_diskRadii.x && rho <= u_diskRadii.y", cone);
     }
 }

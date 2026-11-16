@@ -36,8 +36,9 @@
 // annulus [u_diskInner (the ISCO), u_diskOuter] (BlackHoleOptics.Trace's disk item): before the fate tests of each step after the
 // first, a step whose z changed sign is cut at the plane (linear between its two points), and if the crossing's r lies in the
 // annulus the ray ends there (FATE_HIT_DISK). The light's redshift factor is g = 1/(u^t (1 - Omega l)) for a prograde circular Kerr
-// orbit, Omega = 1/(r^1.5 + a), u^t = (r^1.5 + a)/(r^0.75 sqrt(r^1.5 - 3 r^0.5 + 2 a)) (Bardeen, Press and Teukolsky 1972, eqs 2.12 and
-// 2.16), with l the light's angular momentum about +z per unit energy: -(x p_y - y p_x), the sign flipped by the time reversal (item 2).
+// orbit, Omega = 1/(r^1.5 + a) (Bardeen, Press and Teukolsky 1972, eq 2.16), u^t = (r^1.5 + a)/(r^0.75 sqrt(r^1.5 - 3 r^0.5 + 2 a))
+// (Page and Thorne 1974's B/sqrt(C), derived from BPT 1972's E and L, eq 2.12), with l the light's angular momentum about +z per unit
+// energy: -(x p_y - y p_x), the sign flipped by the time reversal (item 2).
 // The ray map keeps (g, r) with a = 5; disk.frag shades it (brightness g^4 times a schematic profile; colour schematic).
 
 in vec2 v_uv;

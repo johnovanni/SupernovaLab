@@ -62,12 +62,15 @@ public sealed class JetRenderer : IDisposable
 
     /// <summary>
     /// Plan Task 11: the Close-up's jets, the same two cones along ± <see cref="JetAxis"/> from the hole, <paramref name="length"/> long, in
-    /// this colour, with the parts the hole's shadow hides dropped (<paramref name="occluder"/>: the horizon and the shadow's radius).
+    /// this colour, with the parts the hole's shadow hides dropped (<paramref name="occluder"/>: the horizon and the shadow's radius), and
+    /// (fix round 1) the parts behind the disk in the occluder's equatorial plane (<paramref name="diskRadii"/>: inner and outer, scene units;
+    /// 0 for none; <see cref="StarOcclusion.HiddenByDisk"/>).
     /// </summary>
-    public void RenderJets(OrbitCamera camera, Size viewportPx, double halfAngleRad, double length, Vector3 color, StarOccluder? occluder)
+    public void RenderJets(OrbitCamera camera, Size viewportPx, double halfAngleRad, double length, Vector3 color, StarOccluder? occluder,
+        Vector2 diskRadii = default)
     {
         foreach (var axis in new[] { JetAxis, -JetAxis })
-            RenderCone(camera, viewportPx, axis, length, halfAngleRad, color, 0.9f, default, occluder);
+            RenderCone(camera, viewportPx, axis, length, halfAngleRad, color, 0.9f, default, occluder, diskRadii);
     }
 
     /// <summary>
@@ -75,7 +78,7 @@ public sealed class JetRenderer : IDisposable
     /// <paramref name="axis"/>, additively blended; the parts a neutron star hides are dropped when <paramref name="occluder"/> is given.
     /// </summary>
     public void RenderCone(OrbitCamera camera, Size viewportPx, Vector3d axis, double length, double halfAngleRad,
-        Vector3 color, float alpha, Vector3d apex = default, StarOccluder? occluder = null)
+        Vector3 color, float alpha, Vector3d apex = default, StarOccluder? occluder = null, Vector2 diskRadii = default)
     {
         var a = axis.Normalized();
         var helper = Math.Abs(a.Z) < 0.9 ? Vector3d.UnitZ : Vector3d.UnitX;
@@ -93,6 +96,7 @@ public sealed class JetRenderer : IDisposable
         _program.Set("u_alpha", alpha);
         _program.Set("u_apex", (Vector3)apex);
         StarOccluder.Apply(_program, camera, occluder);
+        _program.Set("u_diskRadii", diskRadii);   // plan Task 11: 0 (none) unless the Close-up's jets pass the disk
         GL.Enable(EnableCap.Blend);
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
         GL.BindVertexArray(_vao);

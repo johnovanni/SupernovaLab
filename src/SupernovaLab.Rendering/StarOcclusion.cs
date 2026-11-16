@@ -39,6 +39,23 @@ public static class StarOcclusion
         return Math.Max(radiusKm, b * near);
     }
 
+    /// <summary>
+    /// Plan Task 11, fix round 1: whether the point <paramref name="p"/> (relative to the eye) is hidden by an opaque disk in the plane
+    /// z = centre.z round <paramref name="centre"/> (relative to the eye), from radius <paramref name="inner"/> to <paramref name="outer"/>:
+    /// the straight line from the eye to the point crosses that plane, between them, inside the annulus. Straight lines, as the overlays'
+    /// other occlusion (the lensed disk's image is larger). cone.frag mirrors it; <paramref name="outer"/> 0 hides nothing.
+    /// </summary>
+    public static bool HiddenByDisk(Vector3d p, Vector3d centre, double inner, double outer)
+    {
+        if (!(outer > 0) || p.Z == 0) return false;
+        double eyeZ = -centre.Z;   // the eye's height above the disk's plane
+        double t = -eyeZ / p.Z;
+        if (!(t > 0 && t < 1)) return false;
+        var c = t * p - centre;
+        double rho = Math.Sqrt(c.X * c.X + c.Y * c.Y);
+        return rho >= inner && rho <= outer;
+    }
+
     /// <summary>Whether the point <paramref name="p"/> (relative to the eye) is hidden by the star centred at <paramref name="centre"/>.</summary>
     public static bool Hidden(Vector3d p, Vector3d centre, double radius, double apparentRadius)
     {

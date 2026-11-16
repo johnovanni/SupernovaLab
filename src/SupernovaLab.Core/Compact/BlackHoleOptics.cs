@@ -436,8 +436,9 @@ public static class BlackHoleOptics
     public static double CircularOrbitOmega(double spin, double r) => 1 / (r * Math.Sqrt(r) + spin);
 
     /// <summary>
-    /// u^t = dt/dτ of that orbit: (r^{3/2} + a)/(r^{3/4} √(r^{3/2} − 3 r^{1/2} + 2a)) (Bardeen, Press &amp; Teukolsky 1972, eq. 2.12,
-    /// M = 1). Infinite (no circular orbit) where the root's argument is not positive: inside the prograde photon orbit.
+    /// u^t = dt/dτ of that orbit: (r^{3/2} + a)/(r^{3/4} √(r^{3/2} − 3 r^{1/2} + 2a)), M = 1: Page &amp; Thorne 1974 (ApJ 191, 499)'s
+    /// u^t = ℬ/√𝒞 with ℬ = 1 + a r^{−3/2}, 𝒞 = 1 − 3/r + 2a r^{−3/2}, derived from Bardeen, Press &amp; Teukolsky 1972's E and L (eq. 2.12).
+    /// Infinite (no circular orbit) where the root's argument is not positive: inside the prograde photon orbit.
     /// </summary>
     public static double CircularOrbitUt(double spin, double r)
     {

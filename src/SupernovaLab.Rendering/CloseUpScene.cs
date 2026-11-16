@@ -300,7 +300,17 @@ public sealed class CloseUpScene
             InsideStarNote = string.Format(inv, breaksOut ? InsideStarNoteFormat : InsideFailedStarNoteFormat, UnitFormat.Time(InsideStarUntilS));
         }
         else InsideStarUntilS = double.NaN;
+        // Fix round 1 (review item 1): the jets' times, from the GRB model (as the main view) and the disk's end (BlackHoleModel).
+        if (BlackHoleModel.BirthOrNull(outcome) == BlackHoleBirth.Collapsar && JetGrb.Applies(outcome))
+        {
+            JetsBreakOutS = JetGrb.ValidRange(outcome).StartS;
+            JetBaseEndsS = BlackHoleModel.SettleStartS(outcome) + BlackHoleModel.DiskToS;
+            JetsNote = string.Format(System.Globalization.CultureInfo.InvariantCulture, JetsNoteFormat,
+                UnitFormat.Time(JetsBreakOutS), UnitFormat.Time(JetBaseEndsS));
+        }
     }
+
+    private static readonly Core.Signals.GrbModel JetGrb = new();
 
     /// <summary>Ruling R-P3-21, the coordinator's exact words; {0} is the breakout time.</summary>
     public const string InsideStarNoteFormat =
@@ -459,13 +469,32 @@ public sealed class CloseUpScene
     public const string DiskShadingNote =
         "The disk is drawn thin, in the hole's equator, from the innermost stable orbit (the ISCO, exact for the spin) to the 200 km torus of the simulations (MacFadyen & Woosley 1999), for the ≈ 15 s the infall feeds it. Its light carries the exact shift of gas orbiting a spinning hole, gravitational and Doppler together (g = 1/(u^t(1 − Ωℓ)); Bardeen, Press & Teukolsky 1972), as seen from far away: the side turning towards you is brighter (by g⁴) and bluer, the gas near the hole redder. Its radial brightness and colours are schematic: the real torus is thick, at billions of degrees, and shines mostly in neutrinos. Seen edge-on, as the camera starts, its far side shows bent over and under the shadow";
 
-    /// <summary>The jets' base (spec §6.2: "the jets point along the spin axis, which is the main view's rotation axis").</summary>
-    public const string JetsNote =
-        "Jets: their base, along the spin axis, the same axis as the main view's jets, drawn while the disk feeds the hole (schematic, the main view's 5° half-angle; drawn without the bending of light, and hidden inside the shadow). The main view draws the jets while the lab models the burst, so the two views need not show them at the same time (#67)";
+    /// <summary>
+    /// The jets' base (spec §6.2: "the jets point along the spin axis, which is the main view's rotation axis"). Fix round 1 (review item 1):
+    /// its times come from Core, the sources both views read: {0} the GRB model's onset (<see cref="Core.Signals.GrbModel.ValidRange"/>'s
+    /// start, where the main view starts drawing the jets), {1} the disk's end, t_BH + <see cref="BlackHoleModel.DiskToS"/> (#67).
+    /// </summary>
+    public const string JetsNoteFormat =
+        "Jets: their base, along the spin axis, the same axis as the main view's jets, drawn while the disk feeds the hole (schematic, the main view's 5° half-angle; drawn without the bending of light, hidden inside the shadow and, along straight lines, behind the disk). The jets are inside the star until they break out at {0} after bounce, when the main view starts drawing them; their base empties when the disk ends at {1} after bounce (#67)";
+
+    /// <summary>The jets note for this outcome (<see cref="JetsNoteFormat"/>); null without a collapsar.</summary>
+    public string? JetsNote { get; }
+
+    /// <summary>When the jets break out of the star and the main view starts drawing them (s after bounce, source time); NaN without a collapsar.</summary>
+    public double JetsBreakOutS { get; } = double.NaN;
+
+    /// <summary>When the disk ends and the jets' base empties: t_BH + <see cref="BlackHoleModel.DiskToS"/> (s after bounce); NaN without a collapsar.</summary>
+    public double JetBaseEndsS { get; } = double.NaN;
 
     /// <summary>After the disk: why it is gone (spec §6.2: "the disk fades out when accretion ends").</summary>
     public const string DiskEndedNote =
         "The accretion disk is gone: the infall that fed it ends about 15 s after the hole formed (MacFadyen & Woosley 1999), and the jets' base with it";
+
+    /// <summary>
+    /// Fix round 1 (review item 5): <see cref="DiskEndedNote"/> shows in the early settled era only, until this many times the disk's end
+    /// time after bounce (160 s for SN 1998bw); later the hole is simply a settled hole.
+    /// </summary>
+    public const double DiskEndedNoteUntilFactor = 10;
 
     /// <summary>
     /// Plan Task 10: the black hole at this time (<see cref="BlackHoleModel.At"/>): the forming, settling and settled eras (ruling P3-12),
@@ -546,8 +575,9 @@ public sealed class CloseUpScene
         if (_spin > 0) notes.Add(BenchSpinNote);
         // Plan Task 11: the collapsar's disk and the jets' base while accretion feeds the hole; afterwards, why they are gone.
         bool disk = bh.HasDisk;
-        if (disk) notes.InsertRange(bh.IsSettled ? 2 : 1, new[] { DiskNote, DiskShadingNote, JetsNote });
-        else if (bh.Birth == BlackHoleBirth.Collapsar && sourceTimeS - t0 > BlackHoleModel.DiskToS) notes.Add(DiskEndedNote);
+        if (disk) notes.InsertRange(bh.IsSettled ? 2 : 1, new[] { DiskNote, DiskShadingNote, JetsNote ?? "" }.Where(n => n.Length > 0));
+        else if (bh.Birth == BlackHoleBirth.Collapsar && sourceTimeS - t0 > BlackHoleModel.DiskToS
+                 && sourceTimeS <= DiskEndedNoteUntilFactor * (t0 + BlackHoleModel.DiskToS)) notes.Add(DiskEndedNote);
         var key = new List<string> { "┄ the shadow's exact edge (computed for this camera)", "View ▸ Grid: the measuring grid, horizon, photon orbits, ergosphere" };
         if (disk) key.Insert(0, "Accretion disk (inner edge at the ISCO; brightness schematic) and the jets' base along the spin axis");
 

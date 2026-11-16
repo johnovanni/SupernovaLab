@@ -3,8 +3,8 @@
 // cached ray map's colouring, ruling R-P3-10) and lensing.frag (its direct path), which call diskShade with the light's redshift
 // factor g and the radius r (GM/c^2) that lensing.frag found. This is the GLSL mirror of DiskRenderer (SupernovaLab.Rendering).
 //
-// Exact: g = 1/(u^t (1 - Omega l)) for gas on a prograde circular Kerr orbit (Bardeen, Press and Teukolsky 1972; computed in
-// lensing.frag), and the brightness's g^4 (the bolometric intensity over nu^4 is the same all along a ray). Schematic: the radial
+// Exact: g = 1/(u^t (1 - Omega l)) for gas on a prograde circular Kerr orbit (Omega from Bardeen, Press and Teukolsky 1972, u^t
+// from Page and Thorne 1974; computed in lensing.frag), and the brightness's g^4 (the bolometric intensity over nu^4 is the same all along a ray). Schematic: the radial
 // profile (r_isco/r)^2 (1 - sqrt(r_isco/r)), 1 at its peak, and the colour, the blackbody colour (from a ramp of C# BlackbodyColor
 // values) of g times a temperature proportional to profile^(1/4). Nothing here depends on the time, so nothing flickers.
 

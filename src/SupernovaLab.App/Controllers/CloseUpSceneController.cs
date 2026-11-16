@@ -740,10 +740,11 @@ public sealed partial class CloseUpSceneController : ObservableObject, IDisposab
             foreach (var ring in CurrentRings()) _rings?.Render(Camera, viewportPx, ring.RadiusCm / UnitCm, ring.Opacity);
         if (state.IsCoreStage) DrawCore(state, viewportPx);
         // Plan Task 11: the collapsar jets' base along the spin axis (the main view's jet axis), glowing (before the bloom), unbent, the
-        // parts inside the shadow dropped; faded with the disk.
+        // parts inside the shadow and (fix round 1) behind the disk, along straight lines, dropped; faded with the disk.
         if (_jets is not null && state.ShowJets && lens && viewportPx.Width > 0 && viewportPx.Height > 0)
             _jets.RenderJets(Camera, viewportPx, state.JetHalfAngleRad, JetRenderer.JetLength * HalfHeightCm / UnitCm,
-                JetRenderer.JetColor * (Gain(JetLevel) * (float)state.DiskBrightness), JetOccluder(state));
+                JetRenderer.JetColor * (Gain(JetLevel) * (float)state.DiskBrightness), JetOccluder(state),
+                new Vector2((float)(state.DiskInnerGm * state.GravitationalRadiusKm), (float)(state.DiskOuterGm * state.GravitationalRadiusKm)));
         // Plan Task 6: a neutron star's beams glow (drawn before the bloom); its field lines, light cylinder and Earth arrow are
         // drawn after it (crisp, still tone-mapped), as the main view's cut faces are.
         Action? lines = null;

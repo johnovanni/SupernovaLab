@@ -3,6 +3,7 @@ using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Presets;
 using SupernovaLab.Core.Progenitors;
+using SupernovaLab.Core.Units;
 using SupernovaLab.Rendering;
 using static SupernovaLab.Tests.CompactResearch;
 
@@ -128,7 +129,7 @@ public class CollapsarDiskTests
         Assert.Contains("Accretion disk: inner edge at the ISCO (exact); size from simulations; brightness schematic", on.Notes);
         Assert.Equal("Accretion disk: inner edge at the ISCO (exact); size from simulations; brightness schematic", CloseUpScene.DiskNote);
         Assert.Contains(CloseUpScene.DiskShadingNote, on.Notes);
-        Assert.Contains(CloseUpScene.JetsNote, on.Notes);
+        Assert.Contains(scene.JetsNote!, on.Notes);
         Assert.Contains(on.StageKey, k => k.Contains("disk", StringComparison.OrdinalIgnoreCase));
         var off = scene.At(tbh + 20);
         Assert.DoesNotContain(CloseUpScene.DiskNote, off.Notes);
@@ -137,6 +138,44 @@ public class CollapsarDiskTests
         Assert.DoesNotContain(CloseUpScene.DiskEndedNote, new CloseUpScene(FailedSn, obs, 1).At(1e3).Notes);
         // Every shown number stays a Quantity with a confidence and a source (the disk adds none to the readouts).
         Assert.Equal(new[] { "Mass", "Horizon", "Shadow", "Spin", "Kick", "From Earth" }, on.Readouts.Select(r => r.Label));
+    }
+
+    /// <summary>
+    /// Fix round 1 (review item 1): the jets note reads its times from Core, the same source the main view reads: the jets break out (and
+    /// the main view starts drawing them) at the GRB model's onset, and their base empties when the disk ends at t_BH + 15 s.
+    /// </summary>
+    [Fact]
+    public void JetsNote_TimesAreTheCoreValues_TheMainViewReads()
+    {
+        var o = Grb;
+        var grb = new Core.Signals.GrbModel();
+        double breakout = grb.ValidRange(o).StartS, ends = tbh + BlackHoleModel.DiskToS;
+        Assert.Equal(grb.OnsetS(o), breakout);
+        var scene = new CloseUpScene(o, obs, 1);
+        Assert.Equal(breakout, scene.JetsBreakOutS);
+        Assert.Equal(ends, scene.JetBaseEndsS);
+        Assert.Equal(string.Format(System.Globalization.CultureInfo.InvariantCulture, CloseUpScene.JetsNoteFormat,
+            UnitFormat.Time(breakout), UnitFormat.Time(ends)), scene.JetsNote);
+        Assert.Contains(UnitFormat.Time(breakout), scene.JetsNote);
+        Assert.Contains(UnitFormat.Time(ends), scene.JetsNote);
+        // The main view draws the jets from that same time.
+        var main = new ExplosionScene(o);
+        Assert.False(main.At(breakout * 0.999).ShowJets);
+        Assert.True(main.At(breakout * 1.001).ShowJets);
+        Assert.Null(new CloseUpScene(FailedSn, obs, 1).JetsNote);
+    }
+
+    /// <summary>Fix round 1 (review item 5): the disk-ended note shows in the early settled era only, up to ten times the disk's end time.</summary>
+    [Fact]
+    public void DiskEndedNote_OnlyUntilTenTimesTheDisksEnd()
+    {
+        var scene = new CloseUpScene(Grb, obs, 1);
+        double ends = tbh + BlackHoleModel.DiskToS;
+        Assert.Equal(10, CloseUpScene.DiskEndedNoteUntilFactor);
+        Assert.Contains(CloseUpScene.DiskEndedNote, scene.At(ends * 1.2).Notes);
+        Assert.Contains(CloseUpScene.DiskEndedNote, scene.At(ends * 9.9).Notes);
+        Assert.DoesNotContain(CloseUpScene.DiskEndedNote, scene.At(ends * 10.1).Notes);
+        Assert.DoesNotContain(CloseUpScene.DiskEndedNote, scene.At(3.15e7).Notes);
     }
 
     /// <summary>Spec §6.4: a fallback hole settles once the fallback ends (§C8: 1,000 s); it has no disk and no jets.</summary>
@@ -159,7 +198,7 @@ public class CollapsarDiskTests
     // ---- The disk in the tracer (the C# mirror of lensing.frag) ----
 
     /// <summary>
-    /// Bardeen, Press &amp; Teukolsky 1972 (eq. 2.12, 2.16): Ω = 1/(r^{3/2} + a), u^t = (r^{3/2} + a)/(r^{3/4} √(r^{3/2} − 3 r^{1/2} + 2a)).
+    /// Ω = 1/(r^{3/2} + a) (Bardeen, Press &amp; Teukolsky 1972, eq. 2.16) and u^t = (r^{3/2} + a)/(r^{3/4} √(r^{3/2} − 3 r^{1/2} + 2a)) (Page &amp; Thorne 1974: ℬ/√𝒞).
     /// A photon with no angular momentum (ℓ = 0, as for a camera on the axis) is redshifted by 1/u^t: √(1 − 3/r) without spin, √½ at the ISCO.
     /// </summary>
     [Fact]
@@ -246,6 +285,36 @@ public class CollapsarDiskTests
                 Assert.Equal(ray.Fate == RayFate.HitDisk, ray.DiskHit is not null);
             }
         Assert.True(hits > 100);
+    }
+}
+
+/// <summary>
+/// Fix round 1 (review item 3): a jet point is hidden where the straight line from the eye to it crosses the disk's plane inside the
+/// annulus (the C# mirror of cone.frag's hiddenByDisk).
+/// </summary>
+public class JetDiskOcclusionTests
+{
+    [Fact]
+    public void LowerJet_SeenFromAbove_IsHiddenByTheDisk_ButNotSideOn()
+    {
+        var hole = OpenTK.Mathematics.Vector3d.Zero;
+        var eye = new OpenTK.Mathematics.Vector3d(0, -200, 70);   // about 20 degrees above the disk
+        double inner = 10, outer = 100;
+        // A point on the lower jet (−z) close to the hole: the line of sight crosses the plane inside the annulus.
+        var lower = new OpenTK.Mathematics.Vector3d(0, 0, -40);
+        Assert.True(StarOcclusion.HiddenByDisk(lower - eye, hole - eye, inner, outer));
+        // The upper jet is in front of the plane: never hidden.
+        Assert.False(StarOcclusion.HiddenByDisk(new OpenTK.Mathematics.Vector3d(0, 0, 40) - eye, hole - eye, inner, outer));
+        // A point far down the lower jet is seen past the disk's outer edge.
+        Assert.False(StarOcclusion.HiddenByDisk(new OpenTK.Mathematics.Vector3d(0, 0, -5000) - eye, hole - eye, inner, outer));
+        // Side-on (the eye in the plane) nothing is hidden; no disk (outer 0) hides nothing.
+        var side = new OpenTK.Mathematics.Vector3d(0, -200, 0);
+        Assert.False(StarOcclusion.HiddenByDisk(lower - side, hole - side, inner, outer));
+        Assert.False(StarOcclusion.HiddenByDisk(lower - eye, hole - eye, 0, 0));
+        // The line through the hole's own inner gap (inside the ISCO) is not hidden.
+        var below = new OpenTK.Mathematics.Vector3d(0, -1, -40);
+        var straightDown = new OpenTK.Mathematics.Vector3d(0, -2, 300);
+        Assert.False(StarOcclusion.HiddenByDisk(below - straightDown, hole - straightDown, inner, outer));
     }
 }
 
