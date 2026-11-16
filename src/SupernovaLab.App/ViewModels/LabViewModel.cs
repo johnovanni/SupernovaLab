@@ -12,9 +12,18 @@ namespace SupernovaLab.App.ViewModels;
 /// What changed in the lab: a preset was applied, a star input was edited (which drops a preset and its pins), or an
 /// observer input was edited (which keeps the explosion pins but leaves the preset's observed distance and dust, R49).
 /// </summary>
-public sealed class LabChangedEventArgs(Preset? appliedPreset, string? droppedPresetName, string? observerLeftPresetName = null)
-    : EventArgs
+public sealed class LabChangedEventArgs(Preset? appliedPreset, string? droppedPresetName, string? observerLeftPresetName = null,
+    bool observerOnly = false) : EventArgs
 {
+    /// <summary>Only the observer changed (distance, dust or beam): what is seen, not what happens (ruling R-P3-41).</summary>
+    public bool ObserverOnly { get; } = observerOnly;
+
+    /// <summary>
+    /// Ruling R-P3-41: a star or Advanced input, choosing a preset, or dropping one's pins (anything that makes a new outcome), so the
+    /// timeline goes back to t = 0.
+    /// </summary>
+    public bool ChangesOutcome => !ObserverOnly;
+
     /// <summary>The preset just applied, or null for an input edit.</summary>
     public Preset? AppliedPreset { get; } = appliedPreset;
 
@@ -176,7 +185,7 @@ public sealed partial class LabViewModel : ObservableObject
             left = _selectedPreset.Name;
             NotifyObserverSource();
         }
-        Changed?.Invoke(this, new LabChangedEventArgs(null, null, left));
+        Changed?.Invoke(this, new LabChangedEventArgs(null, null, left, observerOnly: true));
     }
 
     private void NotifyObserverSource()

@@ -73,6 +73,22 @@
             </MenuItem>
         </Menu>
 
+        <!-- Task 15 (the owner could not tell the sound was on): while the sound is on, its state shows here for every outcome, with the
+             reason for any silence ("silent: no pulsar in this outcome", "silent until the pulsar's pulses reach Earth (10 years)") and
+             the volume; the pulse-trace row below exists only for a pulsar or magnetar. -->
+        <Border x:Name="SoundStatusRow" DockPanel.Dock="Top" Margin="8,4,8,0" Padding="8,3" Style="{StaticResource Panel}"
+                Visibility="{Binding ShowSoundStatus, Converter={StaticResource VisibleWhen}}" ToolTip="{x:Static text:Glossary.CloseUpSound}">
+            <DockPanel>
+                <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Margin="0,0,8,0"
+                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                <Slider DockPanel.Dock="Right" Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Width="140" Margin="12,0,0,0"
+                        VerticalAlignment="Center" SmallChange="0.05" LargeChange="0.1" ToolTip="Sound volume"
+                        AutomationProperties.Name="Sound volume (top)"/>
+                <TextBlock Text="{Binding SpeakerState}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"
+                           AutomationProperties.Name="Sound state"/>
+            </DockPanel>
+        </Border>
+
         <!-- The pulse trace (spec §4.4): a pulsar's or magnetar's pulses, with the speaker's state and volume and the rates in words
              (nothing depends on hearing the sound). Shown for a pulsar or magnetar only. -->
         <Border x:Name="PulseTraceRow" DockPanel.Dock="Bottom" Height="84" Margin="8,0,8,8" Padding="10,6"
@@ -88,7 +104,7 @@
                         <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Margin="0,0,8,0"
                                    Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding SpeakerState}" Style="{StaticResource Muted}" Width="190" VerticalAlignment="Center"
-                                   AutomationProperties.Name="Speaker state"/>
+                                   TextWrapping="Wrap" FontSize="11" AutomationProperties.Name="Speaker state"/>
                     </StackPanel>
                     <Slider Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Width="200" Margin="0,4,0,0" HorizontalAlignment="Left"
                             SmallChange="0.05" LargeChange="0.1" ToolTip="Sound volume" AutomationProperties.Name="Sound volume"/>

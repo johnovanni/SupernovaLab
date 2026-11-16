@@ -2,8 +2,8 @@ namespace SupernovaLab.App.Services;
 
 /// <summary>
 /// The Close-up's optional pulsar sound (spec §4.4, plan ruling P3-10): one short click per pulse at the received period. The view
-/// model asks for a period only while pulses are received and the timeline plays, and for null (silence) otherwise. Nothing on screen
-/// depends on it: the rhythm and every reason for silence are shown in words. Tests use a fake.
+/// model asks for a period while pulses are received (Task 15: paused or playing; it was only while the timeline played), and for null
+/// (silence) otherwise. Nothing on screen depends on it: the rhythm and every reason for silence are shown in words. Tests use a fake.
 /// </summary>
 public interface IPulseAudio : IDisposable
 {

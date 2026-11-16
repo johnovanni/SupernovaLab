@@ -127,8 +127,9 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     /// <summary>What the Close-up draws now.</summary>
     public CloseUpState State { get; private set; } = new();
 
-    /// <summary>The source time now (s after bounce): observer time ÷ (1 + z).</summary>
-    public double SourceTimeS => Main.Timeline.ObserverTimeS / Main.CurrentObserver.TimeDilation;
+    /// <summary>The source time now (s after bounce): observer time ÷ (1 + z); 0 at the timeline's left end, t = 0 (ruling R-P3-42), where the
+    /// Close-up shows the core before collapse.</summary>
+    public double SourceTimeS => Main.Timeline.IsAtStart ? 0 : Main.Timeline.ObserverTimeS / Main.CurrentObserver.TimeDilation;
 
     /// <summary>Raised after <see cref="State"/> is restated: true when the scene was rebuilt (a new outcome, observer or run), false for a time step.</summary>
     public event EventHandler<bool>? StateChanged;
@@ -388,11 +389,6 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
 
     private void OnTimelineChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(TimelineViewModel.IsPlaying))   // plan Task 8: the sound plays only while the timeline does
-        {
-            UpdatePulses();
-            return;
-        }
         if (e.PropertyName != nameof(TimelineViewModel.ObserverTimeS)) return;
         long t0 = BenchTimings.Begin();
         ComputeState();
@@ -484,11 +480,14 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     private double[] _crossings = Array.Empty<double>();
     private (Outcome Outcome, ObserverSetup Observer)? _crossingsFor;
 
-    /// <summary>Spec C19: the sound is off by default, so nothing sounds unasked (Close-up menu ▸ Sound). Not saved between runs.</summary>
+    /// <summary>
+    /// Spec C19: the sound is off by default, so nothing sounds unasked (Close-up menu ▸ Sound). Not saved between runs; Task 15: the window
+    /// service keeps it (and the volume) for the session, so closing and reopening the Close-up does not switch it off.
+    /// </summary>
     [ObservableProperty] private bool _isSoundOn;
 
-    /// <summary>The sound's loudness, 0 to 1 (a gentle half by default).</summary>
-    [ObservableProperty] private float _volume = 0.5f;
+    /// <summary>The sound's loudness, 0 to 1 (Task 15: 80% by default; it was 50%, too quiet for a hard-of-hearing listener).</summary>
+    [ObservableProperty] private float _volume = ClickTrain.DefaultVolume;
 
     partial void OnIsSoundOnChanged(bool value)
     {
@@ -496,7 +495,18 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         if (_audio is not null) _audio.Enabled = value;
         UpdatePulses();
         OnPropertyChanged(nameof(SpeakerGlyph));
+        OnPropertyChanged(nameof(ShowSoundStatus));
     }
+
+    /// <summary>
+    /// Task 15 (the owner could not hear the sound, and saw no sign of it): while the sound is on, its state and the reason for any silence
+    /// show at the top of the window for every outcome (<see cref="SpeakerState"/>), not only in the pulse-trace row, which a black hole,
+    /// a Type Ia or the core's first second does not have.
+    /// </summary>
+    public bool ShowSoundStatus => IsSoundOn;
+
+    /// <summary>The sound output, once the sound has been switched on (the --snapshot sound check reads its diagnostic).</summary>
+    public IPulseAudio? Audio => _audio;
 
     partial void OnVolumeChanged(float value)
     {
@@ -550,21 +560,16 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         double t = SourceTimeS;
         var vis = State.NeutronStar is null || _modelError is not null ? PulseVisibility.NotAPulsar : PulseSchedule.Visibility(o, obs, t);
         string text = vis == PulseVisibility.NotAPulsar ? "" : PulseSchedule.TraceText(o, obs, t);
-        bool playing = Main.Timeline.IsPlaying;
-        bool sounding = IsSoundOn && vis == PulseVisibility.Received && playing;
-        _audio?.SetPulsePeriod(sounding ? PulseSchedule.ReceivedPeriodS(o, obs, t) : null);
+        // Task 15: the sound plays whenever Earth receives the pulses, paused or playing (it was only while the timeline played, so a
+        // whole run gave about 6 s of clicks, and none at a paused moment). It agrees with the pulse trace, which keeps running while paused.
+        bool sounding = IsSoundOn && vis == PulseVisibility.Received;
+        double period = sounding ? PulseSchedule.ReceivedPeriodS(o, obs, t) : double.NaN;
+        _audio?.SetPulsePeriod(sounding ? period : null);
 
         string problem = (IsSoundOn ? _audioProblem ?? _audio?.Problem : null) ?? "";
         string speaker = !IsSoundOn ? "Sound off"
             : problem.Length > 0 ? $"Sound on, but unavailable: {problem}"
-            : $"Sound on, volume {(int)Math.Round(Volume * 100)}%" + (sounding ? ""
-                : vis switch
-                {
-                    PulseVisibility.Received => " · silent while the timeline is paused",
-                    PulseVisibility.HiddenByDebris => " · silent: hidden by debris",
-                    PulseVisibility.BeamMissesEarth => " · silent: beam misses Earth",
-                    _ => " · silent: no pulsar",
-                });
+            : $"Sound on, volume {(int)Math.Round(Volume * 100)}% · " + (sounding ? $"clicking {PulseSchedule.RateText(period)}" : SilentReason(vis, o, obs));
 
         var changed = new List<string>();
         if (vis != _pulseVisibility)
@@ -583,6 +588,24 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         if (text != _traceText) { _traceText = text; changed.Add(nameof(TraceText)); }
         if (speaker != _speakerState) { _speakerState = speaker; changed.Add(nameof(SpeakerState)); }
         foreach (var name in changed) OnPropertyChanged(name);
+    }
+
+    private static readonly SupernovaLab.Core.Signals.PulsarModel PulsarForEmergence = new();
+
+    /// <summary>Task 15: why the switched-on sound is silent now, in words, for every outcome and moment.</summary>
+    private static string SilentReason(PulseVisibility vis, Outcome o, ObserverSetup obs)
+    {
+        double emergence = PulsarForEmergence.EmergenceTimeS(o);
+        string when = double.IsNaN(emergence) ? "" : UnitFormat.Time(emergence * obs.TimeDilation);
+        return vis switch
+        {
+            PulseVisibility.HiddenByDebris => $"silent: pulses hidden by debris until {when}",
+            PulseVisibility.BeamMissesEarth => "silent: the pulsar's beam misses Earth",
+            _ when double.IsNaN(emergence) => "silent: no pulsar in this outcome (the sound is a pulsar's clicks)",
+            _ when PulseSchedule.Visibility(o, obs, emergence) == PulseVisibility.BeamMissesEarth
+                => "silent: no pulsar yet, and its beam will miss Earth",
+            _ => $"silent until the pulsar's pulses reach Earth ({when})",
+        };
     }
 
     /// <summary>Stops following the main view model (the window closed), and stops and releases the sound.</summary>

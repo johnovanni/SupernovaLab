@@ -19,8 +19,9 @@ public class MainViewModelTests
 
     // ---------------------------------------------------------------- inputs and the outcome (Review Focus 4)
 
+    /// <summary>Ruling R-P3-41 (Task 15, replacing spec §2.4's "keeping the current time"): a new outcome pauses and starts again at t = 0.</summary>
     [Fact]
-    public void ChangingInitialMass_WhilePlaying_KeepsTheTime_AndRaisesOutcomeChangedOnce()
+    public void ChangingInitialMass_WhilePlaying_PausesAndGoesBackToTZero_AndRaisesOutcomeChangedOnce()
     {
         var vm = NewViewModel();
         vm.Timeline.ObserverTimeS = 3 * Day;
@@ -32,8 +33,8 @@ public class MainViewModelTests
         vm.Lab.InitialMass = 20;
 
         Assert.Equal(1, raised);
-        Assert.Equal(3 * Day, vm.Timeline.ObserverTimeS);
-        Assert.True(vm.Timeline.IsPlaying);
+        Assert.Equal(TimeAxis.MinS, vm.Timeline.ObserverTimeS);
+        Assert.False(vm.Timeline.IsPlaying);
         Assert.NotSame(before, vm.CurrentOutcome);
         Assert.Equal(20, vm.CurrentOutcome.Inputs.InitialMass);
     }
@@ -322,8 +323,10 @@ public class MainViewModelTests
         vm.Timeline.ObserverTimeS = 3 * Day;
         Assert.Equal("3 days after core bounce", vm.Timeline.ObserverTimeText);
 
-        vm.Lab.Kind = StarKind.WhiteDwarf;
+        vm.Lab.Kind = StarKind.WhiteDwarf;   // a new outcome goes back to t = 0 (R-P3-42's wording there)
+        Assert.Equal("t = 0 · before ignition", vm.Timeline.ObserverTimeText);
 
+        vm.Timeline.ObserverTimeS = 3 * Day;
         Assert.Equal("3 days after ignition", vm.Timeline.ObserverTimeText);
     }
 

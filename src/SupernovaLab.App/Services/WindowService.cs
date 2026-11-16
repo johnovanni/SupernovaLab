@@ -22,14 +22,19 @@ public sealed class WindowService : IWindowService
     private PresetInfoWindow? _presetInfo;
     private Window? _closeUp;
     private Rect? _instrumentsBounds, _closeUpBounds;
+    private readonly Func<Rect> _workArea;
+    private (bool On, float Volume)? _closeUpSound;
 
     /// <param name="beamClock">The beams' clock, shared by both 3D views; null for one of its own.</param>
     /// <param name="audioFactory">Makes the Close-up's pulse sound when it is first switched on (null: NAudio's); tests pass a fake.</param>
     /// <param name="closeUpFactory">Makes the Close-up window for its view model (null: <see cref="Windows.CloseUpWindow"/>); tests pass
     /// a plain window, so no GL context is made.</param>
+    /// <param name="workArea">The primary screen's work area, DIP (null: <see cref="SystemParameters.WorkArea"/>); tests pass one off the
+    /// screen.</param>
     public WindowService(BeamClock? beamClock = null, Func<CloseUpViewModel, Window>? closeUpFactory = null,
-        Func<IPulseAudio>? audioFactory = null)
+        Func<IPulseAudio>? audioFactory = null, Func<Rect>? workArea = null)
     {
+        _workArea = workArea ?? (() => SystemParameters.WorkArea);
         _beamClock = beamClock ?? new BeamClock();
         _audioFactory = audioFactory ?? (() => new NAudioPulseAudio());
         _closeUpFactory = closeUpFactory ?? (vm => new CloseUpWindow { DataContext = vm, BeamClock = _beamClock });
@@ -97,12 +102,20 @@ public sealed class WindowService : IWindowService
     /// <summary>
     /// Spec §2.2: opens the Close-up at most once (asking again brings it to the front), remembers its size and position for the
     /// session, and closes it with the main window (its owner). Its view model follows the shared one and is disposed when it closes.
+    /// Ruling R-P3-43 (Task 15): the first time in a session it opens at the lower right of the main window's screen
+    /// (<see cref="CloseUpPlacement"/>), so it does not cover the first changes in the main view; after that, where the user left it. The
+    /// sound switch and volume are kept for the session too, so closing the window does not switch the sound off for next time.
     /// </summary>
     public void ShowCloseUp() => _closeUp = ShowOrActivate(_closeUp, () =>
     {
         var main = _owner?.DataContext as MainViewModel
                    ?? throw new InvalidOperationException("WindowService.Attach must be called with the main window first.");
         var vm = new CloseUpViewModel(main, _audioFactory);   // the sound stops and is released when the window closes (vm.Dispose)
+        if (_closeUpSound is { } sound)
+        {
+            vm.Volume = sound.Volume;
+            vm.IsSoundOn = sound.On;
+        }
         var w = _closeUpFactory(vm);
         w.DataContext = vm;
         CloseUpWindowsMade++;
@@ -111,14 +124,31 @@ public sealed class WindowService : IWindowService
             w.WindowStartupLocation = WindowStartupLocation.Manual;
             (w.Left, w.Top, w.Width, w.Height) = (b.Left, b.Top, b.Width, b.Height);
         }
+        else if (w.WindowStartupLocation != WindowStartupLocation.Manual)   // a window that chose its own place (a test's) keeps it
+        {
+            var at = CloseUpPlacement.LowerRight(_workArea(), OwnerBounds(_owner!), PlannedSize(w));
+            w.WindowStartupLocation = WindowStartupLocation.Manual;
+            (w.Left, w.Top) = (at.X, at.Y);
+        }
         w.Closing += (_, _) => _closeUpBounds = w.RestoreBounds;
         w.Closed += (_, _) =>
         {
             _closeUp = null;
+            _closeUpSound = (vm.IsSoundOn, vm.Volume);
             vm.Dispose();
         };
         return w;
     }, keepDataContext: true);
+
+    /// <summary>The main window's bounds, DIP (its restore bounds while maximized or minimized).</summary>
+    private static Rect OwnerBounds(Window owner)
+        => owner.WindowState == WindowState.Normal && owner.ActualWidth > 0
+            ? new Rect(owner.Left, owner.Top, owner.ActualWidth, owner.ActualHeight)
+            : owner.RestoreBounds;
+
+    /// <summary>The window's size before it is shown: its Width and Height (the Close-up's XAML sets 900 x 640), else its minimum.</summary>
+    private static Size PlannedSize(Window w)
+        => new(double.IsFinite(w.Width) ? w.Width : Math.Max(w.MinWidth, 1), double.IsFinite(w.Height) ? w.Height : Math.Max(w.MinHeight, 1));
 
     private T ShowOrActivate<T>(T? existing, Func<T> create, bool keepDataContext = false) where T : Window
     {

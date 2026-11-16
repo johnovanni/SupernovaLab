@@ -2,8 +2,11 @@ namespace SupernovaLab.App.Services;
 
 /// <summary>
 /// The pulsar's click train as samples (spec §4.4, ruling P3-10), synthesised in code: no recordings, no licence. One click per
-/// pulse: a 2 ms raised-cosine envelope on a 1 kHz carrier (two cycles), schematic. The generator runs continuously, so a period that
-/// changes (the pulsar spins down) changes the spacing smoothly, with no buffer to rebuild. A period under 1 ms is a continuous tone at
+/// pulse: a 2 ms raised-cosine envelope on a 500 Hz carrier (one cycle), schematic. Task 15 (the owner's first look): the carrier was
+/// 1 kHz; it is lower now, and the click's peak higher (0.97 of full scale), because age-related hearing loss is usually worst at high
+/// pitches. One whole cycle under the symmetric envelope sums to zero, so a click pushes the speaker out and back with no net thump.
+/// The generator runs continuously, so a period that changes (the pulsar spins down) changes the spacing smoothly, with no buffer to
+/// rebuild. A period under 1 ms is a continuous tone at
 /// 1/P, which is what a click train at that rate is. No period, or a bad one, is silence (a click in flight finishes). Thread-safe:
 /// the audio thread calls <see cref="Fill"/> while the UI thread sets the period and volume.
 /// </summary>
@@ -15,19 +18,32 @@ public sealed class ClickTrain
     /// <summary>Under this period the click train is a tone at 1/P, s.</summary>
     public const double ToneBelowS = 0.001;
 
-    private const double CarrierHz = 1000;
-    private const float ClickPeak = 0.8f, TonePeak = 0.4f;
+    /// <summary>The click's carrier, Hz: one cycle in the 2 ms click (Task 15; it was 1 kHz).</summary>
+    public const double CarrierHz = 500;
+
+    /// <summary>The default loudness (Task 15: it was 0.5).</summary>
+    public const float DefaultVolume = 0.8f;
+
+    // One cycle under the raised cosine peaks at 0.6495 of the product's scale; 1.5 puts the click's peak at 0.974 of full scale.
+    private const float ClickPeak = 1.5f, TonePeak = 0.4f;
 
     private readonly object _lock = new();
     private readonly double _rate;
     private double? _periodS;
-    private float _volume = 0.5f;
+    private float _volume = DefaultVolume;
+    private long _clicks, _samples;
     private double _pos = double.MaxValue;   // samples since the current click started (huge: none in flight)
     private double _tonePhase;
 
     public ClickTrain(int sampleRate = 44100) => _rate = sampleRate > 0 ? sampleRate : throw new ArgumentOutOfRangeException(nameof(sampleRate));
 
     public int SampleRate => (int)_rate;
+
+    /// <summary>How many clicks <see cref="Fill"/> has written (a diagnostic: the launch log's "clicks queued").</summary>
+    public long ClicksWritten { get { lock (_lock) return _clicks; } }
+
+    /// <summary>How many samples <see cref="Fill"/> has written, silent ones included.</summary>
+    public long SamplesWritten { get { lock (_lock) return _samples; } }
 
     /// <summary>0 to 1.</summary>
     public float Volume
@@ -69,6 +85,7 @@ public sealed class ClickTrain
                     if (period > 0 && _pos >= periodSamples) _pos -= periodSamples;
                     if (_pos < clickSamples)
                     {
+                        if (_pos < 1) _clicks++;   // a click's first sample
                         double env = 0.5 * (1 - Math.Cos(2 * Math.PI * _pos / clickSamples));
                         v = ClickPeak * (float)(env * Math.Sin(2 * Math.PI * CarrierHz * _pos / _rate));
                         _pos++;
@@ -78,6 +95,7 @@ public sealed class ClickTrain
                 }
                 buffer[offset + i] = v * _volume;
             }
+            _samples += count;
         }
         return count;
     }

@@ -19,7 +19,9 @@ public sealed record MarkerLabel(EventMarker Marker, int Row, double Left, doubl
 
 /// <summary>
 /// The timeline (spec §4): observer time on a log axis from 1 ms to 1,000 years, playback at a speed in decades per
-/// second, event markers, and the "light left … ago" line. Changing the outcome never moves the time (Review Focus 4).
+/// second, event markers, and the "light left … ago" line. Ruling R-P3-41 (Task 15, the owner's first look): a change to the outcome
+/// pauses playback and goes back to the left end (<see cref="ResetToStart"/>); an observer change or Re-roll keeps the time. Ruling R-P3-42:
+/// the left end is t = 0 (<see cref="IsAtStart"/>), where every view shows the initial condition, the star before the explosion.
 /// </summary>
 public sealed partial class TimelineViewModel : ObservableObject
 {
@@ -53,6 +55,7 @@ public sealed partial class TimelineViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(ScrubFraction));
                 OnPropertyChanged(nameof(ObserverTimeText));
+                if ((before <= TimeAxis.MinS) != (t <= TimeAxis.MinS)) OnPropertyChanged(nameof(IsAtStart));
                 // Playback and the tour director move the time themselves; anything else (scrubber, marker, Explode, a
                 // preset's time) is the user's, and the guided tour pauses on it. A rounding-sized change is not input.
                 if (!IsPlaybackStep && !_directed && Math.Abs(t - before) > 1e-9 * before) UserInteracted?.Invoke(this, EventArgs.Empty);
@@ -89,6 +92,28 @@ public sealed partial class TimelineViewModel : ObservableObject
     /// marker click, loop wrap, a preset's time) is a jump of the observer's time, which the 3D camera follows at once.
     /// </summary>
     public bool IsPlaybackStep { get; private set; }
+
+    /// <summary>
+    /// Ruling R-P3-42: the timeline is at its left end, which stands for t = 0, before the explosion (Project 1 spec §4: "with the scrubber
+    /// at its left end, the view shows the star before the explosion"). The log axis cannot reach 0, so its first millisecond is this point
+    /// alone: one playback step later the explosion has begun.
+    /// </summary>
+    public bool IsAtStart => ObserverTimeS <= TimeAxis.MinS;
+
+    /// <summary>
+    /// Ruling R-P3-41: a change to the outcome pauses playback and moves the time to the left end (t = 0). Neither is user input on the
+    /// timeline, so a running guided tour is not paused by it (the new outcome then ends the tour with its note).
+    /// </summary>
+    public void ResetToStart()
+    {
+        _directed = true;
+        try
+        {
+            IsPlaying = false;
+            ObserverTimeS = TimeAxis.MinS;
+        }
+        finally { _directed = false; }
+    }
 
     /// <summary>The scrubber's position 0..1 on the log axis.</summary>
     public double ScrubFraction
@@ -220,8 +245,11 @@ public sealed partial class TimelineViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ObserverTimeText))]
     private string _origin = "core bounce";
 
-    /// <summary>"3.2 days after core bounce" in observer time (spec §4; UnitFormat.Time).</summary>
-    public string ObserverTimeText => $"{UnitFormat.Time(ObserverTimeS)} after {Origin}";
+    /// <summary>
+    /// "3.2 days after core bounce" in observer time (spec §4; UnitFormat.Time); at the left end, "t = 0 · before core bounce" (ruling
+    /// R-P3-42).
+    /// </summary>
+    public string ObserverTimeText => IsAtStart ? (Origin == "the start" ? "t = 0" : $"t = 0 · before {Origin}") : $"{UnitFormat.Time(ObserverTimeS)} after {Origin}";
 
     [ObservableProperty] private string _lightLeftText = "";
 
@@ -266,7 +294,7 @@ public sealed partial class TimelineViewModel : ObservableObject
         finally { IsPlaybackStep = false; }
     }
 
-    /// <summary>Called by MainViewModel when the outcome or observer changes. The time itself is kept.</summary>
+    /// <summary>Called by MainViewModel when the outcome or observer changes (the time is reset first for a new outcome, R-P3-41).</summary>
     internal void Update(IReadOnlyList<EventMarker> markers, ObserverSetup observer, string origin)
     {
         Markers = markers;

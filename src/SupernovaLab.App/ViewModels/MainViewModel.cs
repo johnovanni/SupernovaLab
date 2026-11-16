@@ -11,8 +11,9 @@ namespace SupernovaLab.App.ViewModels;
 
 /// <summary>
 /// The lab's shared state (spec §2–§5.0). Every window binds to this one instance. Any input edit recomputes the outcome
-/// at once and keeps the current time (spec §2.4, Review Focus 4). View models never create windows: the commands call
-/// <see cref="IWindowService"/>.
+/// at once. Ruling R-P3-41 (Task 15, replacing spec §2.4's "keeping the current time"): an edit that changes the outcome (a star or
+/// Advanced input, or a preset) also pauses playback and moves the time to t = 0; an observer edit (distance, dust, beam) and Re-roll
+/// keep the time. View models never create windows: the commands call <see cref="IWindowService"/>.
 /// </summary>
 public sealed partial class MainViewModel : ObservableObject
 {
@@ -103,7 +104,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Raised once after each recompute, when an input edit or a preset changed the outcome or the observer. Panels
-    /// resample on this. The time is not changed.
+    /// resample on this. A new outcome has already moved the time to t = 0 (R-P3-41); an observer change keeps it.
     /// </summary>
     public event EventHandler? OutcomeChanged;
 
@@ -174,6 +175,9 @@ public sealed partial class MainViewModel : ObservableObject
         else
             StatusMessage = Lab.SelectedPreset is { } p2 && !Lab.IsObserverPublished ? ObserverMovedMessage(p2.Name) : null;
 
+        // Ruling R-P3-41: a new outcome starts again from t = 0, paused, so the user sees it from its beginning. Done first, so the views
+        // restate once more for the new outcome at the start (and a running tour is ended by OutcomeChanged with its note, not paused).
+        if (e.ChangesOutcome) Timeline.ResetToStart();
         CurrentOutcome = Recompute();
         CurrentObserver = Lab.Observer;
         UpdatePanels();
@@ -192,7 +196,7 @@ public sealed partial class MainViewModel : ObservableObject
             p.Update(CurrentOutcome, CurrentObserver, RunNumber, facts, Lab.IsObserverPublished);
     }
 
-    /// <summary>Computes the outcome and refreshes the summary, map, markers and time texts (never the time itself).</summary>
+    /// <summary>Computes the outcome and refreshes the summary, map, markers and time texts (the time is reset by the caller, R-P3-41).</summary>
     private Outcome Recompute()
     {
         var outcome = _engine.Compute(Lab.Inputs, Lab.Pins);

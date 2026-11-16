@@ -133,6 +133,8 @@ public sealed record SceneState
 /// <summary>
 /// The simple 3D view's content (spec §6) for one outcome, as a function of source time: no OpenGL here.
 /// <list type="bullet">
+/// <item>At t = 0 (source time 0 or less: the timeline's left end, ruling R-P3-42): the initial condition, the star before the explosion
+/// with no shock in it yet (for a Type Ia, the white dwarf's marker).</item>
 /// <item>Before breakout: the star, sized to its radius and coloured by its surface temperature.</item>
 /// <item>Gas around the star (spec §6, structure §S7): the star's own wind as a faint haze, and for the dense-gas cases
 /// <see cref="CsmInteractionModel"/> does not model (<see cref="CsmInteractionModel.HasDenseCsm"/>) a dense shell
@@ -179,6 +181,12 @@ public sealed class ExplosionScene
     public const double ShownPulsarPeriodS = Magnetosphere.MinDrawnPeriodS;
 
     public const string SchematicNote = "Colours schematic";
+
+    /// <summary>Ruling R-P3-42 (Task 15): the view at t = 0, the timeline's left end, for a star whose core will collapse.</summary>
+    public const string BeforeExplosionNote = "t = 0, the timeline's start: the star just before its core collapses";
+
+    /// <summary>Ruling R-P3-42: the view at t = 0 for a thermonuclear supernova.</summary>
+    public const string BeforeIgnitionNote = "t = 0, the timeline's start: the white dwarf (marker) just before it ignites";
 
     /// <summary>The flash's strongest intensity (the clamp of 1 + log10(L_bo / L_peak)) and the no-HDR quad's divisor.</summary>
     public const float MaxFlashIntensity = 8f;
@@ -492,7 +500,7 @@ public sealed class ExplosionScene
         var state = AtCore(sourceTimeS);
         // Task 11: the exposure follows the brightness; the flash while the shock breaks out; the limb darkening's note with the star.
         var notes = state.Notes.ToList();
-        float flash = FlashAt(sourceTimeS);
+        float flash = sourceTimeS > 0 ? FlashAt(sourceTimeS) : 0f;
         if (flash > 0) notes.Insert(Math.Max(0, notes.Count - 1), FlashNote);
         if (state.ShowStar) notes.Insert(Math.Max(0, notes.Count - 1), LimbDarkeningNote);
         return state with
@@ -534,6 +542,9 @@ public sealed class ExplosionScene
             RadiusLabel = "Star radius",
         };
 
+        if (!(t > 0) && Outcome.Fate is Fate.Supernova or Fate.FailedSupernova or Fate.PairInstabilitySupernova
+                or Fate.PulsationalPairInstability)
+            return BeforeExplosion(state, notes, t);
         if (!_ejecta) return WithSurroundings(WithoutEjecta(state, t, notes), notes, t, double.NaN);
 
         bool jets = !double.IsNaN(_jetsFromS) && t >= _jetsFromS && t <= _jetsToS;
@@ -748,6 +759,25 @@ public sealed class ExplosionScene
             ? $"The gamma-ray burst's jets are no longer drawn: the lab models only the burst itself (to {until} after " +
               "bounce) for this low-luminosity event"
             : $"The gamma-ray burst's jets are no longer drawn: the lab's afterglow model ends {until} after bounce");
+    }
+
+    /// <summary>
+    /// Ruling R-P3-42 (Task 15, the owner's first look): t = 0, the initial condition. The star as it is before its core collapses, with no
+    /// shock in it yet (its layers still show in the cutaway), and the gas around it; for a thermonuclear supernova, the white dwarf's marker.
+    /// </summary>
+    private SceneState BeforeExplosion(SceneState state, List<string> notes, double t)
+    {
+        if (_thermonuclear)
+        {
+            notes.Add(BeforeIgnitionNote);
+            notes.Add(SchematicNote);
+            return state with { Marker = SceneMarker.WhiteDwarf, RadiusLabel = "White dwarf radius", Notes = notes };
+        }
+        notes.Add(BeforeExplosionNote);
+        notes.Add(SchematicNote);
+        state = state with { ShowStar = Outcome.Star is not null, Notes = notes };
+        if (_ejecta) state = state with { StarLayers = StarInterior.Layers(Outcome) };
+        return WithSurroundings(state, notes, t, double.NaN);
     }
 
     /// <summary>A star that does not explode: still alive, a white dwarf, or a collapse to a black hole.</summary>

@@ -201,18 +201,20 @@ public class PulseAudioTests
         cu.Dispose();
     }
 
+    /// <summary>
+    /// Review Focus 3, revised by Task 15 (the owner could not hear the sound): it now plays while Earth receives the pulses whether the
+    /// timeline is paused or playing, as the pulse trace keeps running; it still stops when switched off and when the window closes.
+    /// </summary>
     [Fact]
-    public void Sound_StopsOnPause_AndOnWindowClose()                     // Review Focus 3
+    public void Sound_PlaysPausedOrPlaying_AndStopsWhenSwitchedOff_AndOnWindowClose()
     {
         var (cu, audio, main) = CloseUpFor("sn1054");
         cu.IsSoundOn = true;
         At(main, CrabAgeS);
-        Assert.Null(audio.LastPeriod);                                    // sound only while the timeline plays
+        Assert.NotNull(audio.LastPeriod);                                 // paused: the pulses still arrive
         main.Timeline.IsPlaying = true;
         Assert.NotNull(audio.LastPeriod);
         main.Timeline.IsPlaying = false;
-        Assert.Null(audio.LastPeriod);
-        main.Timeline.IsPlaying = true;
         Assert.NotNull(audio.LastPeriod);
         cu.IsSoundOn = false;
         Assert.Null(audio.LastPeriod);
@@ -256,9 +258,9 @@ public class PulseAudioTests
         Assert.Equal(0.4f, audio.Volume);
         Assert.Contains("40%", cu.SpeakerState);
         Assert.Contains("on", cu.SpeakerState, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("paused", cu.SpeakerState, StringComparison.OrdinalIgnoreCase);   // the reason it is silent
+        Assert.Contains("clicking 30 a second", cu.SpeakerState);   // Task 15: what it plays, paused or playing
         main.Timeline.IsPlaying = true;
-        Assert.DoesNotContain("paused", cu.SpeakerState, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("clicking 30 a second", cu.SpeakerState);
         At(main, 5 * Year);
         Assert.Contains("debris", cu.SpeakerState, StringComparison.OrdinalIgnoreCase);
         cu.Dispose();

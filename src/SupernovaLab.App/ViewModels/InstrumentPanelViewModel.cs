@@ -23,6 +23,12 @@ public abstract partial class InstrumentPanelViewModel : ObservableObject
     /// <summary>The detection badge's words (spec §5.1).</summary>
     public const string ModelErrorText = "Model error";
 
+    /// <summary>
+    /// Ruling R-P3-42 (Task 15): every badge's reason, and the plot's note, at t = 0, the timeline's left end. A signal this supernova never
+    /// makes still says "Not produced"; every other says "Not yet".
+    /// </summary>
+    public const string BeforeExplosionReason = "t = 0, the timeline's start: nothing has happened yet, so no signal has left the star.";
+
     private static readonly double[] ObserverGrid = TimeAxis.LogGrid();
 
     private Outcome? _outcome;
@@ -267,6 +273,9 @@ public abstract partial class InstrumentPanelViewModel : ObservableObject
 
     /// <summary>The current source time, s (observer time ÷ (1 + z)).</summary>
     protected double SourceTimeS => _timeS / _observer.TimeDilation;
+
+    /// <summary>The time is the timeline's left end, t = 0 (ruling R-P3-42): the badges say "Not yet" and no value is read out.</summary>
+    protected bool IsAtStart => _timeS <= TimeAxis.MinS;
 
     /// <summary>
     /// Sets the outcome, observer, run number and the preset's facts, and resamples. <paramref name="factsMeasuredHere"/>
@@ -519,6 +528,7 @@ public abstract partial class InstrumentPanelViewModel : ObservableObject
     /// <summary>The primary channel's value now, or why nothing is drawn now.</summary>
     private (string? Value, string? Note) Readout()
     {
+        if (IsAtStart) return (null, BeforeExplosionReason);   // ruling R-P3-42
         if (Kind != PlotKind.TimeSeries) return (Spectrum?.Caption ?? PulseTrain?.Caption, InstantViewNote());
         if (PrimaryChannel(SelectedSubTab, SelectedInstrument) is not var (model, channelId)) return (null, null);
         double v = SampleOne(model, channelId, SourceTimeS);

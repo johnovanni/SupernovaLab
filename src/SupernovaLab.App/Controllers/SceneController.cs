@@ -249,7 +249,8 @@ public sealed partial class SceneController : ObservableObject, IDisposable
     [ObservableProperty] private bool _isFailed;
     [ObservableProperty] private string _failureMessage = "";
 
-    private double SourceTimeS => _vm.Timeline.ObserverTimeS / _vm.CurrentObserver.TimeDilation;
+    /// <summary>The source time drawn: observer time ÷ (1 + z); 0 at the timeline's left end, t = 0, the star before the explosion (R-P3-42).</summary>
+    private double SourceTimeS => _vm.Timeline.IsAtStart ? 0 : _vm.Timeline.ObserverTimeS / _vm.CurrentObserver.TimeDilation;
 
     /// <summary>The physical size (cm) of one scene unit: the view's half-height, or the frozen one after a zoom.</summary>
     public double UnitCm => _frozenUnitCm ?? Director.HalfHeightCm;

@@ -21,7 +21,7 @@ public sealed class NAudioPulseAudio : IPulseAudio
     private volatile bool _failed;          // set on any thread (PlaybackStopped); cleared when Enabled is toggled
     private volatile string? _problem;
     private double? _period;
-    private float _volume = 0.5f;
+    private float _volume = ClickTrain.DefaultVolume;
 
     /// <param name="deviceFactory">Makes the output device (null: a <see cref="WaveOutEvent"/>); tests pass a fake.</param>
     public NAudioPulseAudio(Func<IWavePlayer>? deviceFactory = null)
@@ -52,6 +52,36 @@ public sealed class NAudioPulseAudio : IPulseAudio
 
     public string? Problem => _problem;
 
+    /// <summary>Task 15's diagnostic: how many times an output device was opened and started.</summary>
+    public int DevicesOpened { get; private set; }
+
+    private string _deviceName = "";
+
+    /// <summary>Whether a device is open now.</summary>
+    public bool IsDeviceOpen => _out is not null;
+
+    /// <summary>How many clicks the device has pulled from the click train (written into its buffers, so queued for the speaker).</summary>
+    public long ClicksQueued => _train.ClicksWritten;
+
+    /// <summary>How many samples the device has pulled (44,100 a second while it plays, silent ones included).</summary>
+    public long SamplesQueued => _train.SamplesWritten;
+
+    /// <summary>
+    /// Task 15: the sound's state in one line for the --snapshot log, so a launch confirms the sound by log, never by ear: whether the device
+    /// opened, and how many clicks and samples it has queued.
+    /// </summary>
+    public string DiagnosticText
+    {
+        get
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string device = DevicesOpened == 0 ? "audio device: never opened"
+                : $"audio device opened {DevicesOpened}× ({_deviceName}, {_train.SampleRate} Hz mono IEEE float, {LatencyMs} ms latency), now {(IsDeviceOpen ? "open" : "released")}";
+            return $"{device}; {ClicksQueued} clicks queued in {SamplesQueued} samples ({(SamplesQueued / (double)_train.SampleRate).ToString("0.00", inv)} s); " +
+                   $"volume {(int)Math.Round(_volume * 100)}%; problem: {_problem ?? "none"}";
+        }
+    }
+
     public void SetPulsePeriod(double? receivedPeriodS)
     {
         if (_disposed) return;
@@ -77,6 +107,8 @@ public sealed class NAudioPulseAudio : IPulseAudio
             device.Init(new ClickTrainProvider(_train).ToWaveProvider());
             device.Play();
             _out = device;
+            DevicesOpened++;
+            _deviceName = device.GetType().Name;
             _problem = null;
         }
         catch (Exception e)

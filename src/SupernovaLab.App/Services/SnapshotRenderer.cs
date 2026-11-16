@@ -64,8 +64,12 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
     IReadOnlyList<int>? TourStopList = null, bool BenchTour = false, LayoutSettings? Layout = null, bool OpenCloseUp = false,
     double? BenchSpin = null, bool BenchBaseline = false, IReadOnlyList<LensingDetail>? BenchDetails = null,
     IReadOnlyList<CloseUpBenchCamera>? BenchCameras = null, double? LabMass = null,
-    IReadOnlyList<SnapshotSize>? CloseUpSizeList = null, IReadOnlyList<string>? BenchPresetList = null)
+    IReadOnlyList<SnapshotSize>? CloseUpSizeList = null, IReadOnlyList<string>? BenchPresetList = null, double? SoundCheckSeconds = null)
 {
+    // Task 15: <c>--sound-check &lt;seconds&gt;</c> (it implies <c>--closeup</c>) runs the owner's-first-look check after the captures: a lab change
+    // while playing (the timeline must pause at t = 0; the windows are captured there, "-after-lab-change"), then the Close-up's sound
+    // switched on at a low volume for the Crab at 100 yr while the timeline plays for that many seconds, then paused for one second, then an
+    // input change; snapshot.log records whether the audio device opened and how many clicks it queued. The check is by log, never by ear.
     /// <summary>The orbiting camera's rate in a bench run (degrees of yaw per second): one turn in 12 s.</summary>
     public const double BenchOrbitDegPerS = 30;
 
@@ -169,6 +173,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         double? benchSpin = null, labMass = null;
         var closeUpSizes = new List<SnapshotSize>();
         var benchPresets = new List<string>();
+        double? soundCheck = null;
         for (int i = 0; i < args.Count; i++)
         {
             if (i == at) { i++; continue; }
@@ -266,6 +271,12 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
                         throw new ArgumentException($"--lab-mass needs an initial mass from {LabInputs.MinInitialMass} to {LabInputs.MaxInitialMass} M☉, not '{value}'.");
                     labMass = mass;
                     break;
+                case "--sound-check":   // Task 15: the sound's check by log (see SoundCheckSeconds)
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double sc) || !(sc > 0) || sc > 30)
+                        throw new ArgumentException($"--sound-check needs a number of seconds above 0 and at most 30, not '{value}'.");
+                    soundCheck = sc;
+                    openCloseUp = true;
+                    break;
                 case "--quality":
                     foreach (string q in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                         qualities.Add(QualityLevels.Parse(q) ?? throw new ArgumentException($"--quality needs high, medium or low, not '{q}'."));
@@ -278,7 +289,7 @@ public sealed record SnapshotRequest(string OutDirectory, IReadOnlyList<string> 
         if (windows.Count == 0) windows.Add(SnapshotWindow.Main);
         if (windows.Contains(SnapshotWindow.CloseUp)) openCloseUp = true;
         return new SnapshotRequest(outDir, presets, time, sizes, windows, bench, sweep, qualities, cutaway, tourStops, benchTour, layout,
-            openCloseUp, benchSpin, benchBaseline, benchDetails, benchCameras, labMass, closeUpSizes, benchPresets);
+            openCloseUp, benchSpin, benchBaseline, benchDetails, benchCameras, labMass, closeUpSizes, benchPresets, soundCheck);
     }
 
     /// <summary>The preset entry that means the lab as launched, with no preset: "default" or "default@seconds" (ruling R-P2-20).</summary>
@@ -468,7 +479,7 @@ public static class SnapshotRenderer
                 quality.Quality = request.Qualities[0];
                 quality.IsCutaway = request.Cutaway;
             }
-            if (request.OpenCloseUp) await OpenCloseUp(request, windows, log);
+            if (request.OpenCloseUp) await OpenCloseUp(request, main, windows, log);
             if (request.LabMass is double labMass)   // plan Task 11: for "default" entries (list them before any preset)
             {
                 vm.Lab.InitialMass = labMass;
@@ -500,6 +511,7 @@ public static class SnapshotRenderer
                 }
                 await CaptureTour(request, main, vm, windows, suffix, log);
             }
+            await RunSoundCheck(request, main, vm, windows, log);
             if (await RunSweep(request, main, vm, windows, log) > 0) exitCode = 1;
             await RunBench(request, main, vm, windows, log);
         }
@@ -1180,15 +1192,99 @@ public static class SnapshotRenderer
     }
 
     /// <summary><c>--closeup</c>: opens the Close-up window off-screen (with the bench's spin, if given) and lets it draw a first frame.</summary>
-    private static async Task OpenCloseUp(SnapshotRequest request, WindowService windows, List<string> log)
+    private static async Task OpenCloseUp(SnapshotRequest request, Window main, WindowService windows, List<string> log)
     {
         windows.ShowCloseUp();
         if (windows.CloseUp is not { } w) { log.Add("Close-up: no window opened"); return; }
+        LogCloseUpPlacement(main, w, log);
         PlaceOffScreen(w);
         if (w.DataContext is CloseUpViewModel vm && request.BenchSpin is double spin) vm.BenchSpin = spin;
         await NextFrame(w);
         if (windows.CloseUpWindow?.Scene is { } c) c.AutoLevel = false;   // a capture shows the level asked for (1/1 unless the bench sets it)
         log.Add($"Close-up opened ({w.ActualWidth:0}x{w.ActualHeight:0} DIP){(request.BenchSpin is double s ? $", bench spin {s.ToString("0.###", CultureInfo.InvariantCulture)}" : "")}");
+    }
+
+    /// <summary>
+    /// Task 15 (ruling R-P3-43): where the window service placed the Close-up, against the primary work area. The snapshot's main window is
+    /// off the screen (no capture flashes on screen), so the window service placed it at the main window's own lower right; the log also gives
+    /// where it opens for a main window on the primary screen (centred there, as the app starts), through the same function.
+    /// </summary>
+    private static void LogCloseUpPlacement(Window main, Window closeUp, List<string> log)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        string R(Rect r) => string.Create(inv, $"({r.Left:0.#}, {r.Top:0.#}) {r.Width:0.#} x {r.Height:0.#}");
+        var area = SystemParameters.WorkArea;
+        var mainRect = new Rect(main.Left, main.Top, main.ActualWidth, main.ActualHeight);
+        var size = new Size(closeUp.Width, closeUp.Height);
+        log.Add(string.Create(inv, $"Close-up placement (R-P3-43): opened at Left {closeUp.Left:0.#}, Top {closeUp.Top:0.#}, {size.Width:0} x {size.Height:0} DIP " +
+            $"({closeUp.WindowStartupLocation}); primary work area {R(area)}; main window {R(mainRect)} (off screen for the snapshot), so placed at " +
+            $"the main window's lower right: right gap {mainRect.Right - closeUp.Left - size.Width:0.#}, bottom gap {mainRect.Bottom - closeUp.Top - size.Height:0.#} DIP"));
+        var centred = new Rect(area.Left + (area.Width - mainRect.Width) / 2, area.Top + (area.Height - mainRect.Height) / 2, mainRect.Width, mainRect.Height);
+        var at = CloseUpPlacement.LowerRight(area, centred, size);
+        log.Add(string.Create(inv, $"Close-up placement with the main window on the primary screen {R(centred)}: Left {at.X:0.#}, Top {at.Y:0.#}; right gap " +
+            $"{area.Right - at.X - size.Width:0.#}, bottom gap {area.Bottom - at.Y - size.Height:0.#} DIP from the work area's edges"));
+    }
+
+    /// <summary>
+    /// Task 15's check of the owner's first look, by log only (<see cref="SnapshotRequest.SoundCheckSeconds"/>): a lab change while playing
+    /// pauses at t = 0 (R-P3-41) and every view shows the initial condition there (R-P3-42; the windows are captured); then the Close-up's
+    /// sound, switched on at 5% for the Crab while the timeline plays, then paused, then after an input change.
+    /// </summary>
+    private static async Task RunSoundCheck(SnapshotRequest request, Window main, MainViewModel vm, WindowService windows, List<string> log)
+    {
+        if (request.SoundCheckSeconds is not double seconds) return;
+        if (windows.CloseUp?.DataContext is not CloseUpViewModel cu) { log.Add("sound check: no Close-up open"); return; }
+        var inv = CultureInfo.InvariantCulture;
+        var tl = vm.Timeline;
+        string Timeline() => $"timeline {tl.ObserverTimeText} (at its start: {tl.IsAtStart}), playing {tl.IsPlaying}";
+        string Audio() => (cu.Audio as NAudioPulseAudio)?.DiagnosticText ?? (cu.Audio is null ? "no audio object yet" : cu.Audio.GetType().Name);
+        long Clicks() => (cu.Audio as NAudioPulseAudio)?.ClicksQueued ?? 0;
+
+        // R-P3-41 and R-P3-42: a lab input change while playing (the Crab at 1 day, then its initial mass edited).
+        var crab = PresetCatalog.Get("sn1054");
+        vm.Lab.SelectedPreset = crab;
+        tl.ObserverTimeS = PhysicalConstants.Day;
+        tl.IsPlaying = true;
+        log.Add($"lab-change check: the Crab, before: {Timeline()}");
+        vm.Lab.InitialMass = Math.Round(vm.Lab.InitialMass * 1.2, 1);
+        await NextFrame(main);
+        var s = (main as MainWindow)?.Scene?.State;
+        log.Add($"lab-change check: initial mass edited to {vm.Lab.InitialMass.ToString("0.#", inv)} M☉ while playing: {Timeline()}");
+        if (s is not null)
+            log.Add($"lab-change check: main view: star {s.ShowStar}, ejecta {s.ShowEjecta}, particles {s.ShowParticles}, marker {s.Marker}, " +
+                    $"shock in star {(double.IsFinite(s.ShockInStarRadiusCm) ? UnitFormat.Distance(s.ShockInStarRadiusCm) : "none")}; notes: {string.Join(" | ", s.Notes)}");
+        log.Add("lab-change check: panels: " + string.Join("; ", vm.Panels.Select(p => $"{p.Title} {p.DetectionText} / tile {p.StripBadgeText}")));
+        log.Add($"lab-change check: Close-up: {cu.WindowTitle}, era {cu.State.Era}; sound status shown {cu.ShowSoundStatus}");
+        await Capture(request, main, windows, "-after-lab-change", log);
+        vm.Lab.SelectedPreset = crab;   // a preset is an outcome change too: back to t = 0
+        log.Add($"lab-change check: chose the Crab again: {Timeline()}");
+
+        // The sound, by log: switched on low, at 100 yr (pulses received), playing at the slowest speed, then paused.
+        cu.Volume = 0.05f;
+        cu.IsSoundOn = true;
+        log.Add($"sound check: switched on at t = 0: \"{cu.SpeakerState}\"; {Audio()}");
+        tl.DecadesPerSecond = TimelineViewModel.MinDecadesPerSecond;
+        tl.ObserverTimeS = 100 * PhysicalConstants.Year;
+        tl.IsPlaying = true;
+        await Task.Delay(TimeSpan.FromSeconds(seconds));
+        long playing = Clicks();
+        log.Add($"sound check: after {seconds.ToString("0.#", inv)} s playing: {Timeline()}; \"{cu.SpeakerState}\"; {Audio()}");
+        tl.IsPlaying = false;
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        long paused = Clicks();
+        log.Add($"sound check: 1 s paused: {paused - playing} more clicks queued; \"{cu.SpeakerState}\"; {Audio()}");
+        if (windows.CloseUp is not null && request.Windows.Contains(SnapshotWindow.CloseUp))
+            await CaptureCloseUp(request, windows, "-sn1054-sound-on", log);
+
+        // R-P3-41 while sounding: a preset change pauses at t = 0; SN 1998bw leaves a black hole, so the clicks stop and the status says why.
+        tl.IsPlaying = true;
+        vm.Lab.SelectedPreset = PresetCatalog.Get("sn1998bw");
+        long atChange = Clicks();
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        log.Add($"sound check: chose SN 1998bw while sounding: {Timeline()}; \"{cu.SpeakerState}\"; {Clicks() - atChange} clicks queued in the next second; {Audio()}");
+        cu.IsSoundOn = false;
+        log.Add($"sound check: switched off: \"{cu.SpeakerState}\"; {Audio()}");
+        tl.DecadesPerSecond = TimelineViewModel.DefaultDecadesPerSecond;
     }
 
     /// <summary>Saves the Close-up window with its GL frame shown in place of the GL control (as the main window's).</summary>
