@@ -877,6 +877,12 @@ public sealed class CloseUpScene
     /// <summary>[Presentation] With a shock, the view frames this many (distorted) shock radii; the director's ladder covers 1 to 10,000 km.</summary>
     public const double ShockFrameRadii = 1.15;
 
+    /// <summary>
+    /// [Presentation] Task 21: the first second's framing radius is at most this many proto-neutron-star radii (it fills about a fifth of the
+    /// view's height): the stalled shock stays about at the frame's edge, and the revived shock and the infalling matter leave it.
+    /// </summary>
+    public const double CoreZoomRadii = 5;
+
     /// <summary>The largest framing radius of the first second, km (the shock leaves the frame at about 3,000 km).</summary>
     public const double MaxCoreFrameKm = 10_000;
 
@@ -920,7 +926,8 @@ public sealed class CloseUpScene
 
     /// <summary>The revived shock leaving the frame.</summary>
     public const string ShockLeavesNote =
-        "The revived shock leaves the frame at about 1 s; the main view's cutaway follows it out to the star's surface";
+        "The view is framed on the proto-neutron star, so the revived shock and the infalling matter leave the frame as the shock grows; " +
+        "the Shock radius readout follows it, and the main view's cutaway follows it out to the star's surface";
 
     private static readonly Source NeutrinoSource = new(
         "The neutrino panel's total luminosity, ν_e + anti-ν_e + 4 ν_x (the lab's neutrino model)", "signals §1");
@@ -1032,8 +1039,10 @@ public sealed class CloseUpScene
         if (gain) key.Add("◌ gain radius");
         if (CoreAnimation.InfallLabel(core) is { } infall) key.Add("· infalling matter, " + infall.Replace("Infall shown", "shown"));
 
+        // Task 21 (the owner: "I still haven't seen a core image", then "zoom in"): framed on the proto-neutron star, at most
+        // CoreZoomRadii of its radius, so it is a clear ball, not a dot among the infalling matter; the shock is framed while it is smaller.
         double frame = shock
-            ? Math.Min(MaxCoreFrameKm, ShockFrameRadii * core.ShockRadiusKm * (1 + core.DistortionFraction))
+            ? Math.Min(Math.Min(MaxCoreFrameKm, ShockFrameRadii * core.ShockRadiusKm * (1 + core.DistortionFraction)), CoreZoomRadii * sphere)
             : NeutronStarFrameRadii * sphere;
         return new CloseUpState
         {

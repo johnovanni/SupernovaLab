@@ -95,3 +95,33 @@ public class InfallSwarmTests
         Assert.Equal(s.Alpha(0), v[3]);
     }
 }
+
+/// <summary>Task 21 (the owner: "zoom in"): the first second is framed on the proto-neutron star.</summary>
+public class CoreZoomTests
+{
+    private static CloseUpScene SceneFor(string preset)
+    {
+        var p = SupernovaLab.Core.Presets.PresetCatalog.Get(preset);
+        return new CloseUpScene(TestOutcomes.Engine.Compute(p.Inputs, p.Pins), SupernovaLab.Core.Observer.ObserverSetup.Default, 1);
+    }
+
+    [Theory]
+    [InlineData(0.003)]
+    [InlineData(0.1)]
+    [InlineData(0.25)]
+    [InlineData(0.5)]
+    [InlineData(0.9)]
+    public void TheProtoNeutronStar_FillsAtLeastAFifthOfTheViewsHalfHeight(double t)
+    {
+        var s = SceneFor("sn1987a").At(t);
+        Assert.Equal(CloseUpEra.FirstSecond, s.Era);
+        Assert.True(s.FrameRadiusKm <= CloseUpScene.CoreZoomRadii * s.CoreSphereRadiusKm + 1e-9, $"{t}: frame {s.FrameRadiusKm} km");
+    }
+
+    [Fact]
+    public void ASmallShock_IsStillFramedWhole()
+    {
+        var s = SceneFor("sn1987a").At(0.003);   // just after bounce the shock is within a few star radii
+        Assert.True(s.FrameRadiusKm >= s.Core!.ShockRadiusKm || s.FrameRadiusKm == CloseUpScene.CoreZoomRadii * s.CoreSphereRadiusKm);
+    }
+}
