@@ -41,6 +41,7 @@ public static class NeutronStarModel
     public const double CrustFormationTimeS = 86_400;
 
     private const double Year = PhysicalConstants.Year;
+    private const double CasAObservationFromS = 300 * Year, CasAObservationToS = 380 * Year;   // §C9.3: ≈ 330 yr (HH10) to ≈ 350 yr (S23), with margin
     private const double PlateauK = 2.9e6;                   // §C3: Gnedin et al.'s ≈ 250 eV plateau
     private const double PlateauEndS = 10 * Year;            // §C3: flat to 10 yr, then log-linear down to the model's 30-yr value
 
@@ -86,18 +87,21 @@ public static class NeutronStarModel
 
     /// <summary>
     /// The close-up's tooltip for the Cas A preset (inconsistency #54, ruling R-P3-1; compact §C9): the observed surface
-    /// temperature, the observed value seen from afar, the lab's, and how warm the lab is. Null for any other outcome.
+    /// temperature, the observed value seen from afar, the lab's, and how warm the lab is. Null for any other outcome, and outside
+    /// 300–380 yr: the observations are of a star about 330 yr old (Heinke &amp; Ho 2010, 2000–2009 data) to about 350 yr (Shternin et
+    /// al. 2023, Chandra to 2020), so the comparison means nothing at other ages.
     /// </summary>
     public static string? CasAComparison(Outcome o, double sourceTimeS)
     {
         if (!Applies(o) || !o.Discloses(54)) return null;
+        if (!(sourceTimeS >= CasAObservationFromS && sourceTimeS <= CasAObservationToS)) return null;
         double lab = SurfaceTemperature(o, sourceTimeS).Value / 1e6;
         var inv = CultureInfo.InvariantCulture;
         double warmLow = (lab / 1.5 - 1) * 100, warmHigh = (lab / 1.4 - 1) * 100;
         string warm = warmLow >= 0
             ? $"about {warmLow.ToString("0", inv)}–{warmHigh.ToString("0", inv)}% warm"
             : "about as observed";
-        return "Observed (Heinke & Ho 2010): 2.04–2.12 million K at the surface, about 1.4–1.5 million K seen from afar; " +
+        return "Observed (Heinke & Ho 2010): 2.04–2.12 million K at the surface (local, not redshifted), about 1.4–1.5 million K seen from afar; " +
                $"the lab gives {lab.ToString("0.0", inv)} million K seen from afar, {warm} (#54).";
     }
 

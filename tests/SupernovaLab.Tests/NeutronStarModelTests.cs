@@ -55,6 +55,19 @@ public class NeutronStarModelTests
         // The Heinke & Ho local value is quoted as the local surface value.
         Assert.Contains("2.04–2.12", text);
         Assert.Contains("surface", text);
+        Assert.Contains("local, not redshifted", text);
+    }
+
+    [Fact]
+    public void CasAComparison_OnlyAroundTheObservationsAge()
+    {
+        // Heinke & Ho 2010 and Shternin et al. 2023 observe a star about 330-350 yr old (§C9.3): elsewhere the comparison is meaningless.
+        Assert.Null(NeutronStarModel.CasAComparison(CasA, 10 * Year));
+        Assert.Null(NeutronStarModel.CasAComparison(CasA, 1000 * Year));
+        Assert.NotNull(NeutronStarModel.CasAComparison(CasA, 300 * Year));
+        Assert.NotNull(NeutronStarModel.CasAComparison(CasA, 340 * Year));
+        Assert.NotNull(NeutronStarModel.CasAComparison(CasA, 380 * Year));
+        Assert.Null(NeutronStarModel.CasAComparison(CasA, 299 * Year));
     }
 
     [Fact]
