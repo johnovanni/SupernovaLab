@@ -2,7 +2,7 @@
 
 You asked me to make every reversible call myself and to report them afterwards. Here they are, grouped by theme, in
 plain words. Each has a number so you can find its full wording, reason and cost-if-wrong in `project3-rulings.md`
-(plan rulings P3-1 to P3-13 are in the plan; the pre-flight rulings are S1–S3; execution rulings are R-P3-1 to R-P3-43).
+(plan rulings P3-1 to P3-13 are in the plan; the pre-flight rulings are S1–S3; execution rulings are R-P3-1 to R-P3-44).
 Any of these can be changed. Where a decision was yours, not mine, it says so.
 
 ## First, one correction you need to know about
@@ -35,16 +35,21 @@ You asked for four things after first using the app. What I found and changed:
   first second, a black hole or a Type Ia, so the switch seemed to do nothing. Now:
   - the sound plays whenever the pulses reach Earth, paused or playing (the pulse row keeps running while paused too);
   - while the sound is on, a line at the top of the Close-up says what it plays ("clicking 30 a second") or why it is
-    silent ("silent: no pulsar in this outcome", "silent until the pulsar's pulses reach Earth (10 years)", "hidden by
-    debris until 10 years"), with a volume slider;
+    silent ("silent: no pulsar in this outcome", "silent until the pulsar's pulses reach Earth (about 10 years, a
+    speculative estimate)"; hover for that time's source), with a volume slider;
   - the click is lower and louder, for ears that lose the high notes first: one cycle of a 500 Hz tone in the same
     2-millisecond click (it was two cycles of 1,000 Hz), and 80% volume to start (it was 50%). Still schematic;
-  - the switch and the volume stay as you set them when you close and reopen the Close-up (until the app closes).
-  If you would rather it stayed silent while paused, that is one line to change back.
+  - the switch and the volume stay as you set them when you close and reopen the Close-up (until the app closes). So if
+    the sound was on when you closed the Close-up, reopening it (yourself, or by the guided tour) starts the clicks
+    again wherever pulses reach Earth; the line at the top of the window shows that the sound is on.
+  Playing while paused was my call, and the controller accepted it (R-P3-44). If you would rather it stayed silent while
+  paused, that is one condition to put back.
 - **The Close-up opens at the lower right (R-P3-43).** The first time, it opens in the lower-right corner of the screen
   (16 pixels in from the edges), so it does not cover the main view's first changes. Once you move it, it comes back
-  where you left it. On a second monitor it goes to the lower right of the main window instead, because the app does
-  not use the Windows calls that would find the other screen's edges (your antivirus rule).
+  where you left it. On a second monitor it goes to the lower right of the main window instead (kept on your screens),
+  because the app is built with WPF alone, which knows only the main screen's edges: a build choice, not one of your
+  rules. If you would like the exact corner of the other screen, WinForms' `Screen.FromHandle` could give it without
+  any Windows calls in our own code.
 
 ## The ones that change what you see most
 

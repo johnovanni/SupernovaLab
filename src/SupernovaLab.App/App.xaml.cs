@@ -30,7 +30,8 @@ public partial class App : Application
 
         // Plan ruling P3-5: one beam clock, handed to both 3D views (the main window's and the Close-up's).
         var beamClock = new BeamClock();
-        var windows = new WindowService(beamClock);
+        // Task 15 (R-P3-43): a snapshot run keeps every window off the screen, so the Close-up's placement is not held inside the screens.
+        var windows = snapshot is null ? new WindowService(beamClock) : new WindowService(beamClock, virtualScreen: () => Rect.Empty);
         // Task 15: the panel layout is remembered in %LOCALAPPDATA%\SupernovaLab\layout.json; a snapshot run never reads or writes it.
         var vm = new MainViewModel(new OutcomeEngine(ExplodabilityTable.LoadEmbedded()), windows,
             snapshot is null ? LayoutStore.ForCurrentUser() : null);

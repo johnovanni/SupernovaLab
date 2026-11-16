@@ -805,6 +805,33 @@ public class InstrumentPanelTests
         Assert.Contains("Model error", panel.ErrorText);
     }
 
+    /// <summary>Task 15 fix round (R-P3-42): at t = 0 a model error is still a model error, not "Not yet".</summary>
+    [Fact]
+    public void AtTZero_AThrowingVerdict_IsStillAModelError()
+    {
+        var panel = new FakePanel(new FakeModel(throws: false, detectThrows: true));
+        panel.Update(TestOutcomes.Star(16), ObserverSetup.Default, 1, Array.Empty<ObservedFact>(), true);
+        panel.OnTimeChanged(SupernovaLab.Core.Timeline.TimeAxis.MinS);
+        Assert.Equal("Model error", panel.DetectionText);
+        Assert.Equal("Model error", panel.StripBadgeText);
+    }
+
+    /// <summary>Task 15 fix round (R-P3-42): at t = 0 a verdict that holds at every time passes through; one that depends on the time is "Not yet".</summary>
+    [Theory]
+    [InlineData(DetectionStatus.NotPointedAtUs, true, "Not pointed at us")]
+    [InlineData(DetectionStatus.NotProduced, true, "Not produced by this supernova")]
+    [InlineData(DetectionStatus.NotModeled, false, "Not modeled here")]   // a model that does not apply to the outcome at all
+    [InlineData(DetectionStatus.NotModeled, true, "Not yet")]             // outside its time range: not yet
+    [InlineData(DetectionStatus.Detected, true, "Not yet")]
+    [InlineData(DetectionStatus.BlockedByDust, true, "Not yet")]
+    public void AtTZero_TimelessVerdictsPassThrough(DetectionStatus status, bool applies, string badge)
+    {
+        var panel = new FakePanel(new FakeModel(throws: false, status: status, applies: applies));
+        panel.Update(TestOutcomes.Star(16), ObserverSetup.Default, 1, Array.Empty<ObservedFact>(), true);
+        panel.OnTimeChanged(SupernovaLab.Core.Timeline.TimeAxis.MinS);
+        Assert.Equal(badge, panel.DetectionText);
+    }
+
     /// <summary>The time-only path: sampling works, but the verdict at the current time throws.</summary>
     [Fact]
     public void AThrowingVerdict_AtTheCurrentTime_IsAModelError()
@@ -873,14 +900,15 @@ public class InstrumentPanelTests
 
     // ---------------------------------------------------------------- fakes
 
-    private sealed class FakeModel(bool throws, bool infinite = false, bool detectThrows = false, double? throwAtS = null) : ISignalModel
+    private sealed class FakeModel(bool throws, bool infinite = false, bool detectThrows = false, double? throwAtS = null,
+        DetectionStatus status = DetectionStatus.Detected, bool applies = true) : ISignalModel
     {
         public string Id => "fake";
         public Messenger Messenger => Messenger.Radio;
         public IReadOnlyList<SignalChannel> Channels { get; } = new[] { new SignalChannel("x", "Fake", "mJy", true) };
         public Confidence Confidence => Confidence.Speculative;
         public IReadOnlyList<Source> Sources { get; } = new[] { new Source("Fake", "tests") };
-        public bool Applies(Outcome outcome) => true;
+        public bool Applies(Outcome outcome) => applies;
         public (double StartS, double EndS) ValidRange(Outcome outcome) => (1, 1e6);
 
         public double Sample(Outcome outcome, ObserverSetup observer, double sourceTimeS, string channelId)
@@ -891,7 +919,7 @@ public class InstrumentPanelTests
         }
 
         public Detection Detect(Outcome outcome, ObserverSetup observer, double sourceTimeS, Detector detector)
-            => throws || detectThrows ? throw new InvalidOperationException("boom") : new Detection(DetectionStatus.Detected, "Fake.");
+            => throws || detectThrows ? throw new InvalidOperationException("boom") : new Detection(status, "Fake.");
     }
 
     private sealed class FakePanel(ISignalModel model, bool contextThrows = false)

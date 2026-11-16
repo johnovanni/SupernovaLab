@@ -98,7 +98,7 @@ public abstract partial class InstrumentPanelViewModel
         double t = SourceTimeS;
         // Task 15: the list keeps the catalogue's order at every time (it used to be sorted by verdict, so what was listed moved as the
         // verdicts changed); the badges pick the best verdict from it, the first of equals in catalogue order.
-        var verdicts = all.Select(m => (Model: m, Verdict: AtStart(VerdictNow(m, instrument, t)), InTab: tab.Contains(m))).ToList();
+        var verdicts = all.Select(m => (Model: m, Verdict: AtStart(m, VerdictNow(m, instrument, t)), InTab: tab.Contains(m))).ToList();
         JudgedModelIds = verdicts.Select(v => v.Model.Id).ToList();
 
         // The tile: the best verdict over every model that judges this instrument.
@@ -140,9 +140,17 @@ public abstract partial class InstrumentPanelViewModel
 
     private ISignalModel? _stripBadgeModel;
 
-    /// <summary>Ruling R-P3-42: at t = 0 (the timeline's left end) every verdict is "Not yet", except a signal this supernova never makes.</summary>
-    private Detection AtStart(Detection d)
-        => IsAtStart && d.Status != DetectionStatus.NotProduced ? new Detection(DetectionStatus.NotYet, BeforeExplosionReason) : d;
+    /// <summary>
+    /// Ruling R-P3-42: at t = 0 (the timeline's left end) a verdict that depends on the time becomes "Not yet". A verdict that holds at every
+    /// time passes through: a signal this supernova never makes ("Not produced"), a beam or jet not pointed at us, and a model that does not
+    /// apply to this outcome at all. A model error never reaches here: it is thrown, and shown as "Model error" (spec §9).
+    /// </summary>
+    private Detection AtStart(ISignalModel model, Detection d)
+    {
+        if (!IsAtStart || d.Status is DetectionStatus.NotProduced or DetectionStatus.NotPointedAtUs) return d;
+        if (d.Status == DetectionStatus.NotModeled && !model.Applies(Outcome)) return d;
+        return new Detection(DetectionStatus.NotYet, BeforeExplosionReason);
+    }
 
     /// <summary>
     /// The models that judge the selected instrument, in the order the panel keeps them: the catalogue's order, the same at every time

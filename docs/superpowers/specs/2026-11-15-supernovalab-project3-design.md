@@ -762,14 +762,17 @@ The owner's four requests after first using the app, and what changed:
 3. **"I can't turn on the sound on the core closeup window."** The switch worked, but the sound almost never played and
    nothing showed that it was on: it played only while the timeline was playing *and* pulses reached Earth (from 10
    years on, about 6 seconds of a 40-second run, after which playback stops at 1,000 years), and its state was shown only
-   in the pulse-trace row, which is hidden for the core's first second, a black hole and a Type Ia. Now, my call for
-   the owner's review: the sound plays whenever Earth receives the pulses, paused or playing (it agrees with the pulse
+   in the pulse-trace row, which is hidden for the core's first second, a black hole and a Type Ia. Now (the builder's
+   call, accepted as ruling R-P3-44, for the owner's review): the sound plays whenever Earth receives the pulses, paused or playing (it agrees with the pulse
    trace, which keeps running while paused); while it is on, a line at the top of the Close-up says what it plays
    ("clicking 30 a second") or why it is silent ("silent: no pulsar in this outcome", "silent until the pulsar's pulses
-   reach Earth (10 years)"), with a volume slider. The click is lower and louder: one cycle of 500 Hz under the same
+   reach Earth (about 10 years, a speculative estimate)", whose tooltip gives that time's confidence and source), with
+   a volume slider. The click is lower and louder: one cycle of 500 Hz under the same
    2 ms envelope (it was two cycles of 1 kHz), peak 0.97 of full scale, default volume 80% (was 50%); still schematic.
-   The switch and volume are kept for the session when the window is closed and reopened.
+   The switch and volume are kept for the session when the window is closed and reopened, so reopening it (also by the
+   tour) resumes the clicks if the sound was on; the status line shows it.
 4. **"The core closeup window should initially display in the lower right."** Ruling R-P3-43: the Close-up first opens
    at the lower-right corner of the work area of the screen that holds the main window, 16 DIP in from its edges; once
    the owner has moved it, it reopens where it was left (for the session). WPF alone knows only the primary screen's
-   work area, so a main window on another screen puts the Close-up at the main window's own lower right.
+   work area (no P/Invoke: a build constraint), so a main window on another screen puts the Close-up at the main
+   window's own lower right, held inside the virtual screen (all monitors).

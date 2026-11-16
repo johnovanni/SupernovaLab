@@ -7,6 +7,7 @@ using SupernovaLab.Core.Compact;
 using SupernovaLab.Core.Observer;
 using SupernovaLab.Core.Outcomes;
 using SupernovaLab.Core.Units;
+using PulsarModel = SupernovaLab.Core.Signals.PulsarModel;
 using SupernovaLab.Rendering;
 
 namespace SupernovaLab.App.ViewModels;
@@ -586,11 +587,11 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         else if (!ReferenceEquals(_crossingsFor?.Outcome, o) || _crossingsFor.Value.Observer != obs)
             (_crossings, _crossingsFor) = (PulseSchedule.CrossingPhasesRad(o, obs).ToArray(), (o, obs));
         if (text != _traceText) { _traceText = text; changed.Add(nameof(TraceText)); }
-        if (speaker != _speakerState) { _speakerState = speaker; changed.Add(nameof(SpeakerState)); }
+        if (speaker != _speakerState) { _speakerState = speaker; changed.Add(nameof(SpeakerState)); changed.Add(nameof(SpeakerStateToolTip)); }
         foreach (var name in changed) OnPropertyChanged(name);
     }
 
-    private static readonly SupernovaLab.Core.Signals.PulsarModel PulsarForEmergence = new();
+    private static readonly PulsarModel PulsarForEmergence = new();
 
     /// <summary>Task 15: why the switched-on sound is silent now, in words, for every outcome and moment.</summary>
     private static string SilentReason(PulseVisibility vis, Outcome o, ObserverSetup obs)
@@ -599,14 +600,27 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
         string when = double.IsNaN(emergence) ? "" : UnitFormat.Time(emergence * obs.TimeDilation);
         return vis switch
         {
-            PulseVisibility.HiddenByDebris => $"silent: pulses hidden by debris until {when}",
+            PulseVisibility.HiddenByDebris => $"silent: pulses hidden by debris until about {when} (a speculative estimate)",
             PulseVisibility.BeamMissesEarth => "silent: the pulsar's beam misses Earth",
             _ when double.IsNaN(emergence) => "silent: no pulsar in this outcome (the sound is a pulsar's clicks)",
             _ when PulseSchedule.Visibility(o, obs, emergence) == PulseVisibility.BeamMissesEarth
                 => "silent: no pulsar yet, and its beam will miss Earth",
-            _ => $"silent until the pulsar's pulses reach Earth ({when})",
+            _ => $"silent until the pulsar's pulses reach Earth (about {when}, a speculative estimate)",
         };
     }
+
+    /// <summary>The pulsar model's source for when the pulses escape the debris (its "Pulses shown from 10 yr" entry).</summary>
+    private static readonly Source EmergenceSource = PulsarForEmergence.Sources.FirstOrDefault(s => s.Citation.StartsWith("Pulses shown", StringComparison.Ordinal))
+        ?? PulsarForEmergence.Sources[0];
+
+    /// <summary>
+    /// Task 15 fix round: the status line's tooltip while it names when the pulses reach Earth, that number's confidence and source (every
+    /// shown number keeps them); null otherwise.
+    /// </summary>
+    public string? SpeakerStateToolTip => _speakerState.Contains("speculative estimate", StringComparison.Ordinal)
+        ? $"When the pulses escape the debris and reach Earth: the lab's pulsar model starts them {UnitFormat.Time(PulsarModel.EmergenceYears * PhysicalConstants.Year)} " +
+          $"after core bounce (stretched by 1 + z for a distant supernova). Confidence: Speculative. Source: {EmergenceSource.Citation} ({EmergenceSource.ResearchRef})."
+        : null;
 
     /// <summary>Stops following the main view model (the window closed), and stops and releases the sound.</summary>
     public void Dispose()

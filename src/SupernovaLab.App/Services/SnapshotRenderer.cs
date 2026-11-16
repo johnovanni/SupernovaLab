@@ -511,9 +511,9 @@ public static class SnapshotRenderer
                 }
                 await CaptureTour(request, main, vm, windows, suffix, log);
             }
-            await RunSoundCheck(request, main, vm, windows, log);
             if (await RunSweep(request, main, vm, windows, log) > 0) exitCode = 1;
             await RunBench(request, main, vm, windows, log);
+            await RunSoundCheck(request, main, vm, windows, log);   // last: it leaves the lab on SN 1998bw
         }
         catch (Exception e)
         {
@@ -1216,9 +1216,14 @@ public static class SnapshotRenderer
         var area = SystemParameters.WorkArea;
         var mainRect = new Rect(main.Left, main.Top, main.ActualWidth, main.ActualHeight);
         var size = new Size(closeUp.Width, closeUp.Height);
+        bool primary = CloseUpPlacement.OnPrimaryScreen(area, mainRect);
+        var corner = primary ? area : mainRect;
+        string branch = primary ? ", on the primary screen, so placed at the work area's lower right"
+            : " (its centre off the primary work area: another screen, or off screen for the snapshot), so placed at the main window's lower right" +
+              " (not held inside the screens in a snapshot run)";
         log.Add(string.Create(inv, $"Close-up placement (R-P3-43): opened at Left {closeUp.Left:0.#}, Top {closeUp.Top:0.#}, {size.Width:0} x {size.Height:0} DIP " +
-            $"({closeUp.WindowStartupLocation}); primary work area {R(area)}; main window {R(mainRect)} (off screen for the snapshot), so placed at " +
-            $"the main window's lower right: right gap {mainRect.Right - closeUp.Left - size.Width:0.#}, bottom gap {mainRect.Bottom - closeUp.Top - size.Height:0.#} DIP"));
+            $"({closeUp.WindowStartupLocation}); primary work area {R(area)}; main window {R(mainRect)}{branch}: right gap " +
+            $"{corner.Right - closeUp.Left - size.Width:0.#}, bottom gap {corner.Bottom - closeUp.Top - size.Height:0.#} DIP"));
         var centred = new Rect(area.Left + (area.Width - mainRect.Width) / 2, area.Top + (area.Height - mainRect.Height) / 2, mainRect.Width, mainRect.Height);
         var at = CloseUpPlacement.LowerRight(area, centred, size);
         log.Add(string.Create(inv, $"Close-up placement with the main window on the primary screen {R(centred)}: Left {at.X:0.#}, Top {at.Y:0.#}; right gap " +

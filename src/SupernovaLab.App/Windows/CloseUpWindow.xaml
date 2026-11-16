@@ -85,7 +85,7 @@
                         VerticalAlignment="Center" SmallChange="0.05" LargeChange="0.1" ToolTip="Sound volume"
                         AutomationProperties.Name="Sound volume (top)"/>
                 <TextBlock Text="{Binding SpeakerState}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"
-                           AutomationProperties.Name="Sound state"/>
+                           ToolTip="{Binding SpeakerStateToolTip}" AutomationProperties.Name="Sound state"/>
             </DockPanel>
         </Border>
 
@@ -104,7 +104,7 @@
                         <TextBlock Text="{Binding SpeakerGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Margin="0,0,8,0"
                                    Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding SpeakerState}" Style="{StaticResource Muted}" Width="190" VerticalAlignment="Center"
-                                   TextWrapping="Wrap" FontSize="11" AutomationProperties.Name="Speaker state"/>
+                                   TextWrapping="Wrap" FontSize="11" ToolTip="{Binding SpeakerStateToolTip}" AutomationProperties.Name="Speaker state"/>
                     </StackPanel>
                     <Slider Minimum="0" Maximum="1" Value="{Binding Volume, Mode=TwoWay}" Width="200" Margin="0,4,0,0" HorizontalAlignment="Left"
                             SmallChange="0.05" LargeChange="0.1" ToolTip="Sound volume" AutomationProperties.Name="Sound volume"/>

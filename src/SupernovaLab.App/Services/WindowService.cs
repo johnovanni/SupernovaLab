@@ -22,7 +22,7 @@ public sealed class WindowService : IWindowService
     private PresetInfoWindow? _presetInfo;
     private Window? _closeUp;
     private Rect? _instrumentsBounds, _closeUpBounds;
-    private readonly Func<Rect> _workArea;
+    private readonly Func<Rect> _workArea, _virtualScreen;
     private (bool On, float Volume)? _closeUpSound;
 
     /// <param name="beamClock">The beams' clock, shared by both 3D views; null for one of its own.</param>
@@ -31,14 +31,21 @@ public sealed class WindowService : IWindowService
     /// a plain window, so no GL context is made.</param>
     /// <param name="workArea">The primary screen's work area, DIP (null: <see cref="SystemParameters.WorkArea"/>); tests pass one off the
     /// screen.</param>
+    /// <param name="virtualScreen">All monitors' bounding box, DIP, that a Close-up placed beside a main window on another screen is held
+    /// inside (null: <see cref="VirtualScreen"/>; <see cref="Rect.Empty"/>: not held, as a --snapshot run keeps its windows off the screen).</param>
     public WindowService(BeamClock? beamClock = null, Func<CloseUpViewModel, Window>? closeUpFactory = null,
-        Func<IPulseAudio>? audioFactory = null, Func<Rect>? workArea = null)
+        Func<IPulseAudio>? audioFactory = null, Func<Rect>? workArea = null, Func<Rect>? virtualScreen = null)
     {
         _workArea = workArea ?? (() => SystemParameters.WorkArea);
+        _virtualScreen = virtualScreen ?? (() => VirtualScreen);
         _beamClock = beamClock ?? new BeamClock();
         _audioFactory = audioFactory ?? (() => new NAudioPulseAudio());
         _closeUpFactory = closeUpFactory ?? (vm => new CloseUpWindow { DataContext = vm, BeamClock = _beamClock });
     }
+
+    /// <summary>All monitors' bounding box, DIP (WPF's <see cref="SystemParameters"/>; no P/Invoke).</summary>
+    public static Rect VirtualScreen => new(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+        SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
 
     /// <summary>The beams' clock this service hands to the Close-up.</summary>
     public BeamClock BeamClock => _beamClock;
@@ -126,7 +133,7 @@ public sealed class WindowService : IWindowService
         }
         else if (w.WindowStartupLocation != WindowStartupLocation.Manual)   // a window that chose its own place (a test's) keeps it
         {
-            var at = CloseUpPlacement.LowerRight(_workArea(), OwnerBounds(_owner!), PlannedSize(w));
+            var at = CloseUpPlacement.LowerRight(_workArea(), OwnerBounds(_owner!), PlannedSize(w), virtualScreen: _virtualScreen());
             w.WindowStartupLocation = WindowStartupLocation.Manual;
             (w.Left, w.Top) = (at.X, at.Y);
         }

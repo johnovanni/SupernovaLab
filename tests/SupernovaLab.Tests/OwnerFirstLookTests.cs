@@ -234,9 +234,11 @@ public class OwnerFirstLookTests
         var vm = Vm(presetId);
         foreach (var p in vm.Panels)
         {
-            Assert.True(p.DetectionText is "Not yet" or "Not produced by this supernova" or "Not observed by this instrument",
+            Assert.True(p.DetectionText is "Not yet" or "Not produced by this supernova" or "Not observed by this instrument"
+                    or "Not pointed at us" or "Not modeled here",
                 $"{presetId} {p.Title}: {p.DetectionText}");
-            Assert.True(p.StripBadgeText is "Not yet" or "Not produced" or "Not modeled", $"{presetId} {p.Title} tile: {p.StripBadgeText}");
+            Assert.True(p.StripBadgeText is "Not yet" or "Not produced" or "Not modeled" or "Not pointed at us",
+                $"{presetId} {p.Title} tile: {p.StripBadgeText}");
             Assert.Null(p.CurrentValueText);
         }
         // The neutrinos are detected one step later, for SN 1987A as in 1987.
@@ -353,9 +355,14 @@ public class OwnerFirstLookTests
         var (cu, _, main) = CloseUp("sn1054");
         cu.IsSoundOn = true;
         AtSource(main, 3 * Year);
-        Assert.Contains("hidden by debris until 10 years", cu.SpeakerState);
+        Assert.Contains("hidden by debris until about 10 years (a speculative estimate)", cu.SpeakerState);
+        Assert.Contains("Confidence: Speculative", cu.SpeakerStateToolTip);   // the shown number keeps its confidence and source
+        Assert.Contains("Pulses shown from 10 yr", cu.SpeakerStateToolTip);
         AtSource(main, 0.5);
-        Assert.Contains("silent until the pulsar's pulses reach Earth (10 years)", cu.SpeakerState);
+        Assert.Contains("silent until the pulsar's pulses reach Earth (about 10 years, a speculative estimate)", cu.SpeakerState);
+        Assert.NotNull(cu.SpeakerStateToolTip);
+        AtSource(main, 960 * Year);
+        Assert.Null(cu.SpeakerStateToolTip);   // "clicking …" names no model time
         cu.Dispose();
     }
 
@@ -496,6 +503,21 @@ public class OwnerFirstLookTests
         var owner = new Rect(2000, 100, 1600, 900);
         var at = CloseUpPlacement.LowerRight(WorkArea, owner, new Size(900, 640));
         Assert.Equal(new Point(2000 + 1600 - 900 - 16, 100 + 900 - 640 - 16), at);
+    }
+
+    [Fact]
+    public void OnAnotherScreen_TheCloseUpIsHeldInsideTheVirtualScreen()
+    {
+        // Two 1920 x 1080 monitors side by side; the main window hangs off the right one's right and bottom edges.
+        var virtualScreen = new Rect(0, 0, 3840, 1080);
+        var owner = new Rect(3000, 600, 1600, 900);
+        var at = CloseUpPlacement.LowerRight(WorkArea, owner, new Size(900, 640), virtualScreen: virtualScreen);
+        Assert.Equal(new Point(3840 - 900, 1080 - 640), at);
+        Assert.False(CloseUpPlacement.OnPrimaryScreen(WorkArea, owner));
+        // Unheld (an empty virtual screen, as in a --snapshot run, or none given): the main window's own corner.
+        Assert.Equal(new Point(4600 - 916, 1500 - 656), CloseUpPlacement.LowerRight(WorkArea, owner, new Size(900, 640), virtualScreen: Rect.Empty));
+        // On the primary screen the work area already lies inside the virtual screen: nothing changes.
+        Assert.Equal(new Point(1004, 384), CloseUpPlacement.LowerRight(WorkArea, new Rect(100, 50, 1366, 768), new Size(900, 640), virtualScreen: virtualScreen));
     }
 
     [Fact]
