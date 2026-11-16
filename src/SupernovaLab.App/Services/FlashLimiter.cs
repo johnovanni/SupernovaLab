@@ -66,20 +66,17 @@ public sealed class FlashLimiter
     private object? _context;
     private int _run;
 
-    /// <summary>Resets when the outcome or the run changes (a new flare list), so the next rise may start at once; call once per drawn frame.</summary>
-    public void ResetIfChanged(object? context, int run)
+    /// <summary>
+    /// Notes the outcome and run the brightness is for (a new outcome or Re-roll gives a new flare list). It never zeroes the output and never
+    /// lifts the rise spacing: the last rise's wall time and the output are kept, so dragging a slider (a new outcome every frame) cannot
+    /// cut the flare to nothing and re-rise it without the 0.5 s between rises. A request that drops to 0 falls on the slewed fall.
+    /// Returns whether the context changed. Call once per drawn frame.
+    /// </summary>
+    public bool ResetIfChanged(object? context, int run)
     {
-        if (ReferenceEquals(context, _context) && run == _run) return;
+        if (ReferenceEquals(context, _context) && run == _run) return false;
         (_context, _run) = (context, run);
-        Reset();
+        return true;
     }
 
-    /// <summary>Forgets everything (a new outcome or run): the next rise may start at once.</summary>
-    public void Reset()
-    {
-        _output = 0;
-        _lastWallS = double.NaN;
-        _lastRiseStartS = double.NegativeInfinity;
-        _rising = false;
-    }
 }

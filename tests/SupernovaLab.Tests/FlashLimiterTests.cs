@@ -85,24 +85,28 @@ public class FlashLimiterTests
     }
 
     [Fact]
-    public void Flare_ToneMappedPeak_StaysUnderTheAreaLimit_AndEachFrameStepIsSmall()
+    public void Flare_PreGammaToneMappedPeak_StaysUnderTheAreaLimit_AndTheDisplayedRiseOverTheBaselineIsSmall()
     {
         float level = SupernovaLab.App.Controllers.CloseUpSceneController.SurfaceLevel;
         float Lum(float f) => SupernovaLab.Rendering.HdrPipeline.Tonemap(level * (1 + SupernovaLab.App.Controllers.CloseUpSceneController.FlareSurfaceGain * f));
-        Assert.True(Lum(1) <= 0.85f, $"peak {Lum(1)}");
+        // Lum is the ACES value BEFORE tonemap.frag's gamma 2.2 (linear light); what the screen shows is Lum^(1/2.2).
+        Assert.True(Lum(1) <= 0.85f, $"pre-gamma peak {Lum(1)}");
+        float Shown(float f) => MathF.Pow(Lum(f), 1f / 2.2f);
+        Assert.InRange(Shown(0), 0.85f, 0.9f);                  // the baseline star is shown at about 0.88
+        Assert.True(Shown(1) - Shown(0) <= 0.1f, $"the flare raises the displayed luminance by {Shown(1) - Shown(0)}");
         float beam = SupernovaLab.App.Controllers.CloseUpSceneController.BeamLevel;
         Assert.True(SupernovaLab.Rendering.HdrPipeline.Tonemap(beam * (1 + SupernovaLab.App.Controllers.CloseUpSceneController.FlareBeamGain)) <= 0.85f);
         // A request that jumps to full: the largest per-frame luminance step over the 0.15 s rise at 60 frames a second.
         var lim = new FlashLimiter();
         lim.Apply(0, 0);
-        float prev = Lum(0), worst = 0;
+        float prev = Shown(0), worst = 0;
         for (int i = 1; i <= 12; i++)
         {
-            float v = Lum((float)lim.Apply(1, i / 60.0));
+            float v = Shown((float)lim.Apply(1, i / 60.0));
             worst = Math.Max(worst, Math.Abs(v - prev));
             prev = v;
         }
-        Assert.True(worst <= 0.05f, $"step {worst}");
+        Assert.True(worst <= 0.02f, $"displayed step {worst}");
         // The bloom is thinned during a flare, never raised.
         Assert.Equal(0.5f, SupernovaLab.App.Controllers.CloseUpSceneController.BloomDuringFlare(0.5f, 0));
         Assert.Equal(0.25f, SupernovaLab.App.Controllers.CloseUpSceneController.BloomDuringFlare(0.5f, 1));
@@ -123,20 +127,35 @@ public class FlashLimiterTests
     }
 
     [Fact]
-    public void FlashLimiter_ResetsWhenTheOutcomeOrRunChanges()
+    public void FlashLimiter_OutcomeChangingEveryFrameDuringAFlare_NeitherCutsNorRisesFasterThanTheSpacing()
     {
-        var a = new object();
+        // Dragging a lab slider makes a new Outcome every frame; the limiter must keep its rise spacing and slew its fall across them.
         var lim = new FlashLimiter();
-        lim.ResetIfChanged(a, 1);
-        double t = 0;
-        for (int i = 0; i < 20; i++) lim.Apply(1, t += 1.0 / 60);
-        lim.Apply(0, t += 1.0 / 60);                           // falling: a rise within 0.5 s would be refused
-        double refused = lim.Apply(1, t += 1.0 / 60);
-        Assert.True(refused < 1);
-        lim.ResetIfChanged(a, 1);                              // same context: nothing resets
-        lim.ResetIfChanged(a, 2);                              // Re-roll
-        Assert.Equal(0, lim.Apply(0, t += 1.0 / 60));
-        Assert.True(lim.Apply(1, t += 1.0 / 60) > 0);          // a new rise may start at once
+        var outputs = new List<double>();
+        for (int i = 0; i < 180; i++)                           // 3 s at 60 frames a second
+        {
+            double wall = i / 60.0;
+            lim.ResetIfChanged(new object(), 1);                // a new outcome on every frame
+            // The flare is asked for in alternating tenth-of-a-second bursts, as scrubbing or a changing flare list would.
+            double want = Math.Floor(wall * 10) % 2 == 0 ? 1 : 0;
+            outputs.Add(lim.Apply(want, wall));
+        }
+        Assert.True(CountRises(outputs) <= 6, $"{CountRises(outputs)} rises in 3 s");
+        double worstFall = 0;
+        for (int i = 1; i < outputs.Count; i++) worstFall = Math.Max(worstFall, outputs[i - 1] - outputs[i]);
+        Assert.True(worstFall <= 1.0 / 60 / FlashLimiter.MinRiseS * 1.01 + 1e-9, $"hard cut of {worstFall} in one frame");
+    }
+
+    [Fact]
+    public void FlashLimiter_ANewContext_KeepsTheOutputAndTheLastRiseTime()
+    {
+        var lim = new FlashLimiter();
+        double t = 0, v = 0;
+        for (int i = 0; i < 20; i++) v = lim.Apply(1, t += 1.0 / 60);
+        Assert.True(lim.ResetIfChanged(new object(), 2));       // Re-roll
+        double after = lim.Apply(1, t += 1.0 / 60);
+        Assert.True(after >= v - 1e-9);                        // not zeroed
+        Assert.False(lim.ResetIfChanged(lim, 2) && lim.ResetIfChanged(lim, 2));   // the same context again is not a change
     }
 
     [Fact]
@@ -146,6 +165,37 @@ public class FlashLimiterTests
         Assert.False(SupernovaLab.App.Controllers.CloseUpSceneController.FlareDimmedBy(0.9, 0.85));
         Assert.True(SupernovaLab.App.Controllers.CloseUpSceneController.FlareDimmedBy(0.9, 0.2));
         Assert.Contains("flash-safety limit", SupernovaLab.App.ViewModels.CloseUpViewModel.FlareDimmedNote);
+    }
+
+    [Theory]
+    [InlineData("sn2015bn")]     // a magnetar: a lensed neutron star
+    [InlineData("sn2011fe")]     // a Type Ia: no remnant, so not lensed
+    public void FlareDimmedNote_IsInTheNotes_WhenClipped_LensedOrNot(string preset)
+    {
+        var main = new SupernovaLab.App.ViewModels.MainViewModel(TestOutcomes.Engine, new FakeWindowService());
+        main.Lab.SelectedPreset = SupernovaLab.Core.Presets.PresetCatalog.Get(preset);
+        main.Timeline.ObserverTimeS = 100;
+        var vm = new SupernovaLab.App.ViewModels.CloseUpViewModel(main);
+        Assert.DoesNotContain(SupernovaLab.App.ViewModels.CloseUpViewModel.FlareDimmedNote, vm.Notes);
+        vm.FlareDimmed = true;
+        Assert.Equal(SupernovaLab.App.ViewModels.CloseUpViewModel.FlareDimmedNote, vm.Notes[0]);
+        vm.FlareDimmed = false;
+        Assert.DoesNotContain(SupernovaLab.App.ViewModels.CloseUpViewModel.FlareDimmedNote, vm.Notes);
+    }
+
+    [Fact]
+    public void MarkerGlow_StaysBelowWhite_ByTheShadersOwnBound()
+    {
+        // marker.frag: the halo is u_glow (at most 1, the limiter's output) x (1 - r)^2, and is drawn at 0.8 of that, so it never reaches white;
+        // the marker's own core is the same white at any brightness. Pinned in the source, since no GL context is available here.
+        var asm = typeof(SupernovaLab.Rendering.ShaderProgram).Assembly;
+        string name = asm.GetManifestResourceNames().Single(n => n.EndsWith("marker.frag"));
+        using var reader = new System.IO.StreamReader(asm.GetManifestResourceStream(name)!);
+        string src = reader.ReadToEnd();
+        Assert.Contains("float halo = u_glow * pow(max(1.0 - r, 0.0), 2.0);", src);
+        Assert.Contains("max(core, halo * 0.8)", src);
+        Assert.Contains("mix(u_color, vec3(1.0), u_glow)", src);     // the colour is at most white
+        Assert.True(0.8 * 1 * 1 < 1);
     }
 
     /// <summary>The number of separate rises: transitions from not rising to rising by more than a hair.</summary>

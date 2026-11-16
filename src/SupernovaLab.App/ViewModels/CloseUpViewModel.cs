@@ -82,7 +82,7 @@ public sealed partial class CloseUpViewModel : ObservableObject, IDisposable
     /// </summary>
     public IReadOnlyList<string> Notes => _modelError is not null ? new[] { _modelError }
         : State.IsLensed ? WithFlareLimit(State.Notes.Concat(ActiveCutaway?.Notes ?? Array.Empty<string>()).Append(LightBendingNote)).ToList()
-        : State.Notes;
+        : WithFlareLimit(State.Notes).ToList();
 
     /// <summary>Review fix 5: shown while the flash limiter holds a giant flare clearly below what the model asks for.</summary>
     public const string FlareDimmedNote = "Flare dimmed by the flash-safety limit (at most one rise per half second, none faster than 0.15 s)";
