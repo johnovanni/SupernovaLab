@@ -51,8 +51,10 @@ These are the design targets. The minimum class has not been measured (see `docs
 default size, both views run at 50 fps or better for the Crab (59 fps, 53 fps while turning the Close-up), SN 1998bw (67 and
 57 fps) and N6946-BH1 (72 and 59 fps); the main window with the Close-up hidden runs at 69–75 fps. Task 14's slower figures
 (30–39 fps) came from the Close-up rebuilding its readout rows on every frame, even while hidden; fixed in Task 14b (see
-`docs/perf-2026-11.md`). Turning the Crab's Close-up can still dip just under 50 fps (47 fps over the second half of the
-run), and at 1920x1080 the debris presets turn at 48–49 fps. If the Close-up is slow on your machine, View >
+`docs/perf-2026-11.md`). The margin is thin while turning the Crab's Close-up: 52.8 fps over the run, but 47.0 fps over its
+second half. The Close-up draws only when something changes, so a still view draws fewer frames (N6946-BH1's settled hole:
+21.6 a second) without being slow. Each figure is a single run, not repeated. At 1920x1080 the debris presets turn at
+48–49 fps. If the Close-up is slow on your machine, View >
 Light-bending detail > Quarter makes it cheapest.
 
 ## How to use
@@ -216,7 +218,7 @@ Notes on these:
 |---|---|---|---|
 | Non-spinning shadow radius | √27 GM/c² (exact) | the ray tracer's edge within 0.5% | Pass |
 | Kerr shadow outline, spin 0.9, side-on and from 17° | Bardeen 1973's analytic curve | the tracer within 1% of the shadow radius | Pass |
-| ISCO and ergosphere | Bardeen, Press & Teukolsky 1972 | the formulas, the disk's inner edge and the drawn outline | Pass |
+| ISCO and ergosphere | Bardeen, Press & Teukolsky 1972; r_E(θ) = 1 + √(1 − a² cos² θ) | the ISCO formula and the disk's inner edge; the ergosphere formula (the drawn outline uses it but is not itself tested) | Pass |
 | Neutron star's visible surface | the exact Schwarzschild integral (75% for 1.4 M☉, 12 km) | the tracer within 0.01 | Pass |
 | Crab's period and light cylinder | 33.39 ms; c P / 2π ≈ 1,600 km | 33.4 ms at its 1991 age; 1,594 km | Pass (consistency check, as above) |
 | M87*'s ring | 42 ± 3 µas (EHT 2019) | 39.7 µas from the stellar-dynamics mass | Pass |

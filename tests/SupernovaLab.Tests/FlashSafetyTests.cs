@@ -20,9 +20,12 @@ public class FlashSafetyTests
     private static IEnumerable<(string Name, Outcome Outcome, ObserverSetup Observer)> Cases()
         => Project3ValidationTests.AllPresetsAndOutcomeTypes().Select(r => ((string)r[0]!, (Outcome)r[1]!, (ObserverSetup)r[2]!));
 
-    /// <summary>The pulse trace's marks (two beams' crossings per drawn turn) never come faster than once a second, for every pulsar.</summary>
+    /// <summary>
+    /// The pulse trace's marks (two beams' crossings per drawn turn), for every pulsar: never closer than 1/3 s (the 3 Hz limit), and on
+    /// average no faster than the drawn rate (at most about one a second). Single gaps can be a little under 1 s (ruling R-P3-28).
+    /// </summary>
     [Fact]
-    public void PulseTrace_NeverMarksFasterThanOnceASecond()
+    public void PulseTrace_MarksAtLeastAThirdOfASecondApart_AndOnAverageAtTheDrawnRate()
     {
         int checkedCases = 0;
         foreach (var (what, o, obs) in Cases())
