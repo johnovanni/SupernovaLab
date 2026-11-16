@@ -47,11 +47,13 @@ working.
 
 These are the design targets. The minimum class has not been measured (see `docs/perf-2026-11.md`).
 
-**Known performance gap (Project 3).** On the recommended Intel Iris Xe the final benchmark met 50 fps with the Close-up
-open for a black hole without debris (N6946-BH1: 64 fps, 52 fps while turning the Close-up), but not for outcomes with
-debris (the Crab: 30 fps; SN 1998bw: 34 fps). The main window alone was also slow there (34–39 fps, against 70–78 fps
-measured earlier in Project 3), so the cause is in the main and Instruments windows' drawing, not the Close-up; it is not
-yet identified. If the Close-up is slow on your machine, View > Light-bending detail > Quarter makes it cheapest.
+**Performance (Project 3).** On the recommended Intel Iris Xe, with the main window at 1366x768 and the Close-up open at its
+default size, both views run at 50 fps or better for the Crab (59 fps, 53 fps while turning the Close-up), SN 1998bw (67 and
+57 fps) and N6946-BH1 (72 and 59 fps); the main window with the Close-up hidden runs at 69–75 fps. Task 14's slower figures
+(30–39 fps) came from the Close-up rebuilding its readout rows on every frame, even while hidden; fixed in Task 14b (see
+`docs/perf-2026-11.md`). Turning the Crab's Close-up can still dip just under 50 fps (47 fps over the second half of the
+run), and at 1920x1080 the debris presets turn at 48–49 fps. If the Close-up is slow on your machine, View >
+Light-bending detail > Quarter makes it cheapest.
 
 ## How to use
 
