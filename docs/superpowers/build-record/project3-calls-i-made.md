@@ -170,3 +170,8 @@ Each of these would change a Project 1 or 2 panel, or needs research the lab doe
   screen (the drip label clear of the cutaway key at the default size; the tour lighting the Close-up's outline; the
   gamma panel's "Giant flares: see the burst tab." pointer visible). The others passed, except that the first second's
   shock is a translucent shell whose bright limb is only faint (as Task 11 had found; left as it is).
+
+- **The remnant marker's glow in the main view during a magnetar's giant flare (R-P3-39, for you to approve or veto).**
+  This changes Project 2's view: the marker glows, bounded and flash-limited, when a flare is drawn in the Close-up, so
+  the two views never contradict each other (spec §7.2). If you would rather the main view stay unchanged, it is one
+  renderer change to remove.
