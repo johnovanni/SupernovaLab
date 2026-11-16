@@ -221,3 +221,8 @@ Numbered in the order they were made. The ledger (`project3-ledger.md`) says whi
 ### Task 21 (the owner, 2026-11-16: "Yes, zoom in")
 
 - Ruling R-P3-54: the first second is framed on the proto-neutron star: the framing radius is at most `CloseUpScene.CoreZoomRadii` = 5 of its radii (it fills about a fifth of the view's height), and the shock is framed whole while it is smaller than that. The default star at 0.25 s: 186 km (it was 282 km, the shock's 223 km × 1.15 × 1.1); the stalled shock's sloshing fills the view around the star and its green gain shell; the revived shock and the infalling dots leave the frame by 0.7 s (the note now says so; the Shock radius readout follows it). The view's opacity note is narrowed to 250 DIP so it clears the top ring label. Checked in the app's own renders at 10 ms, 0.25 s and 0.7 s (a single capture straight after opening at t = 0 can catch the camera still easing in from the iron core's 2,875 km frame; the timeline-driven ease in the app is the same as before).
+
+### Task 21b (2026-11-16, checking the owner's question "Do you get to see neutron drip with a cutaway view of the core?")
+
+- Ruling R-P3-55: the view note (R-P3-51) moves from the view's top right into its own row above the view (`ViewNoteRow`): on the view it covered the top of the cutaway's layer key once the crust (and the drip line) shows, from about 1 day. Checked in the app's own render at 2.31 days with the cutaway: the key, the drip label and the magnified strip are all clear.
+- Found, not changed: a small black notch at the cut sphere's left edge with the cutaway on, already in Task 14's render (SN 1054 at 11.6 days), so not from Tasks 20–21. Put to the owner as a follow-up.
